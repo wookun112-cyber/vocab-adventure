@@ -76,7 +76,7 @@ function mergeState(raw){
  rebuildCatalog();
  return state;
 }
-async function cloudSaveasync function cloudSave(silent=true){
+async function cloudSave(silent=true){
  if(!authUser||saving)return; saving=true; state.updatedAt=Date.now(); localSave();
  const {error}=await sb.from('app_state').upsert({user_id:authUser.id,state,updated_at:new Date().toISOString()});
  saving=false; $('cloudPill').textContent=error?'저장 오류':'클라우드 저장됨'; $('cloudPill').classList.toggle('on',!error);
@@ -174,7 +174,7 @@ function buildSessionasync function buildSession(mode='daily'){
  session={mode,queue:pool.map((w,i)=>makeQuestion(w,i)),results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,6)};
  current=0; show('learn'); renderQuestion();
 }
-function renderQuestionfunction renderQuestion(){
+function renderQuestion(){
  if(current>=session.queue.length||current>=session.target){finishSession();return}
  const q=session.queue[current]; selectedOption=null; answerSource='typed';
  $('learnType').textContent=session.mode==='level'?'레벨 확인':session.mode==='review'?'집중 복습':'오늘의 학습';
@@ -218,7 +218,7 @@ function applyResult(q,result,feedback,normalized=''){
  $('feedback').classList.remove('hidden'); $('next').classList.remove('hidden'); $('submit').classList.add('hidden');
  cloudSave();
 }
-function escapeHtmlfunction escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 async function gradeCurrent(dontKnow){
  const q=session.queue[current]; if(!$('next').classList.contains('hidden'))return;
  if(dontKnow){applyResult(q,'×','괜찮아요. 뜻은 “'+q.w.d+'”예요. 같은 문제를 바로 반복하지 않고 나중에 다른 문맥에서 다시 만나요.');return}
@@ -260,7 +260,7 @@ function finishSession(){
  alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
  if(session.mode!=='level')setTimeout(()=>ensureCatalog(c.difficulty,'daily'),400);
 }
-function renderAllfunction renderAll(){
+function renderAll(){
  const c=child(); document.querySelectorAll('.profile').forEach(x=>x.classList.toggle('active',x.dataset.profile===state.selected));
  $('ayoungLevel').textContent='현재 단계 '+bandLabel(state.users.ayoung.difficulty)+' · '+state.users.ayoung.difficulty.toFixed(1); $('inseongLevel').textContent='현재 단계 '+bandLabel(state.users.inseong.difficulty)+' · '+state.users.inseong.difficulty.toFixed(1);
  $('hello').textContent=c.name+'의 오늘 탐험'; $('subtitle').textContent=c.name+' · '+bandLabel(c.difficulty)+' 단계';
