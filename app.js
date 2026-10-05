@@ -231,7 +231,7 @@ async function gradeCurrent(dontKnow){
  $('submit').disabled=true;$('submit').textContent='AI 채점 중…';
  try{
    const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
-   const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({question:q.q+(q.ctx?'\n상황: '+q.ctx:''),targetWord:q.w.w,answer,source:answerSource})});
+   const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({question:q.q+(q.ctx?'\n상황: '+q.ctx:''),targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,answer,source:answerSource})});
    if(r.ok){const j=await r.json();applyResult(q,j.result||'△',j.feedback||'답을 확인했어요.',j.normalizedAnswer||answer)}
    else{fallbackOpen(q,answer)}
  }catch{fallbackOpen(q,answer)}
