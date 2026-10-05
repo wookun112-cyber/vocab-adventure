@@ -157,8 +157,10 @@ async function seedBand(band){
   }
 }
 
-for(let band=1;band<=9;band++){
-  await seedBand(band);
+for(let start=1;start<=9;start+=3){
+  const group=[start,start+1,start+2].filter(x=>x<=9);
+  console.log('Starting concurrent band group',group.join(','));
+  await Promise.all(group.map(seedBand));
 }
 
 const all=await rpc('tmp_curriculum_existing_20261005');
