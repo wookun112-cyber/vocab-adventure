@@ -95,14 +95,14 @@ async function callOpenAI({band,count,exclude}){
   };
 
   let last='';
-  for(let attempt=1;attempt<=8;attempt++){
+  for(let attempt=1;attempt<=20;attempt++){
     const r=await fetch('https://api.openai.com/v1/responses',{
       method:'POST',
       headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
       body:JSON.stringify({
         model,
         reasoning:{effort:'low'},
-        max_output_tokens:12000,
+        max_output_tokens:9000,
         input:prompt,
         text:{format:{type:'json_schema',name:'curriculum_seed',strict:true,schema}}
       })
@@ -140,7 +140,7 @@ async function seedBand(band){
     }
 
     const existingAll=await rpc('tmp_curriculum_existing_20261005');
-    const need=Math.min(100,target-current);
+    const need=Math.min(60,target-current);
     console.log('Band',band,bands[band].name,'current',current,'target',target,'generate',need,'global',existingAll.length);
 
     const generated=await callOpenAI({band,count:need,exclude:existingAll});
@@ -155,7 +155,7 @@ async function seedBand(band){
       source:'gpt-6-luna curated'
     })).filter(x=>x.word&&x.definition);
 
-    const inserted=await rpc('tmp_seed_curriculum_v2_20261005',{p_words:payload});
+    const inserted=await rpc('tmp_seed_curriculum_v3_20261005',{p_words:payload});
     console.log('Band',band,'generated',generated.length,'inserted',inserted);
 
     if(inserted<=0){
@@ -167,9 +167,16 @@ async function seedBand(band){
   }
 }
 
-for(let band=1;band<=9;band++){
-  await seedBand(band);
+const queue=[1,2,3,4,5,6,7,8,9];
+async function worker(id){
+  while(queue.length){
+    const band=queue.shift();
+    if(!band)return;
+    console.log('Worker',id,'starting band',band);
+    await seedBand(band);
+  }
 }
+await Promise.all([worker(1),worker(2)]);
 
 const all=await rpc('tmp_curriculum_existing_20261005');
 if(all.length!==6000){
