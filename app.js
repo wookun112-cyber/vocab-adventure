@@ -37,11 +37,15 @@ const SEED_WORDS=[
 {w:'조건',d:'어떤 일이 이루어지기 위해 필요한 사항',cat:'수학',lv:3},
 {w:'기준',d:'판단하거나 비교할 때 바탕이 되는 것',cat:'사고',lv:3},
 {w:'효율',d:'들인 노력이나 시간에 비해 얻는 결과의 정도',cat:'생활',lv:4}
-];
+].map(x=>({...x,band:x.band||x.lv||3,source:'seed',example:x.example||'',contrast:x.contrast||''}));
+const BAND_NAMES={1:'초1~2',2:'초3~4',3:'초5~6',4:'중1',5:'중2',6:'중3',7:'고1',8:'고2',9:'고3'};
+const bandLabel=v=>BAND_NAMES[clamp(Math.round(Number(v)||3),1,9)];
+const FIXED_CACHE=new Map();
+let WORDS=[...SEED_WORDS];
 const byWord=w=>WORDS.find(x=>x.w===w);
 const freshWord=()=>({seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[]});
 const freshChild=name=>({name,difficulty:2,confidence:0,learningDays:0,sessions:[],words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),lastDate:null,levelTestCompleted:false});
-const initial=()=>({v:3,curriculum:'elementary-to-middle-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성')},updatedAt:Date.now()});
+const initial=()=>({v:3,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성')},updatedAt:Date.now()});
 let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false;
 
 function child(){return state.users[state.selected]}
@@ -59,7 +63,12 @@ function rebuildCatalog(){
  for(const x of Object.values(state.catalog||{})){
    if(!x?.w||seen.has(x.w))continue;
    seen.add(x.w);
-   WORDS.push({...x,band:clamp(Number(x.band)||3,1,6)});
+   WORDS.push({...x,band:clamp(Number(x.band)||3,1,9)});
+ }
+ for(const x of FIXED_CACHE.values()){
+   if(!x?.w||seen.has(x.w))continue;
+   seen.add(x.w);
+   WORDS.push(x);
  }
 }
 function mergeState(raw){
@@ -95,7 +104,7 @@ async function expandCatalog(band=3,mode='daily',count=24){
    const j=await r.json(); let added=0;
    for(const x of j.words||[]){
      if(!x?.w||byWord(x.w))continue;
-     state.catalog[x.w]={...x,band:clamp(Number(x.band)||band,1,6)};
+     state.catalog[x.w]={...x,band:clamp(Number(x.band)||band,1,9)};
      added++;
    }
    rebuildCatalog(); localSave(); await cloudSave();
@@ -103,16 +112,85 @@ async function expandCatalog(band=3,mode='daily',count=24){
  }catch{return 0}
  finally{$('cloudPill').textContent=oldText||'클라우드 연결'}
 }
+async function loadFixedCurriculum(bands,perBand=220){
+ if(!authUser)return 0;
+ let added=0;
+ for(const b0 of bands){
+   const b=clamp(Math.round(b0),1,9);
+   const {data,error}=await sb.from('curriculum_words')
+     .select('word,definition,band,domain,example,confusion,contrast')
+     .eq('band',b).limit(perBand);
+   if(error)continue;
+   for(const x of data||[]){
+     if(FIXED_CACHE.has(x.word))continue;
+     FIXED_CACHE.set(x.word,{
+       w:x.word,d:x.definition,band:x.band,cat:x.domain,
+       example:x.example||'',pair:x.confusion||'',contrast:x.contrast||'',source:'fixed'
+     });
+     added++;
+   }
+ }
+ if(added)rebuildCatalog();
+ return added;
+}
 async function ensureCatalog(band=3,mode='daily'){
- const b=clamp(Math.round(Number(band)||3),1,6);
+ const b=clamp(Math.round(Number(band)||3),1,9);
  if(mode==='diagnostic'){
-   const counts={1:0,2:0,3:0,4:0,5:0,6:0};
+   await loadFixedCurriculum([1,2,3,4,5,6,7,8,9],60);
+   const counts={1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0};
    for(const w of WORDS) if(!(child().words[w.w]?.seen)) counts[w.band||3]=(counts[w.band||3]||0)+1;
-   if(Object.values(counts).some(n=>n<4)) await expandCatalog(3,'diagnostic',30);
+   if(Object.values(counts).every(n=>n>=4))return;
+   await expandCatalog(3,'diagnostic',30);
    return;
  }
+ await loadFixedCurriculum([b-1,b,b+1].filter(x=>x>=1&&x<=9),240);
  const near=WORDS.filter(w=>Math.abs((w.band||3)-b)<=1 && !(child().words[w.w]?.seen)).length;
- if(near<18) await expandCatalog(b,'daily',24);
+ if(near>=18)return;
+ await expandCatalog(b,'daily',24);
+}
+async function curriculumStatus(){
+ const {data,error}=await sb.rpc('owner_curriculum_status');
+ if(error)return null;
+ const counts=Object.fromEntries((data||[]).map(x=>[Number(x.band),Number(x.word_count)]));
+ return counts;
+}
+async function buildFixedCurriculum(){
+ const btn=$('buildCurriculum'),progress=$('curriculumProgress');
+ if(!authUser)return;
+ const targets={1:650,2:650,3:750,4:700,5:700,6:700,7:650,8:600,9:600};
+ const totalTarget=Object.values(targets).reduce((a,b)=>a+b,0);
+ btn.disabled=true; btn.textContent='구축 중…';
+ const {data:sessionData}=await sb.auth.getSession(); const token=sessionData.session?.access_token;
+ if(!token){progress.textContent='로그인을 다시 해주세요.';btn.disabled=false;return}
+ try{
+   for(let band=1;band<=9;band++){
+     while(true){
+       const {data:existing,error}=await sb.from('curriculum_words').select('word').eq('band',band).limit(1000);
+       if(error)throw error;
+       const current=existing?.length||0;
+       const counts=await curriculumStatus()||{};
+       const total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);
+       progress.textContent='고정 어휘 DB 구축 중 · '+total.toLocaleString()+' / '+totalTarget.toLocaleString()+'개 · '+bandLabel(band);
+       if(current>=targets[band])break;
+       const count=Math.min(100,targets[band]-current);
+       const r=await fetch('/api/vocab',{
+         method:'POST',
+         headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+         body:JSON.stringify({mode:'seed',band,count,exclude:(existing||[]).map(x=>x.word)})
+       });
+       if(!r.ok){
+         const msg=await r.text();
+         throw new Error('어휘 생성 실패: '+msg.slice(0,180));
+       }
+     }
+   }
+   progress.textContent='완료 · 초1~고3 핵심 어휘 '+totalTarget.toLocaleString()+'개가 고정 DB에 준비됐어요.';
+   btn.textContent='어휘 DB 완료';
+   await loadFixedCurriculum([1,2,3,4,5,6,7,8,9],80);
+ }catch(e){
+   progress.textContent='중간에 멈췄어요. 다시 누르면 이어서 진행합니다. ('+String(e?.message||e)+')';
+   btn.disabled=false; btn.textContent='이어 만들기';
+ }
 }
 function scorePriority(w){
  const s=wordState(w.w); let p=s.wrong*5+(5-s.streak)*2+(s.seen?2:0);
@@ -160,10 +238,10 @@ async function buildSession(mode='daily'){
  let pool=[];
  if(mode==='level'){
    const unseen=WORDS.filter(w=>!(c.words[w.w]?.seen));
-   const byBand={1:[],2:[],3:[],4:[],5:[],6:[]};
+   const byBand={1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[]};
    for(const w of unseen) (byBand[w.band||3]||(byBand[w.band||3]=[])).push(w);
-   for(let b=1;b<=6;b++) byBand[b].sort(()=>Math.random()-.5);
-   const mixed=[]; for(let round=0;round<5;round++)for(let b=1;b<=6;b++)if(byBand[b][round])mixed.push(byBand[b][round]);
+   for(let b=1;b<=9;b++) byBand[b].sort(()=>Math.random()-.5);
+   const mixed=[]; for(let round=0;round<5;round++)for(let b=1;b<=9;b++)if(byBand[b][round])mixed.push(byBand[b][round]);
    pool=mixed.slice(0,30);
  } else if(mode==='review'){
    pool=chooseReview(20); if(pool.length<12)pool=[...pool,...chooseNew(20-pool.length)];
@@ -171,7 +249,7 @@ async function buildSession(mode='daily'){
    pool=[...chooseNew(5),...chooseReview(15)];
  }
  if(pool.length<20) pool=[...pool,...WORDS.filter(w=>!pool.some(x=>x.w===w.w)).sort((a,b)=>Math.abs((a.band||3)-c.difficulty)-Math.abs((b.band||3)-c.difficulty)).slice(0,30-pool.length)];
- session={mode,queue:pool.map((w,i)=>makeQuestion(w,i)),results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,6)};
+ session={mode,queue:pool.map((w,i)=>makeQuestion(w,i)),results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9)};
  current=0; show('learn'); renderQuestion();
 }
 function renderQuestion(){
@@ -197,7 +275,7 @@ function applyResult(q,result,feedback,normalized=''){
    const answered=session.results.length;
    if(answered%4===0){
      const block=session.results.slice(-4),g=block.filter(x=>['◎','○'].includes(x.result)).length;
-     if(g>=3)session.ability=clamp(session.ability+.5,1,6); else if(g<=1)session.ability=clamp(session.ability-.5,1,6);
+     if(g>=3)session.ability=clamp(session.ability+.5,1,9); else if(g<=1)session.ability=clamp(session.ability-.5,1,9);
      const used=session.queue.slice(0,current+1),rest=session.queue.slice(current+1).sort((a,b)=>Math.abs((a.w.band||3)-session.ability)-Math.abs((b.w.band||3)-session.ability));
      session.queue=[...used,...rest];
    }
@@ -252,7 +330,7 @@ function finishSession(){
    const weighted=r.reduce((sum,x)=>sum+((['◎','○'].includes(x.result)?1:0)*(x.band||3)),0);
    const goodN=Math.max(1,good);
    const evidence=good?weighted/goodN:1;
-   c.difficulty=clamp((session.ability*0.65+evidence*0.35),1,6);
+   c.difficulty=clamp((session.ability*0.65+evidence*0.35),1,9);
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
  }
@@ -282,7 +360,7 @@ async function resendConfirm(){const email=$('email').value.trim();if(!email)ret
 function setMsg(m,e=false){$('authMsg').textContent=m;$('authMsg').className='authmsg'+(e?' error':'')}
 async function applyAuth(sessionObj){
  authUser=sessionObj?.user||null;$('authGate').classList.toggle('hidden',!!authUser);
- if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(()=>ensureCatalog(child().difficulty,'daily'),700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));renderAll();$('cloudPill').textContent='로컬 모드'}} 
+ if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(async()=>{await ensureCatalog(child().difficulty,'daily');const st=await curriculumStatus();if(st&&$('curriculumProgress')){const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0);$('curriculumProgress').textContent='현재 고정 어휘 '+n.toLocaleString()+' / 6,000개';}},700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));renderAll();$('cloudPill').textContent='로컬 모드'}} 
 }
 function startVoice(){
  const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return alert('이 브라우저에서는 음성입력을 지원하지 않아요. Chrome/Edge에서 사용해 주세요.');
@@ -296,7 +374,7 @@ document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.g
 $('startDaily').onclick=()=>buildSession('daily');$('startReview').onclick=()=>buildSession('review');$('levelTest').onclick=()=>buildSession('level');
 $('submit').onclick=()=>gradeCurrent(false);$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('mic').onclick=startVoice;
 $('signIn').onclick=login;$('signUp').onclick=signup;$('resendConfirm').onclick=resendConfirm;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
-$('signOut').onclick=()=>sb.auth.signOut();$('syncNow').onclick=()=>cloudSave(false);
+$('signOut').onclick=()=>sb.auth.signOut();$('syncNow').onclick=()=>cloudSave(false);if($('buildCurriculum'))$('buildCurriculum').onclick=buildFixedCurriculum;
 sb.auth.getSession().then(({data})=>applyAuth(data.session));sb.auth.onAuthStateChange((_e,s)=>setTimeout(()=>applyAuth(s),0));
 if('serviceWorker'in navigator)navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
 renderAll();
