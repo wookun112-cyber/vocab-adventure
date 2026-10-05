@@ -32,7 +32,7 @@ export default async function handler(req,res){
     const count=Math.max(12,Math.min(body.mode==='seed'?100:30,Number(body.count)||24));
     const mode=body.mode==='seed'?'seed':(body.mode==='diagnostic'?'diagnostic':'daily');
     const band=Math.max(1,Math.min(9,Math.round(Number(body.band)||3)));
-    const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-500):[];
+    const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-(mode==='seed'?1000:500)):[];
     const distribution=mode==='diagnostic'
       ? '1~9단계가 모두 포함되도록 각 단계에서 비슷한 수로 고르게 뽑으세요.'
       : mode==='seed'
