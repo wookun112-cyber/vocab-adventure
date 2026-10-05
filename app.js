@@ -46,7 +46,7 @@ const byWord=w=>WORDS.find(x=>x.w===w);
 const freshWord=()=>({seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[]});
 const freshChild=name=>({name,difficulty:2,confidence:0,learningDays:0,sessions:[],words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),lastDate:null,levelTestCompleted:false});
 const initial=()=>({v:3,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성')},updatedAt:Date.now()});
-let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false;
+let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null;
 
 function child(){return state.users[state.selected]}
 function wordState(w){return child().words[w]||(child().words[w]=freshWord())}
@@ -350,7 +350,9 @@ function renderWordbook(){
  $('wordList').innerHTML=arr.length?arr.map(w=>{const s=c.words[w.w];return '<div class="item row between"><div><strong>'+w.w+'</strong><br><small>'+w.d+'</small><br><small>정답 '+s.correct+' · 오답 '+s.wrong+' · '+s.days.length+'일 학습</small></div><span class="tag">Lv.'+s.level+(s.mastered?' 숙달':'')+'</span></div>'}).join(''):'<div class="card muted">아직 학습 기록이 없어요.</div>';
 }
 function renderReport(){
- const c=child(),studied=WORDS.filter(w=>(c.words[w.w]?.seen||0)>0),weak=[...studied].sort((a,b)=>(c.words[b.w]?.wrong||0)-(c.words[a.w]?.wrong||0)).slice(0,5),conf=[...new Set(weak.flatMap(w=>c.words[w.w]?.confusions||[]))].slice(0,4);
+ const reportId=reportProfile||state.selected; const c=state.users[reportId],studied=WORDS.filter(w=>(c.words[w.w]?.seen||0)>0),weak=[...studied].sort((a,b)=>(c.words[b.w]?.wrong||0)-(c.words[a.w]?.wrong||0)).slice(0,5),conf=[...new Set(weak.flatMap(w=>c.words[w.w]?.confusions||[]))].slice(0,4);
+ $('reportTitle').textContent=c.name+' 부모 리포트';
+ document.querySelectorAll('[data-report-profile]').forEach(b=>b.classList.toggle('active',b.dataset.reportProfile===reportId));
  $('reportBody').innerHTML='<div class="grid4"><div class="stat"><strong>'+(c.sessions[0]?.score??'-')+'</strong><span>최근 점수</span></div><div class="stat"><strong>'+studied.length+'</strong><span>학습 단어</span></div><div class="stat"><strong>'+studied.filter(w=>c.words[w.w]?.mastered).length+'</strong><span>숙달</span></div><div class="stat"><strong>'+c.difficulty.toFixed(1)+'</strong><span>현재 난이도</span></div></div><div class="card"><h3>다음 우선순위</h3><div class="list">'+(weak.length?weak.map(w=>'<div class="item"><strong>'+w.w+'</strong> <small>오답 '+c.words[w.w].wrong+'회 · '+w.d+'</small></div>').join(''):'<span class="muted">학습을 시작하면 자동으로 분석됩니다.</span>')+'</div></div><div class="card"><h3>부모용 한줄 요약</h3><p class="muted">'+(weak.length?'현재 '+weak.map(x=>x.w).join(', ')+'을 우선 복습하면 좋습니다. 현재 학습 단계는 '+bandLabel(c.difficulty)+'입니다.'+(conf.length?' 특히 '+conf.join(', ')+'과의 구별을 다시 확인합니다.':''):'아직 충분한 학습 기록이 없습니다.')+'</p></div>';
 }
 function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook')renderWordbook();if(id==='report')renderReport();window.scrollTo({top:0,behavior:'smooth'})}
