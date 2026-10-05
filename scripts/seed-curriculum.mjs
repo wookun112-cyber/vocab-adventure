@@ -57,8 +57,6 @@ async function callOpenAI({band,count,exclude}){
     '- 이미 아래에 있는 단어는 절대로 다시 만들지 않습니다.',
     '- definition은 학생 눈높이에 맞는 짧고 정확한 뜻풀이 한 문장입니다.',
     '- example은 자연스러운 한 문장 예시입니다.',
-    '- confusion은 실제로 혼동하기 쉬운 다른 단어가 있을 때만 쓰고 없으면 빈 문자열입니다.',
-    '- contrast는 confusion과의 차이를 한 문장으로 설명하고 confusion이 없으면 빈 문자열입니다.',
     '- domain은 국어, 사회, 과학, 수학·논리, 감정·관계, 생활 중 하나입니다.',
     '- 반환하는 모든 항목의 band는 반드시 '+band+'입니다.',
     '',
@@ -81,11 +79,9 @@ async function callOpenAI({band,count,exclude}){
             word:{type:'string'},
             definition:{type:'string'},
             domain:{type:'string',enum:['국어','사회','과학','수학·논리','감정·관계','생활']},
-            example:{type:'string'},
-            confusion:{type:'string'},
-            contrast:{type:'string'}
+            example:{type:'string'}
           },
-          required:['word','definition','domain','example','confusion','contrast'],
+          required:['word','definition','domain','example'],
           additionalProperties:false
         }
       }
@@ -102,7 +98,7 @@ async function callOpenAI({band,count,exclude}){
       body:JSON.stringify({
         model,
         reasoning:{effort:'low'},
-        max_output_tokens:9000,
+        max_output_tokens:12000,
         input:prompt,
         text:{format:{type:'json_schema',name:'curriculum_seed',strict:true,schema}}
       })
@@ -140,7 +136,7 @@ async function seedBand(band){
     }
 
     const existingAll=await rpc('tmp_curriculum_existing_20261005');
-    const need=Math.min(60,target-current);
+    const need=Math.min(120,target-current);
     console.log('Band',band,bands[band].name,'current',current,'target',target,'generate',need,'global',existingAll.length);
 
     const generated=await callOpenAI({band,count:need,exclude:existingAll});
@@ -149,13 +145,10 @@ async function seedBand(band){
       definition:String(x.definition||'').trim(),
       band,
       domain:x.domain,
-      example:String(x.example||'').trim(),
-      confusion:String(x.confusion||'').trim(),
-      contrast:String(x.contrast||'').trim(),
-      source:'gpt-6-luna curated'
+      example:String(x.example||'').trim()
     })).filter(x=>x.word&&x.definition);
 
-    const inserted=await rpc('tmp_seed_curriculum_v3_20261005',{p_words:payload});
+    const inserted=await rpc('tmp_seed_curriculum_v4_20261005',{p_words:payload});
     console.log('Band',band,'generated',generated.length,'inserted',inserted);
 
     if(inserted<=0){
