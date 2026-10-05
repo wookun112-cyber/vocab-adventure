@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#4d8cff"><meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/app.css"><title>어휘 탐험</title></head>
+<body>
+<div id="authGate" class="auth">
+  <div class="authbox">
+    <div class="eyebrow">가족 전용 학습공간</div><h1>어휘 탐험</h1>
+    <p class="muted">한 번 로그인하면 태블릿이 바뀌어도 아영·인성의 기록을 그대로 이어갑니다.</p>
+    <input id="email" type="email" placeholder="이메일">
+    <input id="password" type="password" placeholder="비밀번호 (6자 이상)">
+    <div class="actions"><button id="signIn" class="primary">로그인</button><button id="signUp" class="secondary">처음 계정 만들기</button></div>
+    <div id="authMsg" class="authmsg"></div>
+  </div>
+</div>
+<div class="app">
+<header class="top"><div class="logo">어</div><div class="title"><strong>어휘 탐험</strong><small id="subtitle">오늘도 한 걸음</small></div><span id="cloudPill" class="pill">동기화 확인중</span></header>
+<main>
+<section id="home" class="screen active">
+  <div class="card hero"><div class="eyebrow">적응형 한국어 어휘</div><h1 id="hello">오늘의 탐험을 시작해볼까요?</h1><p class="muted">정답 수만 세지 않고, 비슷한 말 구별·문맥 추론·직접 설명까지 확인해 난이도를 계속 조절합니다.</p></div>
+  <div class="profiles">
+    <button class="profile active" data-profile="ayoung"><div class="avatar">👧</div><strong>아영</strong><small id="ayoungLevel">현재 난이도 2.0</small></button>
+    <button class="profile" data-profile="inseong"><div class="avatar">👦</div><strong>인성</strong><small id="inseongLevel">현재 난이도 2.0</small></button>
+  </div>
+  <div class="card install"><div><strong>태블릿에 앱으로 설치</strong><small class="muted" id="installHint">브라우저 메뉴에서 홈 화면에 추가할 수 있어요.</small></div><button id="installBtn" class="secondary">설치</button></div>
+  <div class="grid4">
+    <div class="stat"><strong id="statScore">-</strong><span>최근 점수</span></div>
+    <div class="stat"><strong id="statWords">0</strong><span>학습 단어</span></div>
+    <div class="stat"><strong id="statMaster">0</strong><span>숙달 단어</span></div>
+    <div class="stat"><strong id="statDay">1</strong><span>학습일</span></div>
+  </div>
+  <div class="card">
+    <div class="row between wrap"><div><div class="eyebrow">오늘의 학습</div><h2 style="margin:5px 0">새 단어 5 + 맞춤 복습</h2><p class="muted" style="margin:0">기본 20문제, 헷갈리면 최대 30문제까지 자동 조정</p></div><button id="startDaily" class="primary">시작하기</button></div>
+  </div>
+  <div class="grid4">
+    <button id="levelTest" class="quick"><b>🎯</b>레벨 확인</button>
+    <button id="startReview" class="quick"><b>🔁</b>복습</button>
+    <button data-go="wordbook" class="quick"><b>📚</b>단어장</button>
+    <button data-go="report" class="quick"><b>📊</b>부모 리포트</button>
+  </div>
+</section>
+
+<section id="learn" class="screen">
+  <div class="row between"><div><div class="eyebrow" id="learnType">오늘의 학습</div><h2 id="counter" style="margin:4px 0">1번째 문제</h2></div><button data-go="home" class="ghost">나가기</button></div>
+  <div class="progress"><div id="progressBar"></div></div>
+  <div class="card">
+    <div class="row between"><span id="qTag" class="tag">문맥</span><span id="difficulty" class="pill">난이도 2.0</span></div>
+    <h2 id="qWord" class="word">근거</h2>
+    <div id="qText" class="question"></div>
+    <div id="qContext" class="context hidden"></div>
+    <div id="options" class="options"></div>
+    <textarea id="answer" class="hidden" placeholder="자기 말로 설명하거나 문장을 만들어 보세요."></textarea>
+    <div id="voiceRow" class="row hidden" style="margin-top:10px"><button id="mic" class="voice">🎤 음성 입력</button><small id="voiceHint" class="muted">발음은 채점하지 않아요.</small></div>
+    <div class="actions" style="margin-top:12px"><button id="submit" class="primary hidden">채점하기</button><button id="dontKnow" class="ghost">모르겠어</button></div>
+    <div id="feedback" class="feedback hidden"></div>
+    <button id="next" class="primary wide hidden" style="margin-top:12px">다음 문제</button>
+  </div>
+</section>
+
+<section id="wordbook" class="screen"><div class="row between"><h2>내 단어장</h2><button data-go="home" class="ghost">홈</button></div><div id="wordList" class="list"></div></section>
+<section id="report" class="screen"><div class="row between"><h2>부모 리포트</h2><button data-go="home" class="ghost">홈</button></div><div id="reportBody"></div></section>
+<section id="settings" class="screen"><div class="row between"><h2>설정</h2><button data-go="home" class="ghost">홈</button></div>
+<div class="card"><strong id="accountEmail">-</strong><p class="muted">학습기록은 Supabase에 저장됩니다.</p><div class="actions"><button id="syncNow" class="secondary">지금 동기화</button><button id="signOut" class="danger">로그아웃</button></div></div>
+</section>
+</main>
+<nav class="bottom"><button class="nav active" data-go="home">🏠 홈</button><button class="nav" data-go="wordbook">📚 단어장</button><button class="nav" data-go="report">📊 리포트</button><button class="nav" data-go="settings">⚙️ 설정</button></nav>
+</div>
+<script type="module" src="/app.js"></script>
+</body></html>
