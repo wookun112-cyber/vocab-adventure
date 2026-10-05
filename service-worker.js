@@ -1,12 +1,55 @@
-const CACHE='vocab-adventure-v10-0';
+const CACHE='vocab-adventure-v10-0-1';
 const ASSETS=['/','/index.html','/app.css','/app.js','/manifest.webmanifest','/version.json','/icon.svg'];
-self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
-self.addEventListener('activate',e=>{e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()]))});
+
+self.addEventListener('install',e=>{
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+});
+
+self.addEventListener('activate',e=>{
+  e.waitUntil(Promise.all([
+    caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),
+    self.clients.claim()
+  ]));
+});
+
+async function networkFirst(request,fallback){
+  try{
+    const r=await fetch(request,{cache:'no-store'});
+    if(r&&r.ok){
+      const c=await caches.open(CACHE);
+      c.put(request,r.clone());
+    }
+    return r;
+  }catch{
+    return (await caches.match(request)) || (fallback ? await caches.match(fallback) : Response.error());
+  }
+}
+
 self.addEventListener('fetch',e=>{
- if(e.request.method!=='GET')return;
- const u=new URL(e.request.url); if(u.origin!==location.origin)return;
- if(e.request.mode==='navigate'||u.pathname==='/index.html'||u.pathname==='/version.json'){
-   e.respondWith(fetch(e.request,{cache:'no-store'}).then(r=>{const x=r.clone();caches.open(CACHE).then(c=>c.put(e.request,x));return r}).catch(()=>caches.match(e.request).then(x=>x||caches.match('/index.html')))); return;
- }
- e.respondWith(caches.match(e.request).then(c=>c||fetch(e.request).then(r=>{const x=r.clone();caches.open(CACHE).then(k=>k.put(e.request,x));return r})));
+  if(e.request.method!=='GET')return;
+  const u=new URL(e.request.url);
+  if(u.origin!==location.origin)return;
+
+  const core=u.pathname==='/'||
+    u.pathname==='/index.html'||
+    u.pathname==='/app.js'||
+    u.pathname==='/app.css'||
+    u.pathname==='/version.json'||
+    e.request.mode==='navigate';
+
+  if(core){
+    e.respondWith(networkFirst(e.request,e.request.mode==='navigate'?'/index.html':undefined));
+    return;
+  }
+
+  e.respondWith(
+    caches.match(e.request).then(cached=>cached||fetch(e.request).then(async r=>{
+      if(r&&r.ok){
+        const c=await caches.open(CACHE);
+        c.put(e.request,r.clone());
+      }
+      return r;
+    }))
+  );
 });
