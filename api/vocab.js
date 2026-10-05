@@ -29,18 +29,16 @@ export default async function handler(req,res){
   if(!process.env.OPENAI_API_KEY) return res.status(503).json({error:'AI not configured'});
   try{
     const body=req.body||{};
-    const count=Math.max(12,Math.min(body.mode==='seed'?100:30,Number(body.count)||24));
-    const mode=body.mode==='seed'?'seed':(body.mode==='diagnostic'?'diagnostic':'daily');
+    const count=Math.max(12,Math.min(30,Number(body.count)||24));
+    const mode=body.mode==='diagnostic'?'diagnostic':'daily';
     const band=Math.max(1,Math.min(9,Math.round(Number(body.band)||3)));
-    const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-(mode==='seed'?1000:500)):[];
+    const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-500):[];
     const distribution=mode==='diagnostic'
       ? '1~9단계가 모두 포함되도록 각 단계에서 비슷한 수로 고르게 뽑으세요.'
-      : mode==='seed'
-        ? '반드시 '+band+'단계('+bandNames[band]+')에 적합한 핵심 어휘만 뽑으세요.'
-        : '중심 단계는 '+band+'단계('+bandNames[band]+')입니다. 약 65%는 '+band+'단계, 20%는 한 단계 쉬운 어휘, 15%는 한 단계 어려운 어휘로 구성하세요.';
+      : '중심 단계는 '+band+'단계('+bandNames[band]+')입니다. 약 65%는 '+band+'단계, 20%는 한 단계 쉬운 어휘, 15%는 한 단계 어려운 어휘로 구성하세요.';
     const prompt='한국어 어휘 학습 앱의 교육과정용 어휘 데이터 편집자입니다.\n'
       +'대상 범위는 초등 1학년부터 고등학교 3학년까지입니다.\n'
-      +'이번 작업은 '+(mode==='seed'?'고정 DB 구축용':mode==='diagnostic'?'진단평가용':'일일 학습용')+' 새 어휘 '+count+'개를 만드는 것입니다.\n\n'
+      +'이번 작업은 '+(mode==='diagnostic'?'진단평가용':'일일 학습용')+' 새 어휘 '+count+'개를 만드는 것입니다.\n\n'
       +'난이도 단계:\n'
       +'1 = 초등 1~2학년 핵심 생활·기초 학습어\n'
       +'2 = 초등 3~4학년 교과·독해 핵심어\n'
@@ -99,7 +97,7 @@ export default async function handler(req,res){
       body:JSON.stringify({
         model,
         reasoning:{effort:'low'},
-        max_output_tokens:mode==='seed'?12000:6500,
+        max_output_tokens:6500,
         input:prompt,
         text:{format:{type:'json_schema',name:'vocab_batch',strict:true,schema}}
       })
@@ -126,21 +124,6 @@ export default async function handler(req,res){
         example:String(x.example||'').trim(),
         source:'ai'
       });
-    }
-    if(mode==='seed'){
-      const payload=words.map(x=>({
-        word:x.w,definition:x.d,band:x.band,domain:x.cat,
-        example:x.example,confusion:x.pair,contrast:x.contrast,
-        source:'gpt-6-luna curated'
-      }));
-      const wr=await fetch(SUPABASE_URL+'/rest/v1/rpc/owner_seed_curriculum_words',{
-        method:'POST',
-        headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Authorization:req.headers.authorization},
-        body:JSON.stringify({p_words:payload})
-      });
-      if(!wr.ok) return res.status(502).json({error:'DB insert failed: '+(await wr.text()).slice(0,160)});
-      const inserted=await wr.json();
-      return res.status(200).json({band,count,generated:words.length,inserted,totalExcluded:exclude.length});
     }
     return res.status(200).json({words,model});
   }catch(e){
