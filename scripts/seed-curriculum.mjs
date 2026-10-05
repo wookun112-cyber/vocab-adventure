@@ -108,8 +108,16 @@ async function callOpenAI({band,count,exclude}){
       })
     });
     if(r.ok){
-      const parsed=JSON.parse(outputText(await r.json()).trim());
-      return parsed.words||[];
+      try{
+        const parsed=JSON.parse(outputText(await r.json()).trim());
+        if(Array.isArray(parsed.words)&&parsed.words.length===count) return parsed.words;
+        last='Unexpected word count from model';
+      }catch(err){
+        last='JSON parse failed: '+String(err?.message||err);
+      }
+      console.log('OpenAI retry',attempt,last);
+      await sleep(Math.min(30000,3000*attempt));
+      continue;
     }
     last=await r.text();
     if(![408,409,429,500,502,503,504].includes(r.status)){
@@ -151,16 +159,16 @@ async function seedBand(band){
     console.log('Band',band,'generated',generated.length,'inserted',inserted);
 
     if(inserted<=0){
-      throw new Error('No new rows inserted for band '+band);
+      console.log('No rows inserted; retrying band',band);
+      await sleep(8000);
+      continue;
     }
-    await sleep(2500);
+    await sleep(3000);
   }
 }
 
-for(let start=1;start<=9;start+=3){
-  const group=[start,start+1,start+2].filter(x=>x<=9);
-  console.log('Starting concurrent band group',group.join(','));
-  await Promise.all(group.map(seedBand));
+for(let band=1;band<=9;band++){
+  await seedBand(band);
 }
 
 const all=await rpc('tmp_curriculum_existing_20261005');
