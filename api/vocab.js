@@ -24,15 +24,25 @@ const bandNames={
   9:'고등학교 3학년'
 };
 export default async function handler(req,res){
-  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
-  if(!(await verifyUser(req.headers.authorization))) return res.status(401).json({error:'Login required'});
+  const tempSeed=req.method==='GET'&&req.query?.build==='curriculum6000';
+  if(req.method!=='POST'&&!tempSeed) return res.status(405).json({error:'Method not allowed'});
+  if(!tempSeed&&!(await verifyUser(req.headers.authorization))) return res.status(401).json({error:'Login required'});
   if(!process.env.OPENAI_API_KEY) return res.status(503).json({error:'AI not configured'});
   try{
-    const body=req.body||{};
-    const count=Math.max(12,Math.min(body.mode==='seed'?100:30,Number(body.count)||24));
+    const body=tempSeed?{mode:'seed',band:Number(req.query.band)||1,count:Number(req.query.count)||200}:(req.body||{});
+    const count=Math.max(12,Math.min(body.mode==='seed'?200:30,Number(body.count)||24));
     const mode=body.mode==='seed'?'seed':(body.mode==='diagnostic'?'diagnostic':'daily');
     const band=Math.max(1,Math.min(9,Math.round(Number(body.band)||3)));
-    const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-(mode==='seed'?1000:500)):[];
+    let exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-(mode==='seed'?6000:500)):[];
+    if(tempSeed){
+      const er=await fetch(SUPABASE_URL+'/rest/v1/rpc/tmp_curriculum_existing_20261005',{
+        method:'POST',
+        headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+        body:'{}'
+      });
+      if(!er.ok) return res.status(502).json({error:'Could not load existing curriculum'});
+      exclude=await er.json();
+    }
     const distribution=mode==='diagnostic'
       ? '1~9단계가 모두 포함되도록 각 단계에서 비슷한 수로 고르게 뽑으세요.'
       : mode==='seed'
@@ -62,7 +72,7 @@ export default async function handler(req,res){
       +'- example은 자연스러운 한 문장 예시입니다.\n'
       +'- confusion은 실제로 헷갈리기 쉬운 다른 단어 하나가 있을 때만 넣고, 없으면 빈 문자열입니다.\n'
       +'- contrast는 confusion과의 차이를 한 문장으로 설명하고, confusion이 없으면 빈 문자열입니다.\n'
-      +'- band는 반드시 1~6의 정수입니다.\n\n'
+      +'- band는 반드시 1~9의 정수입니다.\n\n'
       +'제외 단어:\n'+exclude.join(', ')+'\n\n'
       +'정확히 '+count+'개의 서로 다른 단어를 반환하세요.';
 
@@ -99,7 +109,7 @@ export default async function handler(req,res){
       body:JSON.stringify({
         model,
         reasoning:{effort:'low'},
-        max_output_tokens:6500,
+        max_output_tokens:mode==='seed'?18000:6500,
         input:prompt,
         text:{format:{type:'json_schema',name:'vocab_batch',strict:true,schema}}
       })
@@ -128,20 +138,20 @@ export default async function handler(req,res){
       });
     }
     if(mode==='seed'){
-      const auth=req.headers.authorization;
       const payload=words.map(x=>({
         word:x.w,definition:x.d,band:x.band,domain:x.cat,
         example:x.example,confusion:x.pair,contrast:x.contrast,
         source:'gpt-6-luna curated'
       }));
-      const wr=await fetch(SUPABASE_URL+'/rest/v1/rpc/owner_seed_curriculum_words',{
-        method:'POST',
-        headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Authorization:auth},
-        body:JSON.stringify({p_words:payload})
+      const rpcName=tempSeed?'tmp_seed_curriculum_20261005':'owner_seed_curriculum_words';
+      const headers={apikey:SUPABASE_KEY,'Content-Type':'application/json'};
+      if(!tempSeed)headers.Authorization=req.headers.authorization;
+      const wr=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+rpcName,{
+        method:'POST',headers,body:JSON.stringify({p_words:payload})
       });
-      if(!wr.ok) return res.status(502).json({error:'DB insert failed'});
+      if(!wr.ok) return res.status(502).json({error:'DB insert failed: '+(await wr.text()).slice(0,160)});
       const inserted=await wr.json();
-      return res.status(200).json({words,model,inserted});
+      return res.status(200).json({band,count,generated:words.length,inserted,totalExcluded:exclude.length});
     }
     return res.status(200).json({words,model});
   }catch(e){
