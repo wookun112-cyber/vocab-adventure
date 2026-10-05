@@ -157,8 +157,16 @@ async function curriculumStatus(){
 async function buildFixedCurriculum(){
  const btn=$('buildCurriculum'),progress=$('curriculumProgress');
  if(!authUser)return;
- const targets={1:650,2:650,3:750,4:700,5:700,6:700,7:650,8:600,9:600};
+ const targets={1:600,2:600,3:700,4:700,5:700,6:700,7:700,8:650,9:650};
  const totalTarget=Object.values(targets).reduce((a,b)=>a+b,0);
+ const initialCounts=await curriculumStatus()||{};
+ const initialTotal=Object.values(initialCounts).reduce((a,b)=>a+Number(b||0),0);
+ if(initialTotal>=totalTarget){
+   progress.textContent='완료 · 초1~고3 핵심 어휘 6,000개가 고정 DB에 준비됐어요.';
+   btn.textContent='어휘 DB 완료';
+   btn.disabled=true;
+   return;
+ }
  btn.disabled=true; btn.textContent='구축 중…';
  const {data:sessionData}=await sb.auth.getSession(); const token=sessionData.session?.access_token;
  if(!token){progress.textContent='로그인을 다시 해주세요.';btn.disabled=false;return}
@@ -288,7 +296,7 @@ function applyResult(q,result,feedback,normalized=''){
      if(last5>=2&&last5<=3)session.target=Math.min(30,session.queue.length);
    }
  }else{
-   if(recent.length>=5){if(bad>=3)child().difficulty=clamp(child().difficulty-.3,1,6);else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,6)}
+   if(recent.length>=5){if(bad>=3)child().difficulty=clamp(child().difficulty-.3,1,9);else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,9)}
    if(current>=14&&bad>=3&&session.target<session.max)session.target=Math.min(session.max,session.target+5);
  }
  $('feedback').className='feedback '+(good?'good':result==='×'?'bad':'');
@@ -362,7 +370,8 @@ async function resendConfirm(){const email=$('email').value.trim();if(!email)ret
 function setMsg(m,e=false){$('authMsg').textContent=m;$('authMsg').className='authmsg'+(e?' error':'')}
 async function applyAuth(sessionObj){
  authUser=sessionObj?.user||null;$('authGate').classList.toggle('hidden',!!authUser);
- if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(async()=>{await ensureCatalog(child().difficulty,'daily');const st=await curriculumStatus();if(st&&$('curriculumProgress')){const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0);$('curriculumProgress').textContent='현재 고정 어휘 '+n.toLocaleString()+' / 6,000개';}},700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));renderAll();$('cloudPill').textContent='로컬 모드'}} 
+ if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(async()=>{await ensureCatalog(child().difficulty,'daily');const st=await curriculumStatus();if(st&&$('curriculumProgress')){const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0);$('curriculumProgress').textContent=n>=6000?'완료 · 초1~고3 고정 어휘 6,000개':'현재 고정 어휘 '+n.toLocaleString()+' / 6,000개';
+ if(n>=6000&&$('buildCurriculum')){$('buildCurriculum').textContent='어휘 DB 완료';$('buildCurriculum').disabled=true;}}},700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));renderAll();$('cloudPill').textContent='로컬 모드'}} 
 }
 function startVoice(){
  const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return alert('이 브라우저에서는 음성입력을 지원하지 않아요. Chrome/Edge에서 사용해 주세요.');
