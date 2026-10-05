@@ -375,6 +375,45 @@ $('startDaily').onclick=()=>buildSession('daily');$('startReview').onclick=()=>b
 $('submit').onclick=()=>gradeCurrent(false);$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('mic').onclick=startVoice;
 $('signIn').onclick=login;$('signUp').onclick=signup;$('resendConfirm').onclick=resendConfirm;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
 $('signOut').onclick=()=>sb.auth.signOut();$('syncNow').onclick=()=>cloudSave(false);if($('buildCurriculum'))$('buildCurriculum').onclick=buildFixedCurriculum;
-sb.auth.getSession().then(({data})=>applyAuth(data.session));sb.auth.onAuthStateChange((_e,s)=>setTimeout(()=>applyAuth(s),0));
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+let authSettled=false;
+const authTimer=setTimeout(()=>{
+  if(!authSettled){
+    $('cloudPill').textContent='동기화 지연';
+    $('cloudPill').classList.remove('on');
+  }
+},8000);
+sb.auth.getSession()
+  .then(({data,error})=>{
+    authSettled=true; clearTimeout(authTimer);
+    if(error){
+      $('cloudPill').textContent='동기화 오류';
+      $('authGate').classList.remove('hidden');
+      setMsg('연결 상태를 확인한 뒤 다시 로그인해 주세요.',true);
+      return;
+    }
+    if(!data.session){
+      $('cloudPill').textContent='로그인 필요';
+      $('authGate').classList.remove('hidden');
+      return;
+    }
+    applyAuth(data.session);
+  })
+  .catch(()=>{
+    authSettled=true; clearTimeout(authTimer);
+    $('cloudPill').textContent='동기화 오류';
+    $('authGate').classList.remove('hidden');
+  });
+sb.auth.onAuthStateChange((_e,s)=>setTimeout(()=>applyAuth(s),0));
+
+if('serviceWorker'in navigator){
+  let reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(reloading)return;
+    reloading=true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('/service-worker.js',{updateViaCache:'none'})
+    .then(reg=>reg.update())
+    .catch(()=>{});
+}
 renderAll();
