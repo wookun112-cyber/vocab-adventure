@@ -154,7 +154,7 @@ function makeQuestion(w,i){
  if(type==='sentence') return {w,type,label:'문장 활용',q:'“'+w.w+'”을 넣어 뜻이 분명하게 드러나는 문장 하나를 만들어 보세요.',open:true};
  return {w,type:'explain',label:'자기 말 설명',q:'“'+w.w+'”이 무슨 뜻인지 친구에게 설명하듯 자기 말로 써 보세요.',open:true};
 }
-function buildSessionasync function buildSession(mode='daily'){
+async function buildSession(mode='daily'){
  const c=child();
  if(mode==='level') await ensureCatalog(c.difficulty,'diagnostic'); else await ensureCatalog(c.difficulty,'daily');
  let pool=[];
