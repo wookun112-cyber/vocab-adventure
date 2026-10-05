@@ -34,8 +34,31 @@ export default async function handler(req,res){
 6. feedback은 짧고 아이가 이해하기 쉽게 씁니다.
 반드시 JSON만 출력:
 {"normalizedAnswer":"...","result":"◎|○|△|?|×","score":0.0,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`;
-    const model=process.env.OPENAI_MODEL||'gpt-5.6-luna';
-    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model,input:prompt})});
+    const model=process.env.OPENAI_MODEL||'gpt-6-luna';
+    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({
+      model,
+      reasoning:{effort:'low'},
+      max_output_tokens:400,
+      input:prompt,
+      text:{format:{
+        type:'json_schema',
+        name:'vocab_grade',
+        strict:true,
+        schema:{
+          type:'object',
+          properties:{
+            normalizedAnswer:{type:'string'},
+            result:{type:'string',enum:['◎','○','△','?','×']},
+            score:{type:'number',minimum:0,maximum:1},
+            feedback:{type:'string'},
+            correctionApplied:{type:'boolean'},
+            correctionNote:{type:'string'}
+          },
+          required:['normalizedAnswer','result','score','feedback','correctionApplied','correctionNote'],
+          additionalProperties:false
+        }
+      }}
+    })});
     if(!r.ok){const t=await r.text();return res.status(502).json({error:'OpenAI '+r.status+': '+t.slice(0,180)})}
     let text=extractText(await r.json()).trim().replace(/^\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`$/,'');
     return res.status(200).json({...JSON.parse(text),model});
