@@ -1,0 +1,14 @@
+{
+  "name":"어휘 탐험",
+  "short_name":"어휘탐험",
+  "id":"/",
+  "start_url":"/",
+  "scope":"/",
+  "display":"standalone",
+  "orientation":"any",
+  "background_color":"#eef5ff",
+  "theme_color":"#4d8cff",
+  "lang":"ko-KR",
+  "description":"아영과 인성을 위한 적응형 한국어 어휘 학습 앱",
+  "icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
