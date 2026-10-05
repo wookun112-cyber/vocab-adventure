@@ -147,7 +147,7 @@ async function seedBand(band){
       source:'gpt-6-luna curated'
     })).filter(x=>x.word&&x.definition);
 
-    const inserted=await rpc('tmp_seed_curriculum_20261005',{p_words:payload});
+    const inserted=await rpc('tmp_seed_curriculum_v2_20261005',{p_words:payload});
     console.log('Band',band,'generated',generated.length,'inserted',inserted);
 
     if(inserted<=0){
