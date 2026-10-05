@@ -61,7 +61,14 @@
 </section>
 
 <section id="wordbook" class="screen"><div class="row between"><h2>내 단어장</h2><button data-go="home" class="ghost">홈</button></div><div id="wordList" class="list"></div></section>
-<section id="report" class="screen"><div class="row between"><h2>부모 리포트</h2><button data-go="home" class="ghost">홈</button></div><div id="reportBody"></div></section>
+<section id="report" class="screen">
+  <div class="row between"><h2 id="reportTitle">부모 리포트</h2><button data-go="home" class="ghost">홈</button></div>
+  <div class="profiles report-profiles" style="margin:12px 0 16px">
+    <button class="profile report-profile" data-report-profile="ayoung"><div class="avatar">👧</div><strong>아영</strong><small>아영 리포트</small></button>
+    <button class="profile report-profile" data-report-profile="inseong"><div class="avatar">👦</div><strong>인성</strong><small>인성 리포트</small></button>
+  </div>
+  <div id="reportBody"></div>
+</section>
 <section id="settings" class="screen"><div class="row between"><h2>설정</h2><button data-go="home" class="ghost">홈</button></div>
 <div class="card"><strong id="accountEmail">-</strong><p class="muted">학습기록은 Supabase에 저장됩니다.</p><div class="actions"><button id="syncNow" class="secondary">지금 동기화</button>
 <div class="card" style="margin-top:14px">
