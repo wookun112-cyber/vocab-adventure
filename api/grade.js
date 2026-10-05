@@ -17,7 +17,7 @@ export default async function handler(req,res){
   if(!(await verifyUser(req.headers.authorization))) return res.status(401).json({error:'Login required'});
   if(!process.env.OPENAI_API_KEY) return res.status(503).json({error:'AI not configured'});
   try{
-    const {question,answer,source='typed',targetWord=''}=req.body||{};
+    const {question,answer,source='typed',targetWord='',definition='',band=3}=req.body||{};
     if(!question||typeof answer!=='string') return res.status(400).json({error:'Bad request'});
     const prompt=`당신은 초등학생 한국어 어휘 학습 답안을 채점하는 엔진입니다.
 목표 단어: ${targetWord}
