@@ -24,25 +24,15 @@ const bandNames={
   9:'고등학교 3학년'
 };
 export default async function handler(req,res){
-  const tempSeed=req.method==='GET'&&req.query?.build==='curriculum6000';
-  if(req.method!=='POST'&&!tempSeed) return res.status(405).json({error:'Method not allowed'});
-  if(!tempSeed&&!(await verifyUser(req.headers.authorization))) return res.status(401).json({error:'Login required'});
+  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
+  if(!(await verifyUser(req.headers.authorization))) return res.status(401).json({error:'Login required'});
   if(!process.env.OPENAI_API_KEY) return res.status(503).json({error:'AI not configured'});
   try{
-    const body=tempSeed?{mode:'seed',band:Number(req.query.band)||1,count:Number(req.query.count)||200}:(req.body||{});
-    const count=Math.max(12,Math.min(body.mode==='seed'?200:30,Number(body.count)||24));
+    const body=req.body||{};
+    const count=Math.max(12,Math.min(body.mode==='seed'?100:30,Number(body.count)||24));
     const mode=body.mode==='seed'?'seed':(body.mode==='diagnostic'?'diagnostic':'daily');
     const band=Math.max(1,Math.min(9,Math.round(Number(body.band)||3)));
-    let exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-(mode==='seed'?6000:500)):[];
-    if(tempSeed){
-      const er=await fetch(SUPABASE_URL+'/rest/v1/rpc/tmp_curriculum_existing_20261005',{
-        method:'POST',
-        headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},
-        body:'{}'
-      });
-      if(!er.ok) return res.status(502).json({error:'Could not load existing curriculum'});
-      exclude=await er.json();
-    }
+    const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-(mode==='seed'?1000:500)):[];
     const distribution=mode==='diagnostic'
       ? '1~9단계가 모두 포함되도록 각 단계에서 비슷한 수로 고르게 뽑으세요.'
       : mode==='seed'
@@ -109,7 +99,7 @@ export default async function handler(req,res){
       body:JSON.stringify({
         model,
         reasoning:{effort:'low'},
-        max_output_tokens:mode==='seed'?18000:6500,
+        max_output_tokens:mode==='seed'?12000:6500,
         input:prompt,
         text:{format:{type:'json_schema',name:'vocab_batch',strict:true,schema}}
       })
@@ -143,11 +133,10 @@ export default async function handler(req,res){
         example:x.example,confusion:x.pair,contrast:x.contrast,
         source:'gpt-6-luna curated'
       }));
-      const rpcName=tempSeed?'tmp_seed_curriculum_20261005':'owner_seed_curriculum_words';
-      const headers={apikey:SUPABASE_KEY,'Content-Type':'application/json'};
-      if(!tempSeed)headers.Authorization=req.headers.authorization;
-      const wr=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+rpcName,{
-        method:'POST',headers,body:JSON.stringify({p_words:payload})
+      const wr=await fetch(SUPABASE_URL+'/rest/v1/rpc/owner_seed_curriculum_words',{
+        method:'POST',
+        headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json',Authorization:req.headers.authorization},
+        body:JSON.stringify({p_words:payload})
       });
       if(!wr.ok) return res.status(502).json({error:'DB insert failed: '+(await wr.text()).slice(0,160)});
       const inserted=await wr.json();
