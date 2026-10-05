@@ -61,7 +61,8 @@ function rebuildCatalog(){
  WORDS=[...SEED_WORDS];
  const seen=new Set(WORDS.map(x=>x.w));
  for(const x of Object.values(state.catalog||{})){
-   if(!x?.w||seen.has(x.w))continue;
+   const studied=Boolean(state.users?.ayoung?.words?.[x?.w]?.seen||state.users?.inseong?.words?.[x?.w]?.seen);
+   if(!studied||!x?.w||seen.has(x.w))continue;
    seen.add(x.w);
    WORDS.push({...x,band:clamp(Number(x.band)||3,1,9)});
  }
@@ -112,14 +113,15 @@ async function expandCatalog(band=3,mode='daily',count=24){
  }catch{return 0}
  finally{$('cloudPill').textContent=oldText||'클라우드 연결'}
 }
-async function loadFixedCurriculum(bands,perBand=220){
+async function loadFixedCurriculum(bands,perBand=180){
  if(!authUser)return 0;
  let added=0;
+ const studiedWords=Object.entries(child().words||{}).filter(([,st])=>(st?.seen||0)>0).map(([w])=>w);
  for(const b0 of bands){
    const b=clamp(Math.round(b0),1,9);
-   const {data,error}=await sb.from('curriculum_words')
-     .select('word,definition,band,domain,example,confusion,contrast')
-     .eq('band',b).limit(perBand);
+   const cached=[...FIXED_CACHE.values()].filter(x=>x.band===b).map(x=>x.w);
+   const exclude=[...new Set([...studiedWords,...cached])].slice(-2500);
+   const {data,error}=await sb.rpc('get_curriculum_sample',{p_band:b,p_limit:Math.min(200,perBand),p_exclude:exclude});
    if(error)continue;
    for(const x of data||[]){
      if(FIXED_CACHE.has(x.word))continue;
@@ -136,69 +138,33 @@ async function loadFixedCurriculum(bands,perBand=220){
 async function ensureCatalog(band=3,mode='daily'){
  const b=clamp(Math.round(Number(band)||3),1,9);
  if(mode==='diagnostic'){
-   await loadFixedCurriculum([1,2,3,4,5,6,7,8,9],60);
-   const counts={1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0};
-   for(const w of WORDS) if(!(child().words[w.w]?.seen)) counts[w.band||3]=(counts[w.band||3]||0)+1;
-   if(Object.values(counts).every(n=>n>=4))return;
-   await expandCatalog(3,'diagnostic',30);
+   await loadFixedCurriculum([1,2,3,4,5,6,7,8,9],80);
    return;
  }
- await loadFixedCurriculum([b-1,b,b+1].filter(x=>x>=1&&x<=9),240);
- const near=WORDS.filter(w=>Math.abs((w.band||3)-b)<=1 && !(child().words[w.w]?.seen)).length;
- if(near>=18)return;
- await expandCatalog(b,'daily',24);
+ const bands=[b-1,b,b+1].filter(x=>x>=1&&x<=9);
+ await loadFixedCurriculum(bands,180);
+ const near=WORDS.filter(w=>w.source==='fixed'&&Math.abs((w.band||3)-b)<=1&&!(child().words[w.w]?.seen)).length;
+ if(near<25)await loadFixedCurriculum(bands,200);
 }
 async function curriculumStatus(){
- const {data,error}=await sb.rpc('owner_curriculum_status');
+ const {data,error}=await sb.rpc('curriculum_status');
  if(error)return null;
- const counts=Object.fromEntries((data||[]).map(x=>[Number(x.band),Number(x.word_count)]));
- return counts;
+ return Object.fromEntries((data||[]).map(x=>[Number(x.band),Number(x.word_count)]));
 }
 async function buildFixedCurriculum(){
  const btn=$('buildCurriculum'),progress=$('curriculumProgress');
  if(!authUser)return;
- const targets={1:600,2:600,3:700,4:700,5:700,6:700,7:700,8:650,9:650};
- const totalTarget=Object.values(targets).reduce((a,b)=>a+b,0);
- const initialCounts=await curriculumStatus()||{};
- const initialTotal=Object.values(initialCounts).reduce((a,b)=>a+Number(b||0),0);
- if(initialTotal>=totalTarget){
+ const counts=await curriculumStatus()||{};
+ const total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);
+ if(total===6000){
    progress.textContent='완료 · 초1~고3 핵심 어휘 6,000개가 고정 DB에 준비됐어요.';
    btn.textContent='어휘 DB 완료';
    btn.disabled=true;
    return;
  }
- btn.disabled=true; btn.textContent='구축 중…';
- const {data:sessionData}=await sb.auth.getSession(); const token=sessionData.session?.access_token;
- if(!token){progress.textContent='로그인을 다시 해주세요.';btn.disabled=false;return}
- try{
-   for(let band=1;band<=9;band++){
-     while(true){
-       const {data:existing,error}=await sb.from('curriculum_words').select('word').eq('band',band).limit(1000);
-       if(error)throw error;
-       const current=existing?.length||0;
-       const counts=await curriculumStatus()||{};
-       const total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);
-       progress.textContent='고정 어휘 DB 구축 중 · '+total.toLocaleString()+' / '+totalTarget.toLocaleString()+'개 · '+bandLabel(band);
-       if(current>=targets[band])break;
-       const count=Math.min(100,targets[band]-current);
-       const r=await fetch('/api/vocab',{
-         method:'POST',
-         headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
-         body:JSON.stringify({mode:'seed',band,count,exclude:(existing||[]).map(x=>x.word)})
-       });
-       if(!r.ok){
-         const msg=await r.text();
-         throw new Error('어휘 생성 실패: '+msg.slice(0,180));
-       }
-     }
-   }
-   progress.textContent='완료 · 초1~고3 핵심 어휘 '+totalTarget.toLocaleString()+'개가 고정 DB에 준비됐어요.';
-   btn.textContent='어휘 DB 완료';
-   await loadFixedCurriculum([1,2,3,4,5,6,7,8,9],80);
- }catch(e){
-   progress.textContent='중간에 멈췄어요. 다시 누르면 이어서 진행합니다. ('+String(e?.message||e)+')';
-   btn.disabled=false; btn.textContent='이어 만들기';
- }
+ progress.textContent='현재 고정 어휘 '+total.toLocaleString()+' / 6,000개 · 관리자 점검이 필요해요.';
+ btn.textContent='어휘 DB 확인';
+ btn.disabled=false;
 }
 function scorePriority(w){
  const s=wordState(w.w); let p=s.wrong*5+(5-s.streak)*2+(s.seen?2:0);
