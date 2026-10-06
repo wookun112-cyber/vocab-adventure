@@ -583,7 +583,12 @@ async function buildSession(mode='daily'){
    // The background queue keeps preparing after this bounded UI wait ends.
    const p=await withDeadline((async()=>{
      const prepared=await getPreparation(mode);
-     await prepared.waitFor(0,true);return prepared;
+     if(prepared.serverId){
+       // Start a cloud lesson only when every base question is saved, so moving
+       // through the lesson never waits for generation or a background retry.
+       await Promise.all(prepared.plans.slice(0,20).map((_,i)=>prepared.waitFor(i,true)));
+     }else await prepared.waitFor(0,true);
+     return prepared;
    })(),QUESTION_WAIT_MS,'맞춤 문제를 서버에서 준비 중이에요. 앱을 닫아도 준비는 계속됩니다. 잠시 뒤 다시 눌러 주세요.');
    if(state.selected!==profile||authUser?.id!==account)return;
    if(p.serverId){
