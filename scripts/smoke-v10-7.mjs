@@ -44,9 +44,12 @@ const base={
   ],
   source:'typed'
 };
+const grades=[];
 for(const answer of ['원인','이유','결과']){
   const g=await runGrade({...base,answer});
-  console.log('GRADE_CASE '+JSON.stringify({answer,result:g.result,score:g.score,contextSuccess:g.contextSuccess,targetRecall:g.targetRecall,feedback:g.feedback}));
+  const row={answer,result:g.result,score:g.score,contextSuccess:g.contextSuccess,targetRecall:g.targetRecall,feedback:g.feedback};
+  grades.push(row);
+  console.log('GRADE_CASE '+JSON.stringify(row));
 }
 const payload={
   ok:true,
