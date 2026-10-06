@@ -161,7 +161,7 @@ async function aiVerify(items,questions,recent){
   const out=await ask(prompt,verifySchema(items),'vocab_question_review',6500);
   return out.reviews||[];
 }
-async function buildValidated(items,recent){
+export async function buildValidated(items,recent){
   const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),feedback={};
   for(let attempt=0;attempt<3&&pending.size;attempt++){
     const batch=[...pending.values()];
