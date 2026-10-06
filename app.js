@@ -5,6 +5,8 @@ const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const today=()=>new Date().toISOString().slice(0,10);
+const dayOffset=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const isDue=date=>!date||date<=today();
 
 const SEED_WORDS=[
 {w:'근거',d:'생각이나 주장을 뒷받침하는 까닭이나 자료',pair:'주장',cat:'사고',lv:2},
@@ -43,13 +45,35 @@ const bandLabel=v=>BAND_NAMES[clamp(Math.round(Number(v)||3),1,9)];
 const FIXED_CACHE=new Map();
 let WORDS=[...SEED_WORDS];
 const byWord=w=>WORDS.find(x=>x.w===w);
-const freshWord=()=>({seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[]});
-const freshChild=name=>({name,difficulty:2,confidence:0,learningDays:0,sessions:[],words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),lastDate:null,levelTestCompleted:false});
+const freshWord=()=>({
+ seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[],
+ independentCorrect:0,contextSuccess:0,targetRecall:0,recallDays:[],hintedCorrect:0,revealed:0,
+ contextKeys:[],reviewStage:0,nextReviewAt:null,lastReviewAt:null,supportLevel:0,introducedAt:null
+});
+const hydrateWordState=raw=>{
+ const x={...freshWord(),...(raw||{})};
+ x.days=Array.isArray(x.days)?x.days:[];
+ x.recallDays=Array.isArray(x.recallDays)?x.recallDays:[];
+ x.contextKeys=Array.isArray(x.contextKeys)?x.contextKeys:[];
+ x.confusions=Array.isArray(x.confusions)?x.confusions:[];
+ x.types=x.types&&typeof x.types==='object'?x.types:{};
+ return x;
+};
+const freshChild=name=>({
+ name,difficulty:2,confidence:0,learningDays:0,sessions:[],
+ words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),
+ lastDate:null,levelTestCompleted:false,recentProblems:[]
+});
 const initial=()=>({v:4,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성'),guest:freshChild('게스트')},updatedAt:Date.now()});
-let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null;
+let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null,hintLevel=0,introIndex=0;
 
 function child(){return state.users[state.selected]}
-function wordState(w){return child().words[w]||(child().words[w]=freshWord())}
+function wordState(w){
+ const c=child(),current=c.words[w];
+ if(!current)c.words[w]=freshWord();
+ else if(current.__v!==2)c.words[w]={...hydrateWordState(current),__v:2};
+ return c.words[w];
+}
 function localSave(){localStorage.setItem('vocab-adventure-v8',JSON.stringify(state))}
 async function cloudLoad(){
  const {data,error}=await sb.from('app_state').select('state').eq('user_id',authUser.id).maybeSingle();
@@ -80,7 +104,9 @@ function mergeState(raw){
  for(const id of ['ayoung','inseong','guest']){
    const childSrc=src.users?.[id]||{},dst=base.users[id];
    Object.assign(dst,childSrc);
-   dst.words={...dst.words,...(childSrc.words||{})};
+   dst.recentProblems=Array.isArray(childSrc.recentProblems)?childSrc.recentProblems.slice(-60):[];
+   dst.words={...dst.words};
+   for(const [w,st] of Object.entries(childSrc.words||{}))dst.words[w]={...hydrateWordState(st),__v:2};
  }
  state=base;
  rebuildCatalog();
