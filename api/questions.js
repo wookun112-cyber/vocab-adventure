@@ -76,7 +76,7 @@ function deterministic(q,item){
     const idx=(q.options||[]).findIndex(x=>x.correct);
     if(idx!==item.answerSlot)issues.push('wrong_answer_slot');
     if(item.type==='mc_context'&&!correct.some(x=>norm(x.text)===norm(item.word)))issues.push('target_not_correct_choice');
-    if(item.type==='mc_usage'&&(q.options||[]).some(x=>!String(x.text).includes(item.word)))issues.push('usage_choice_missing_target_word');
+    if(item.type==='mc_usage'&&hasCompare((q.options||[]).map(x=>x.text).join(' ')))issues.push('usage_choices_compare_words');
   }else{
     if((q.options||[]).length)issues.push('subjective_has_choices');
     const full=(q.acceptedAnswers||[]).some(x=>norm(x.text)===norm(item.word)&&Number(x.credit)===1);
@@ -143,22 +143,22 @@ function generationPrompt(items,recent,feedback={}){
     '- 목표 어휘 외 표현은 해당 학습 단계보다 쉽게 씁니다. 어려운 배경지식·복잡한 추론이 핵심이 되면 안 됩니다.',
     '- 가족, 학교, 친구, 동물, 놀이, 자연, 과학, 탐험 등 배경을 다양하게 바꿉니다.',
     '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 목표 어휘를 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. 목표 어휘를 두 번 이상 쓰지 마세요.',
-    '- mc_usage에서는 목표 어휘를 질문에 보여줘도 되며, 보기 5개 모두 목표 어휘를 실제 문장 안에 사용합니다.',
+    '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
     '- mc_context 보기 5개는 목표어와 같은 품사의 관련 어휘로 만듭니다. 모든 보기가 문법적으로 빈칸에 들어갈 수 있어야 하고 의미 단서로만 정답이 갈려야 합니다.',
-    '- mc_usage는 보기 5문장 모두 문법적으로 자연스러워 보이게 하되, 의미와 쓰임이 정확한 것은 하나만 만듭니다.',
+    '- mc_usage는 길이와 문장 형태가 비슷한 자연스러운 상황 5개로 만듭니다. 정답 상황 하나만 목표 어휘의 핵심 의미와 정확히 맞고, 나머지는 관련은 있지만 핵심 행동·의도·결과가 달라야 합니다.',
     '- 오답은 관련성은 있으나 핵심 단서와 맞지 않게 만듭니다. 억지 오답·명백한 품사 불일치 금지입니다.',
     '- 주관식 acceptedAnswers에는 목표어 자체를 credit 1로 반드시 넣고, 다른 표현도 문맥상 완전히 자연스러우면 credit 1, 일부만 맞으면 credit 0.5로 넣습니다. 유의어라는 이유만으로 넣지 않습니다.',
     '- supportLevel이 1 이상이면 문장을 더 짧고 쉽게 쓰고, 2~3이면 핵심 단서를 더 분명하게 제시합니다.',
     '- successStreak가 3 이상이면 같은 뜻을 학교 밖, 자연, 탐험, 과학 등 덜 익숙한 새 상황에도 적용하도록 배경을 바꿉니다.',
     '- firstLearning=true인 첫 객관식 문제는 특히 쉬운 상황과 분명한 단서를 사용합니다.',
-    '- 힌트 1은 지문의 핵심 단서를 가리키고, 힌트 2는 의미 범위를 좁히되 정답을 직접 말하지 않습니다.',
+    '- 힌트 1은 핵심 의미 단서를 가리키고, 힌트 2는 의미 범위를 좁히되 정답을 직접 말하지 않습니다. 객관식에서는 선택지 번호, 선택지의 고유 문구, 정답 문장을 인용하지 마세요.',
     '- feedbackCorrect는 문맥 단서와 어휘 의미를 연결한 1~2문장입니다.',
     '- signature는 최근 문제와 중복을 피하기 위한 짧은 상황 요약입니다.',
     '',
     '유형 정의:',
     'mc_context: 2~4문장 상황에 목표 어휘를 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 5개 중 고르게 합니다.',
-    'mc_usage: 목표 단어가 자연스럽게 사용된 문장/상황 하나를 5개 중 고릅니다. 빈칸은 쓰지 않습니다.',
+    'mc_usage: 목표 단어를 질문에 제시하고, 그 단어를 쓰기에 가장 알맞은 상황 하나를 5개의 평행한 상황 보기 중 고릅니다. 빈칸은 쓰지 않습니다.',
     'subjective_context: 2~4문장 상황에 목표 어휘를 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 보기 없이 입력하게 합니다.',
     'subjective_dialogue: 2~4개의 짧은 대화 흐름에 목표 어휘를 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꿉니다.',
     '',
@@ -174,7 +174,7 @@ async function generate(items,recent,feedback){
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
-    '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, 5개 보기 품사/형태 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
+    '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
