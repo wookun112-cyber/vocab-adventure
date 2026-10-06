@@ -15,6 +15,14 @@ for(const word of plan.newWords){
  const seeds=plan.plans.filter(p=>p.w.w===word).map(p=>p.contextSeed);
  assert.equal(new Set(seeds).size,seeds.length);
 }
+const guestLearner={...learner,difficulty:7.4};
+const guestCurriculum=curriculum.map(w=>({...w,band:7}));
+const guestPlan=makePreparedPlan(guestLearner,{},guestCurriculum,'family','guest');
+assert.equal(guestPlan.profile,'guest');
+assert.equal(guestPlan.difficulty,7.4);
+assert.equal(guestPlan.snapshot,learnerSnapshot(guestLearner));
+assert.equal(guestPlan.plans.length,20);
+assert.ok(guestPlan.plans.some(p=>p.w.band===7));
 let inFlight=0,maxFlight=0,calls=0;
 const answer=item=>({id:item.id,type:item.type,prompt:'빈칸을 채우세요.',context:'탐험'+item.id+'의 기록을 다시 살펴본 뒤 탐험'+item.id+'의 ＿＿＿＿를 찾았어요.',options:[],acceptedAnswers:[],hints:[],feedbackCorrect:'좋아요.',signature:'새로운 상황'+item.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
 const generate=async items=>{

@@ -137,7 +137,7 @@ async function cloudSave(silent=true){
 }
 async function expandCatalog(band=3,mode='daily',count=24){
  if(!authUser)return 0;
- const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
+ const {data}=await withDeadline(sb.auth.getSession(),10000,'로그인 상태 확인이 지연됐어요. 다시 눌러 주세요.'); const token=data.session?.access_token;
  if(!token)return 0;
  const oldText=$('cloudPill').textContent;
  $('cloudPill').textContent=mode==='diagnostic'?'진단 어휘 준비 중':'새 어휘 준비 중';
@@ -330,8 +330,13 @@ function rememberQuestion(q){
 const QUESTION_BATCH_SIZE=4;
 const FIRST_QUESTION_COUNT=1;
 let preparingSession=false;
+const QUESTION_WAIT_MS=15000;
+function withDeadline(task,milliseconds,message){
+ let timer;
+ return Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(message)),milliseconds)})]).finally(()=>clearTimeout(timer));
+}
 async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[],profile=state.selected){
- const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
+ const {data}=await withDeadline(sb.auth.getSession(),10000,'로그인 상태 확인이 지연됐어요. 다시 눌러 주세요.'); const token=data.session?.access_token;
  if(!token)throw new Error('로그인이 필요합니다.');
  const body={
    items:plans.map(p=>{
@@ -460,8 +465,8 @@ function createPreparation(meta,saved=[]){
  return p;
 }
 async function serverLesson(profile,activeId=null){
- if(!['ayoung','inseong'].includes(profile))return null;
- const {data,error}=await sb.rpc('get_prepared_lesson',{p_profile:profile,p_active_id:activeId});
+ if(!['ayoung','inseong','guest'].includes(profile))return null;
+ const {data,error}=await withDeadline(sb.rpc('get_prepared_lesson',{p_profile:profile,p_active_id:activeId}),10000,'저장된 문제를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
  if(error)throw new Error('저장된 학습 문제를 확인하지 못했어요. 다시 눌러 주세요.');
  return data;
 }
@@ -506,10 +511,10 @@ async function getPreparation(mode='daily'){
  const loading=(async()=>{
    let saved=null;
    try{saved=JSON.parse(localStorage.getItem(key)||'null')}catch{}
-   if(mode==='daily'&&['ayoung','inseong'].includes(profile)){
+   if(mode==='daily'&&['ayoung','inseong','guest'].includes(profile)){
      let remote=await serverLesson(profile),tries=0;
-     while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries++<90){
-       $('cloudPill').textContent='아이별 학습 문제를 서버에서 미리 준비 중';
+     while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries++<4){
+       $('cloudPill').textContent='맞춤 학습 문제를 서버에서 미리 준비 중';
        await new Promise(resolve=>setTimeout(resolve,2000));
        if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
        remote=await serverLesson(profile);
@@ -522,7 +527,9 @@ async function getPreparation(mode='daily'){
        const p=createServerPreparation({...data,key,serverId:remote.id},data.ready||[]);
        preparations.set(key,p);p.pump();return p;
      }
-     // A consumed or outdated server lesson cannot be replayed from local storage.
+     // Pending, failed or outdated server work must not start duplicate browser generation.
+     if(remote)throw new Error(remote.status==='failed'?'문제 검수가 지연됐어요. 준비된 문제는 보관되어 있습니다. 잠시 뒤 다시 눌러 주세요.':'서버에서 맞춤 문제를 준비 중이에요. 앱을 닫아도 준비는 계속됩니다. 잠시 뒤 다시 눌러 주세요.');
+     // A consumed server lesson cannot be replayed from local storage.
      if(saved?.serverId)saved=null;
    }
    let meta;
@@ -532,7 +539,7 @@ async function getPreparation(mode='daily'){
      for(const plan of saved.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
      rebuildCatalog();
    }else{
-     await ensureCatalog(state.users[profile].difficulty,mode==='level'?'diagnostic':'daily');
+     await withDeadline(ensureCatalog(state.users[profile].difficulty,mode==='level'?'diagnostic':'daily'),20000,'어휘를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
      let newWords=[],reviewWords=[];
      if(mode==='level')reviewWords=WORDS.filter(w=>!(child().words[w.w]?.seen)).sort(()=>Math.random()-.5).slice(0,30);
@@ -573,11 +580,14 @@ async function buildSession(mode='daily'){
  for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=true;
  $(button).textContent='준비된 문제를 불러오는 중…';$('cloudPill').textContent='문제 준비 중';
  try{
-   const p=await getPreparation(mode);
-   await p.waitFor(0,true);
+   // The background queue keeps preparing after this bounded UI wait ends.
+   const p=await withDeadline((async()=>{
+     const prepared=await getPreparation(mode);
+     await prepared.waitFor(0,true);return prepared;
+   })(),QUESTION_WAIT_MS,'맞춤 문제를 서버에서 준비 중이에요. 앱을 닫아도 준비는 계속됩니다. 잠시 뒤 다시 눌러 주세요.');
    if(state.selected!==profile||authUser?.id!==account)return;
    if(p.serverId){
-     const {data,error}=await sb.rpc('consume_prepared_lesson',{p_profile:profile,p_id:p.serverId});
+     const {data,error}=await withDeadline(sb.rpc('consume_prepared_lesson',{p_profile:profile,p_id:p.serverId}),10000,'학습 시작 확인이 지연됐어요. 기록은 유지됩니다. 다시 눌러 주세요.');
      if(error||!data){p.cancel();preparations.delete(p.key);localStorage.removeItem(p.key);throw new Error('이 학습은 이미 시작되었거나 기록이 바뀌었어요. 시작 버튼을 다시 눌러 주세요.')}
      if(state.selected!==profile||authUser?.id!==account)return;
    }
@@ -817,7 +827,7 @@ async function nextQuestion(){
    if(nextIndex>=active.queue.length&&nextIndex<active.target){
      $('next').textContent='다음 문제 준비 중…';
      prepareExtensions(active);
-     await active.preparation.waitFor(nextIndex,true);
+     await withDeadline(active.preparation.waitFor(nextIndex,true),QUESTION_WAIT_MS,'다음 문제 준비가 지연됐어요. 잠시 뒤 다시 눌러 주세요.');
    }
    if(session!==active||state.selected!==active.profile)return;
    current=nextIndex;renderQuestion();

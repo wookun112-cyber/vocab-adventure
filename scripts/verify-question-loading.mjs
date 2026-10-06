@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const storage=new Map();
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
-function fixture(seed,account='family',shared=storage){
+function fixture(seed,account='family',shared=storage,server=false){
  const nodes=new Map(),alerts=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:id,classList:{add(){},remove(){},toggle(){}},style:{}});return nodes.get(id)};
  const ctx=vm.createContext({console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
@@ -24,6 +24,7 @@ function fixture(seed,account='family',shared=storage){
    globalThis.answerFor=plan=>({w:plan.w,type:plan.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'탐험'+plan.id+'에서 새로운 기록을 찾아 자세히 살폈어요. 탐험'+plan.id+'의 기록이 생각을 뒷받침하는 ＿＿＿＿가 되었어요.',opts:[],signature:'시나리오'+plan.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
    fetchValidatedQuestions=(plans,recent,known,profile)=>new Promise((resolve,reject)=>requests.push({plans,recent,known,profile,resolve:()=>resolve(plans.map(answerFor)),reject}));
  `);
+ if(!server)run('serverLesson=async()=>null');
  return {run,nodes,node,alerts,ctx};
 }
 const f=fixture();
@@ -141,7 +142,7 @@ assert.equal(switcher.alerts.length,0);
 console.log('Profile switch verified: pending responses cannot move another child or show an old-session error.');
 
 // A server-prepared daily lesson starts directly, including on a fresh device.
-const remote=fixture(undefined,'family',new Map());
+const remote=fixture(undefined,'family',new Map(),true);
 remote.run(`state.selected='inseong';globalThis.remoteReads=0;globalThis.consumes=0;
  const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
  globalThis.serverPayload={engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'inseong',snapshot:preparationSnapshot('inseong'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
@@ -162,7 +163,7 @@ assert.equal(remote.run('session'),null);
 assert.equal(remote.run('requests.length'),0);
 assert.equal(remote.alerts.length,1);
 // Partial preparation polls saved results; it never calls the generation API again.
-const partialRemote=fixture(undefined,'family',new Map());
+const partialRemote=fixture(undefined,'family',new Map(),true);
 partialRemote.run(`state.selected='ayoung';globalThis.completed=false;
  const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
  globalThis.remotePayload={engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'ayoung',snapshot:preparationSnapshot('ayoung'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:[[0,answerFor(plans[0])]]};
@@ -175,3 +176,57 @@ assert.equal(partialRemote.run('session.queue.length'),20);
 assert.equal(partialRemote.run('requests.length'),0);
 partialRemote.run('session.preparation.cancel()');
 console.log('Server loading verified: fresh-device start and 19 transitions require zero generation requests; single-use ownership, partial polling, and consumption races are enforced.');
+
+// Guest uses its own cloud lesson at its own difficulty, without curriculum or AI requests.
+const guest=fixture(undefined,'family',new Map(),true);
+guest.run(`state.users.guest.difficulty=7.4;globalThis.guestReads=[];
+ ensureCatalog=async()=>{throw Error('Guest start must use prepared server questions')};
+ const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
+ globalThis.guestPayload={engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'guest',snapshot:preparationSnapshot('guest'),mode:'daily',difficulty:7.4,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
+ sb.rpc=async(name,args)=>{guestReads.push({name,profile:args.p_profile});return {data:name==='consume_prepared_lesson'?true:{id:'guest-job',status:'ready',payload:guestPayload},error:null}};
+`);
+const guestBefore=guest.run('JSON.stringify(state.users)');
+await guest.run('buildSession()');
+assert.equal(guest.run('session.profile'),'guest');
+assert.equal(guest.run('session.difficulty'),7.4);
+for(let i=0;i<19;i++)await guest.run('nextQuestion()');
+assert.equal(guest.run('current'),19);
+assert.equal(guest.run('requests.length'),0);
+assert.equal(guest.run('guestReads.every(r=>r.profile==="guest")'),true);
+assert.equal(guest.run('JSON.stringify(state.users)'),guestBefore);
+// An unresolved storage read releases every start button and can be retried.
+const stuck=fixture(undefined,'family',new Map(),true);
+stuck.ctx.setTimeout=(fn,ms)=>setTimeout(fn,ms===15000||ms===10000?1:ms);
+stuck.run('state.users.guest.difficulty=7.4;sb.rpc=()=>new Promise(()=>{})');
+await stuck.run('buildSession()');
+assert.equal(stuck.run('preparingSession'),false);
+for(const id of ['startDaily','startReview','levelTest'])assert.equal(stuck.node(id).disabled,false);
+assert.equal(stuck.run('session'),null);
+assert.equal(stuck.alerts.length,1);
+await flush();
+stuck.run(`sb.rpc=async name=>({data:name==='consume_prepared_lesson'?true:{id:'guest-job',status:'ready',payload:${guest.run('JSON.stringify(guestPayload)')}},error:null})`);
+await stuck.run('buildSession()');
+assert.equal(stuck.run('session.profile'),'guest');
+assert.equal(stuck.run('requests.length'),0);
+// Waiting for a missing next question is bounded and does not change recorded answers.
+stuck.run("session.queue=session.queue.slice(0,1);session.results=[{word:'근거',credit:1}];current=0;session.preparation.waitFor=()=>new Promise(()=>{});prepareExtensions=()=>{}");
+await stuck.run('nextQuestion()');
+assert.equal(stuck.run('current'),0);
+assert.equal(stuck.run('session.results.length'),1);
+assert.equal(stuck.node('next').disabled,false);
+// A failed server preparation never duplicates the job with browser generation.
+const failedRemote=fixture(undefined,'family',new Map(),true);
+failedRemote.run("sb.rpc=async()=>({data:{id:'failed-job',status:'failed'},error:null})");
+await failedRemote.run('buildSession()');
+assert.equal(failedRemote.run('requests.length'),0);
+assert.equal(failedRemote.node('startDaily').disabled,false);
+console.log('Guest regression verified: personalized cloud lesson, 19 instant transitions without AI calls, unchanged records, storage timeout/retry, bounded next wait, no duplicate generation on server failure.');
+
+const consumeTimeout=fixture(undefined,'family',new Map(),true);
+consumeTimeout.ctx.setTimeout=(fn,ms)=>setTimeout(fn,ms===10000?1:ms);
+consumeTimeout.run(`state.users.guest.difficulty=7.4;sb.rpc=async(name)=>name==='consume_prepared_lesson'?new Promise(()=>{}):{data:{id:'guest-job',status:'ready',payload:${guest.run('JSON.stringify(guestPayload)')}},error:null}`);
+await consumeTimeout.run('buildSession()');
+assert.equal(consumeTimeout.run('session'),null);
+assert.equal(consumeTimeout.node('startDaily').disabled,false);
+assert.equal(consumeTimeout.alerts.length,1);
+console.log('Start confirmation verified: an unresolved consumption request cannot leave the start button locked.');

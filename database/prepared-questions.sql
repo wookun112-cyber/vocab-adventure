@@ -6,7 +6,7 @@ create schema if not exists vocab_private;
 revoke all on schema vocab_private from public, anon, authenticated;
 create table if not exists vocab_private.preparations (
  user_id uuid not null references auth.users(id) on delete cascade,
- profile text not null check(profile in ('ayoung','inseong')),
+ profile text not null check(profile in ('ayoung','inseong','guest')),
  id uuid not null default gen_random_uuid(),
  capability uuid not null default gen_random_uuid(),
  lease uuid,
@@ -31,7 +31,7 @@ create or replace function vocab_private.learning_saved()
 returns trigger language plpgsql security definer set search_path='' as $$
 declare p text;
 begin
- foreach p in array array['ayoung','inseong'] loop
+ foreach p in array array['ayoung','inseong','guest'] loop
   if tg_op='INSERT' or
    (new.state#>array['users',p,'preparationRevision']) is distinct from (old.state#>array['users',p,'preparationRevision']) or
    (new.state#>array['users',p,'sessions']) is distinct from (old.state#>array['users',p,'sessions']) or
@@ -100,7 +100,7 @@ create or replace function vocab_private.get_prepared_lesson(p_profile text,p_ac
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare j vocab_private.preparations;
 begin
- if auth.uid() is null or p_profile not in ('ayoung','inseong') then return null; end if;
+ if auth.uid() is null or p_profile not in ('ayoung','inseong','guest') then return null; end if;
  select * into j from vocab_private.preparations where user_id=auth.uid() and profile=p_profile;
  if not found then
   perform vocab_private.enqueue(auth.uid(),p_profile);
