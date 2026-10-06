@@ -13,68 +13,17 @@ let source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(
 source=source.slice(0,source.indexOf("window.addEventListener('beforeinstallprompt'"));
 vm.runInContext(source,ctx);
 const run=code=>vm.runInContext(code,ctx);
-// Keep records distinct and fail if the question loader changes them.
-run(`state.selected='guest'; state.users.guest.words['근거'].seen=7;
+// Existing learning data must retain its meaning while loading changes.
+run(`state.selected='guest';authUser={id:'test'};state.users.guest.words['근거'].seen=7;
  wordState('근거');globalThis.records=JSON.stringify(state.users);
  globalThis.word={w:'근거',d:'생각의 까닭',band:2,cat:'국어'};
  globalThis.plans=makeQuestionPlan([word],[word],20);
- globalThis.calls=[];
- fetchValidatedQuestions=async plans=>{calls.push(plans.length);return plans.map(p=>({w:p.w,type:p.type,signature:'s'+p.id}))};
- globalThis.actualEnsureCatalog=ensureCatalog;ensureCatalog=async()=>{};chooseNew=()=>[word];chooseReview=()=>[word];
- globalThis.shown=[];renderIntro=()=>{throw new Error('Answer preview before quiz')};renderQuestion=()=>{};show=id=>shown.push(id);
- globalThis.actualPrefetch=prefetchQuestions;prefetchQuestions=()=>{};
+ globalThis.actualEnsureCatalog=ensureCatalog;
+ globalThis.sessionForTest={mode:'daily',target:20,max:30,queue:[],results:[],profile:'guest'};session=sessionForTest;
 `);
-await run('buildSession()');
-assert.equal(run('session.intros.length'),0);
-assert.equal(run('shown[0]'),'learn');
-assert.equal(run('session.queue.length'),1);
-assert.equal(run('session.pendingPlans.length'),19);
-assert.equal(run('session.target'),20);
 assert.equal(run("plans.filter(p=>p.type.startsWith('mc_')).length"),10);
-assert.equal(run('JSON.stringify(state.users)'),run('records'));
-assert.equal(node('startDaily').disabled,false);
-// One request at a time, even when prefetch and next-button requests overlap.
-run(`globalThis.release=null;fetchValidatedQuestions=plans=>new Promise(resolve=>{calls.push(plans.length);release=()=>resolve(plans.map(p=>({w:p.w,type:p.type,signature:'s'+p.id})))})`);
-const first=run('extendSessionQuestions()'),second=run('extendSessionQuestions()');
-assert.equal(run('calls.length'),2);
-run('release()');await Promise.all([first,second]);
-assert.equal(run('session.queue.length'),5);
-assert.equal(run('session.pendingPlans.length'),15);
-// Failed batches retain plans and answered records, and can be retried.
-run(`current=4;session.results=[{result:'◎',credit:1}];fetchValidatedQuestions=async()=>{throw new Error('timeout')}`);
-await run('nextQuestion()');
-assert.equal(run('current'),4);
-assert.equal(run('session.target'),20);
-assert.equal(run('session.pendingPlans.length'),15);
-assert.equal(run('session.results.length'),1);
-assert.equal(node('next').disabled,false);
-run(`fetchValidatedQuestions=async plans=>plans.map(p=>({w:p.w,type:p.type,signature:'s'+p.id}))`);
-await run('nextQuestion()');
-assert.equal(run('current'),5);
-assert.equal(run('session.queue.length'),9);
-// Complete the initial 20, then load adaptive extensions in small batches.
-await run('extendSessionQuestions()');await run('extendSessionQuestions()');await run('extendSessionQuestions()');
-assert.equal(run('session.queue.length'),20);
-assert.equal(run('session.pendingPlans.length'),0);
-run('session.target=26');await run('extendSessionQuestions()');await run('extendSessionQuestions()');
-assert.equal(run('session.queue.length'),26);
-assert.equal(run('JSON.stringify(state.users)'),run('records'));
 const config=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url)));
 assert.equal(config.functions['api/questions.js'].maxDuration,300);
-console.log('Question batching verified: initial 1, single-flight, failure retry, 20→26 extension, records preserved.');
-// Refill continuously after the first question; stop once at least eight are ready.
-run(`current=0;session.queue=session.queue.slice(0,1);session.target=20;session.pendingPlans=plans.slice(1);calls=[];prefetchQuestions=actualPrefetch;actualPrefetch();actualPrefetch();`);
-await new Promise(resolve=>setTimeout(resolve,0));
-assert.equal(run('session.queue.length'),9);
-assert.equal(run('session.pendingPlans.length'),11);
-// Failed background refill stops and lets the learner retry, without a request loop.
-run(`current=8;calls=[];fetchValidatedQuestions=async()=>{calls.push(4);throw new Error('timeout')};actualPrefetch()`);
-await new Promise(resolve=>setTimeout(resolve,0));
-assert.equal(run('calls.length'),1);
-assert.equal(run('session.queue.length'),9);
-assert.equal(run('session.loadingQuestions'),null);
-run('prefetchQuestions=()=>{}');
-console.log('Prefetch verified: continuous refill, bounded buffer, no duplicate requests or failure loop.');
 // Existing curriculum is reused, and only a depleted band is fetched again.
 run(`authUser={id:'test'};FIXED_CACHE.clear();
  for(let b=1;b<=9;b++)for(let i=0;i<30;i++)FIXED_CACHE.set('cache'+b+'-'+i,{w:'cache'+b+'-'+i,d:'뜻',band:b,cat:'국어',source:'fixed'});

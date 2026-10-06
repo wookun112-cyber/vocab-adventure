@@ -35,8 +35,10 @@ try{
   ];
   const startedAt=new Date().toISOString();
   const t0=performance.now();
-  const first=await buildValidated([{...items[0],id:'first',firstLearning:true}],[]);
+  const first=await buildValidated([{...items[0],id:'first',firstLearning:true,contextSeed:'집에서 가족과 계획을 세우는 일'}],[]);
   const firstQuestionMs=Math.round(performance.now()-t0);
+  const contexts=['숲에서 동식물을 살피는 일','과학 활동에서 작은 실험을 하는 일','도서관에서 정보를 찾는 일','학교에서 친구들과 함께 해결하는 일'];
+  items.forEach((item,i)=>item.contextSeed=contexts[i]);
   items[0].previousContexts=[{context:first[0].context,options:first[0].options.map(o=>o.text)}];
   const t1=performance.now();
   const questions=await buildValidated(items,['가족이 장보기 계획을 세운 상황',first[0].signature]);
@@ -86,7 +88,7 @@ try{
   if(!(wrong?.score===0&&wrong?.contextSuccess===false))throw new Error('wrong grading failed '+JSON.stringify(wrong));
 
   await store({
-    ok:true,version:'10.7.4',startedAt,timings:{firstQuestionMs,fourQuestionsMs},modelCalls,
+    ok:true,version:'10.8.0',startedAt,timings:{firstQuestionMs,fourQuestionsMs},modelCalls,
     checks,
     samples:questions.map(q=>({
       id:q.id,type:q.type,prompt:q.prompt,context:q.context,showTarget:q.showTarget,
@@ -98,6 +100,6 @@ try{
   });
   console.log('V10.7 FINAL VERIFY PASSED');
 }catch(e){
-  await store({ok:false,version:'10.7.4',modelCalls,error:String(e?.stack||e)});
+  await store({ok:false,version:'10.8.0',modelCalls,error:String(e?.stack||e)});
   throw e;
 }
