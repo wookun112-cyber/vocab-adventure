@@ -39,7 +39,10 @@ function deterministic(q,item){
   if(hasCompare(q.prompt)||hasCompare(q.context))issues.push('comparison_question');
   if(hasDefinePrompt(q.prompt))issues.push('definition_explanation_prompt');
   const hidden=item.type!=='mc_usage';
+  if(hidden&&q.showTarget)issues.push('hidden_type_showTarget_true');
+  if(item.type==='mc_usage'&&!q.showTarget)issues.push('usage_type_showTarget_false');
   if(hidden&&(String(q.prompt).includes(item.word)||String(q.context).includes(item.word)))issues.push('target_leaked_before_answer');
+  if(item.type==='mc_usage'&&blankCount(q.context)!==0)issues.push('usage_question_has_blank');
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)&&blankCount(q.context)!==1)issues.push('blank_count_not_one');
   if(item.type==='subjective_dialogue'&&!/[“”"':：]|\n/.test(q.context))issues.push('dialogue_not_clear');
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)&&sentenceCount(q.context)<2)issues.push('context_too_short');
@@ -124,6 +127,9 @@ function generationPrompt(items,recent,feedback={}){
     '- mc_usage는 보기 5문장 모두 문법적으로 자연스러워 보이게 하되, 의미와 쓰임이 정확한 것은 하나만 만듭니다.',
     '- 오답은 관련성은 있으나 핵심 단서와 맞지 않게 만듭니다. 억지 오답·명백한 품사 불일치 금지입니다.',
     '- 주관식 acceptedAnswers에는 목표어 자체를 credit 1로 반드시 넣고, 다른 표현도 문맥상 완전히 자연스러우면 credit 1, 일부만 맞으면 credit 0.5로 넣습니다. 유의어라는 이유만으로 넣지 않습니다.',
+    '- supportLevel이 1 이상이면 문장을 더 짧고 쉽게 쓰고, 2~3이면 핵심 단서를 더 분명하게 제시합니다.',
+    '- successStreak가 3 이상이면 같은 뜻을 학교 밖, 자연, 탐험, 과학 등 덜 익숙한 새 상황에도 적용하도록 배경을 바꿉니다.',
+    '- firstLearning=true인 첫 객관식 문제는 특히 쉬운 상황과 분명한 단서를 사용합니다.',
     '- 힌트 1은 지문의 핵심 단서를 가리키고, 힌트 2는 의미 범위를 좁히되 정답을 직접 말하지 않습니다.',
     '- feedbackCorrect는 문맥 단서와 어휘 의미를 연결한 1~2문장입니다.',
     '- signature는 최근 문제와 중복을 피하기 위한 짧은 상황 요약입니다.',
