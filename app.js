@@ -48,13 +48,15 @@ const byWord=w=>WORDS.find(x=>x.w===w);
 const freshWord=()=>({
  seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[],
  independentCorrect:0,contextSuccess:0,targetRecall:0,recallDays:[],hintedCorrect:0,revealed:0,
- contextKeys:[],reviewStage:0,nextReviewAt:null,lastReviewAt:null,supportLevel:0,introducedAt:null
+ usedPassageKeys:[],problemHistory:[],contextKeys:[],reviewStage:0,nextReviewAt:null,lastReviewAt:null,supportLevel:0,introducedAt:null
 });
 const hydrateWordState=raw=>{
  const x={...freshWord(),...(raw||{})};
  x.days=Array.isArray(x.days)?x.days:[];
  x.recallDays=Array.isArray(x.recallDays)?x.recallDays:[];
  x.contextKeys=Array.isArray(x.contextKeys)?x.contextKeys:[];
+ x.usedPassageKeys=Array.isArray(x.usedPassageKeys)?x.usedPassageKeys:[];
+ x.problemHistory=Array.isArray(x.problemHistory)?x.problemHistory:[];
  x.confusions=Array.isArray(x.confusions)?x.confusions:[];
  x.types=x.types&&typeof x.types==='object'?x.types:{};
  return x;
@@ -143,12 +145,12 @@ async function loadFixedCurriculum(bands,perBand=180){
  if(!authUser)return 0;
  let added=0;
  const studiedWords=Object.entries(child().words||{}).filter(([,st])=>(st?.seen||0)>0).map(([w])=>w);
- for(const b0 of bands){
+ await Promise.all(bands.map(async b0=>{
    const b=clamp(Math.round(b0),1,9);
    const cached=[...FIXED_CACHE.values()].filter(x=>x.band===b).map(x=>x.w);
    const exclude=[...new Set([...studiedWords,...cached])].slice(-2500);
    const {data,error}=await sb.rpc('get_curriculum_sample',{p_band:b,p_limit:Math.min(200,perBand),p_exclude:exclude});
-   if(error)continue;
+   if(error)return;
    for(const x of data||[]){
      if(FIXED_CACHE.has(x.word))continue;
      FIXED_CACHE.set(x.word,{
@@ -157,18 +159,21 @@ async function loadFixedCurriculum(bands,perBand=180){
      });
      added++;
    }
- }
+ }));
  if(added)rebuildCatalog();
  return added;
 }
 async function ensureCatalog(band=3,mode='daily'){
  const b=clamp(Math.round(Number(band)||3),1,9);
+ const unseen=b0=>[...FIXED_CACHE.values()].filter(w=>w.band===b0&&!(child().words[w.w]?.seen)).length;
  if(mode==='diagnostic'){
-   await loadFixedCurriculum([1,2,3,4,5,6,7,8,9],80);
+   const missing=[1,2,3,4,5,6,7,8,9].filter(x=>unseen(x)<25);
+   if(missing.length)await loadFixedCurriculum(missing,80);
    return;
  }
  const bands=[b-1,b,b+1].filter(x=>x>=1&&x<=9);
- await loadFixedCurriculum(bands,180);
+ const missing=bands.filter(x=>unseen(x)<25);
+ if(missing.length)await loadFixedCurriculum(missing,180);
  const near=WORDS.filter(w=>w.source==='fixed'&&Math.abs((w.band||3)-b)<=1&&!(child().words[w.w]?.seen)).length;
  if(near<25)await loadFixedCurriculum(bands,200);
 }
@@ -284,17 +289,46 @@ function makeQuestionPlan(newWords,reviewWords,total=20,mode='daily'){
  }
  return plans;
 }
+function passageKeys(context,options=[]){
+ const texts=[context,...options];
+ const keys=new Set();
+ for(const text of texts){
+   const units=[String(text||''),...String(text||'').split(/[.!?。！？\n]+/)];
+   for(const unit of units){
+     const clean=unit.normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
+     if(clean.length<12)continue;
+     let a=2166136261,b=5381;
+     for(let i=0;i<clean.length;i++){a=Math.imul(a^clean.charCodeAt(i),16777619);b=Math.imul(b,33)^clean.charCodeAt(i);}
+     keys.add((a>>>0).toString(16)+'-'+(b>>>0).toString(16));
+   }
+ }
+ return [...keys];
+}
+function questionMemory(q){return {word:q.w.w,signature:q.signature||'',context:q.ctx||'',options:(q.opts||[]).map(o=>o.t)}}
+function rememberQuestion(q){
+ const st=wordState(q.w.w),memory=questionMemory(q);
+ st.usedPassageKeys=[...new Set([...(st.usedPassageKeys||[]),...passageKeys(memory.context,memory.options)])];
+ if(!(st.problemHistory||[]).some(x=>x.context===memory.context&&JSON.stringify(x.options)===JSON.stringify(memory.options))){
+   st.problemHistory=[...(st.problemHistory||[]),memory].slice(-8);
+ }
+}
 const QUESTION_BATCH_SIZE=4;
+const FIRST_QUESTION_COUNT=1;
+const QUESTION_BUFFER_SIZE=8;
 let preparingSession=false;
 async function fetchValidatedQuestions(plans,extraRecent=[]){
  const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
  if(!token)throw new Error('로그인이 필요합니다.');
  const body={
-   items:plans.map(p=>({
+   items:plans.map(p=>{
+     const st=child().words[p.w.w]||{},queued=(session?.profile===state.selected?session.queue:[]).filter(q=>q.w.w===p.w.w).map(questionMemory);
+     return ({
      id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,domain:apiDomain(p.w.cat),
      example:p.w.example||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
-     successStreak:p.successStreak,firstLearning:p.firstLearning
-   })),
+     successStreak:p.successStreak,firstLearning:p.firstLearning,
+     previousContexts:[...(st.problemHistory||[]),...queued].slice(-4),
+     usedPassageKeys:[...new Set([...(st.usedPassageKeys||[]),...queued.flatMap(q=>passageKeys(q.context,q.options))])]
+   })}),
    recent:[...(child().recentProblems||[]),...(extraRecent||[])].slice(-40)
  };
  const r=await fetch('/api/questions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
@@ -352,11 +386,11 @@ async function buildSession(mode='daily'){
    const allBase=[...newWords,...reviewWords];
    if(!allBase.length)throw new Error('출제할 어휘를 준비하지 못했습니다.');
    const plans=makeQuestionPlan(newWords,reviewWords,20,mode);
-   const queue=await fetchValidatedQuestions(plans.slice(0,QUESTION_BATCH_SIZE));
+   const queue=await fetchValidatedQuestions(plans.slice(0,FIRST_QUESTION_COUNT));
    session={
      mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9),
      intros:[],newWords:newWords.map(w=>w.w),baseWords:allBase,validated:true,
-     pendingPlans:plans.slice(QUESTION_BATCH_SIZE),loadingQuestions:null,profile:state.selected
+     pendingPlans:plans.slice(FIRST_QUESTION_COUNT),loadingQuestions:null,profile:state.selected
    };
    current=0;introIndex=0;hintLevel=0;
    show('learn');renderQuestion();
@@ -372,7 +406,7 @@ async function buildSession(mode='daily'){
 }
 function renderQuestion(){
  if(current>=session.queue.length||current>=session.target){finishSession();return}
- const q=session.queue[current]; selectedOption=null; answerSource='typed';hintLevel=0;
+ const q=session.queue[current];rememberQuestion(q);localSave(); selectedOption=null; answerSource='typed';hintLevel=0;
  $('learnType').textContent=session.mode==='level'?'레벨 확인':session.mode==='review'?'집중 복습':'오늘의 학습';
  $('counter').textContent=(current+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
  $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1);
@@ -395,6 +429,7 @@ function renderQuestion(){
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
 function applyResult(q,result,feedback,normalized='',meta={}){
+ rememberQuestion(q);
  const st=wordState(q.w.w);
  let credit=Number.isFinite(meta.credit)?clamp(meta.credit,0,1):resultCredit(result);
  const hintUsed=Boolean(meta.hintUsed);
@@ -586,8 +621,11 @@ async function extendSessionQuestions(){
  finally{active.loadingQuestions=null;$('cloudPill').textContent='클라우드 연결'}
 }
 function prefetchQuestions(){
- if(!session||session.queue.length>=session.target||session.queue.length-current>QUESTION_BATCH_SIZE)return;
- extendSessionQuestions().catch(()=>{});
+ if(!session||session.loadingQuestions||session.queue.length>=session.target||session.queue.length-current>=QUESTION_BUFFER_SIZE)return;
+ const active=session;
+ extendSessionQuestions().then(loaded=>{
+   if(loaded&&session===active&&state.selected===active.profile)prefetchQuestions();
+ }).catch(()=>{});
 }
 async function nextQuestion(){
  if($('next').disabled)return;

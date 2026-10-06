@@ -55,8 +55,25 @@ function normalizeCandidate(q,item){
 }
 
 
+function passageKeys(context,options=[]){
+ const texts=[context,...options];
+ const keys=new Set();
+ for(const text of texts){
+   const units=[String(text||''),...String(text||'').split(/[.!?。！？\n]+/)];
+   for(const unit of units){
+     const clean=unit.normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
+     if(clean.length<12)continue;
+     let a=2166136261,b=5381;
+     for(let i=0;i<clean.length;i++){a=Math.imul(a^clean.charCodeAt(i),16777619);b=Math.imul(b,33)^clean.charCodeAt(i);}
+     keys.add((a>>>0).toString(16)+'-'+(b>>>0).toString(16));
+   }
+ }
+ return [...keys];
+}
 function deterministic(q,item){
   const issues=[];
+  const previous=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(p=>passageKeys(p.context,p.options||[]))]);
+  if(passageKeys(q.context,(q.options||[]).map(o=>o.text)).some(k=>previous.has(k)))issues.push('previous_sentence_reused');
   if(q.type!==item.type)issues.push('requested_type_mismatch');
   if(hasCompare(q.prompt))issues.push('comparison_question');
   if(hasDefinePrompt(q.prompt))issues.push('definition_explanation_prompt');
@@ -120,14 +137,18 @@ function verifySchema(items){
         oneClearAnswer:{type:'boolean'},
         samePartOfSpeechChoices:{type:'boolean'},
         naturalKorean:{type:'boolean'},
+        coherentSituation:{type:'boolean'},
         ageAppropriate:{type:'boolean'},
         noBackgroundBurden:{type:'boolean'},
         noAnswerLeak:{type:'boolean'},
         naturalAlternativesConsidered:{type:'boolean'},
         notTooSimilarToRecent:{type:'boolean'},
+        acceptedAnswers:{type:'array',minItems:0,maxItems:7,items:{type:'object',properties:{
+          text:{type:'string'},credit:{type:'number',enum:[1,0.5]},rationale:{type:'string'}
+        },required:['text','credit','rationale'],additionalProperties:false}},
         issues:{type:'array',items:{type:'string'}}
       },
-      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','ageAppropriate','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','issues'],
+      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','acceptedAnswers','issues'],
       additionalProperties:false
     }}},required:['reviews'],additionalProperties:false
   };
@@ -142,6 +163,11 @@ function generationPrompt(items,recent,feedback={}){
     '- 단순히 길게 늘리지 말고 정답 판단에 필요한 의미 있는 단서를 2개 이상 제공합니다.',
     '- 목표 어휘 외 표현은 해당 학습 단계보다 쉽게 씁니다. 어려운 배경지식·복잡한 추론이 핵심이 되면 안 됩니다.',
     '- 가족, 학교, 친구, 동물, 놀이, 자연, 과학, 탐험 등 배경을 다양하게 바꿉니다.',
+    '- previousContexts는 같은 어휘의 이전 실제 지문/보기입니다. 기존 문장, 사건, 핵심 행동과 결과를 재사용하지 마세요. 이름·장소·사물만 바꾸는 재작성도 금지합니다. 같은 배치에서 같은 어휘가 반복되면 각각 다른 사건과 문장 구조를 사용하세요.',
+    '- 사전 example을 지문으로 복사하지 마세요. 목표어가 그 상황에서 실제로 쓰이는 자연스러운 표현인지 먼저 확인하세요. 목표어가 조사·서술어와 자연스럽게 호응하도록 완성 문장을 읽어 보고 작성하세요.',
+    '- 한 장면 안에서 인물, 시간, 행동, 이유, 결과가 일관되게 이어져야 합니다. 이유 없는 행동, 갑자기 등장하는 사건, 앞 문장과 무관한 결론은 금지합니다.',
+    '- 정답을 억지로 넣기 위해 같은 설명을 반복하거나 \"이것은 X이다\"라는 정의 문장을 덧붙이지 마세요. 단서가 사건 속에서 드러나는 간결하고 완결된 문장으로 씁니다.',
+    '- 대화는 실제 아이들이 말할 법한 짧은 발화로 작성하고, 앞사람의 말에 자연스럽게 응답하세요. 설명문을 따옴표 안에 넣은 가짜 대화는 금지합니다.',
     '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 목표 어휘를 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. 목표 어휘를 두 번 이상 쓰지 마세요.',
     '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
@@ -164,65 +190,27 @@ function generationPrompt(items,recent,feedback={}){
     '',
     '최근 문제 서명(비슷한 상황/구조 피하기): '+JSON.stringify(recent||[]),
     '이전 생성 실패 사유가 있으면 반드시 고치기: '+JSON.stringify(feedback||{}),
-    '생성 대상 JSON: '+JSON.stringify(items)
+    '생성 대상 JSON: '+JSON.stringify(items.map(({usedPassageKeys,...item})=>item))
   ].join('\n');
 }
 async function generate(items,recent,feedback){
   const out=await ask(generationPrompt(items,recent,feedback),questionSchema(items),'validated_vocab_questions',15000);
   return out.questions||[];
 }
-function alternativeSchema(items){
-  return {
-    type:'object',properties:{answers:{type:'array',minItems:items.length,maxItems:items.length,items:{
-      type:'object',properties:{
-        id:{type:'string'},
-        alternatives:{type:'array',minItems:1,maxItems:7,items:{type:'object',properties:{
-          text:{type:'string'},credit:{type:'number',enum:[1,0.5]},rationale:{type:'string'}
-        },required:['text','credit','rationale'],additionalProperties:false}}
-      },required:['id','alternatives'],additionalProperties:false
-    }}},required:['answers'],additionalProperties:false
-  };
-}
-async function reviewAlternatives(pairs,feedback={}){
-  if(!pairs.length)return new Map();
-  const items=pairs.map(({item,q})=>({
-    id:item.id,target:item.word,definition:item.definition,type:item.type,context:q.context,prompt:q.prompt,partOfSpeech:q.partOfSpeech,previousReviewIssues:feedback[item.id]||[]
-  }));
-  const prompt=[
-    '한국어 주관식 빈칸 문제의 허용 답안을 별도로 검토하세요.',
-    '목표 단어와 단순히 유의어라는 이유만으로 허용하지 말고, 실제 빈칸에 넣었을 때 문법과 의미가 자연스러운지를 판단하세요.',
-    '목표 단어 자체는 반드시 credit 1입니다.',
-    '다른 표현도 문맥에서 목표 단어와 같은 핵심 의미를 정확히 전달하면 credit 1, 핵심은 일부 맞지만 의미가 좁거나 넓어지는 경우만 credit 0.5입니다.',
-    '문맥에 어색한 사전식 유의어는 넣지 마세요. 조사·활용형은 채점기에서 허용하므로 기본형 중심으로 적으세요.',
-    '복수의 자연스러운 정답이 있다면 모두 포함하세요. 자연스러운 대체어가 없으면 목표 단어만 반환하세요.',
-    'previousReviewIssues에 이전 검수자가 지적한 자연스러운 대체어가 있으면 새 문맥에도 실제로 맞는지 검토하고, 맞으면 반드시 허용 답안에 포함하세요.',
-    '대상: '+JSON.stringify(items)
-  ].join('\n');
-  const out=await ask(prompt,alternativeSchema(items),'subjective_answer_review',7500);
-  const map=new Map();
-  for(const row of out.answers||[]){
-    const src=items.find(x=>x.id===String(row.id));if(!src)continue;
-    const list=[],seen=new Set();
-    const add=x=>{
-      const key=norm(x.text);if(!key||seen.has(key))return;
-      seen.add(key);list.push({text:String(x.text).trim(),credit:Number(x.credit)===0.5?0.5:1,rationale:String(x.rationale||'')});
-    };
-    add({text:src.target,credit:1,rationale:'목표 어휘'});
-    for(const x of row.alternatives||[])add(x);
-    map.set(src.id,list.slice(0,7));
-  }
-  return map;
-}
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
+    'coherentSituation은 인물·시간·행동·이유·결과의 앞뒤 연결과 목표어를 넣은 완성 문장의 조사·서술어 호응을 검사합니다. 어색한 번역투, 불필요한 반복, 갑작스러운 결론, 일상적으로 성립하지 않는 상황, 설명문을 옮긴 가짜 대화는 통과시키지 마세요.',
+    'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
-    '주관식에 다른 자연스러운 단어가 들어갈 수 있다는 사실 자체는 오류가 아닙니다. acceptedAnswers에 그 단어가 적절한 점수로 포함됐는지 검사하고, 빠진 자연스러운 답은 issues에 구체적으로 적으세요.',
+    '주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 목표어는 반드시 credit 1이고, 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 기본형 중심으로 적으세요.',
+    '빠진 자연스러운 대체 답안이나 잘못된 허용 답안은 이 검수 단계에서 수정하세요. naturalAlternativesConsidered와 valid는 반환하는 최종 허용 답안 기준입니다. 객관식의 acceptedAnswers는 빈 배열입니다.',
+    '허용 답안 목록만 수정할 수 있습니다. 문맥, 보기, 힌트 등 문제 자체의 결함은 수정한 것으로 간주하지 말고 valid=false와 구체적인 issues로 반환하세요.',
     '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
-    '목표/정의/유형: '+JSON.stringify(items),
+    '목표/정의/유형: '+JSON.stringify(items.map(({usedPassageKeys,...item})=>item)),
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions)
   ].join('\n');
@@ -232,7 +220,10 @@ async function aiVerify(items,questions,recent){
 export async function buildValidated(items,recent){
   const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),feedback={};
   for(let attempt=0;attempt<3&&pending.size;attempt++){
-    const batch=[...pending.values()];
+    const batch=[...pending.values()].map(item=>{
+      const earlier=[...accepted.values()].filter(q=>items.find(x=>x.id===q.id)?.word===item.word);
+      return {...item,previousContexts:[...(item.previousContexts||[]),...earlier.map(q=>({context:q.context,options:(q.options||[]).map(o=>o.text)}))],usedPassageKeys:[...(item.usedPassageKeys||[]),...earlier.flatMap(q=>passageKeys(q.context,(q.options||[]).map(o=>o.text)))]};
+    });
     const generated=await generate(batch,recent,feedback);
     const byId=new Map(generated.map(q=>[String(q.id),q]));
     const deterministicIssues={};
@@ -245,30 +236,30 @@ export async function buildValidated(items,recent){
       if(issues.length)deterministicIssues[item.id]=issues;
       else toVerify.push({item,q});
     }
-    const subjective=toVerify.filter(x=>!x.item.type.startsWith('mc_'));
-    if(subjective.length){
-      const altMap=await reviewAlternatives(subjective,feedback);
-      for(const pair of subjective){
-        const list=altMap.get(pair.item.id);
-        if(list?.length)pair.q.acceptedAnswers=list;
-      }
-    }
     const reviews=toVerify.length?await aiVerify(toVerify.map(x=>x.item),toVerify.map(x=>x.q),recent):[];
     const reviewMap=new Map(reviews.map(x=>[String(x.id),x]));
     for(const item of batch){
       const q=byId.get(item.id);
-      const d=deterministicIssues[item.id]||[];
       const rv=reviewMap.get(item.id);
+      if(q&&!item.type.startsWith('mc_')&&rv){
+        const seen=new Set();
+        q.acceptedAnswers=(rv.acceptedAnswers||[]).filter(x=>{
+          const key=norm(x.text);if(!key||seen.has(key))return false;seen.add(key);return true;
+        }).map(x=>({text:String(x.text).trim(),credit:Number(x.credit),rationale:String(x.rationale||'')}));
+      }
+      const earlier=[...accepted.values()].filter(prev=>items.find(x=>x.id===prev.id)?.word===item.word);
+      const checkedItem={...item,usedPassageKeys:[...(item.usedPassageKeys||[]),...earlier.flatMap(prev=>passageKeys(prev.context,(prev.options||[]).map(o=>o.text)))]};
+      const d=[...(deterministicIssues[item.id]||[]),...(q?deterministic(q,checkedItem):[])];
       const aiIssues=rv?rv.issues:[];
       const objective=item.type.startsWith('mc_');
       const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&
         (!objective||rv.oneClearAnswer)&&(!objective||rv.samePartOfSpeechChoices)&&
-        rv.naturalKorean&&rv.ageAppropriate&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
+        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
         (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent;
       if(pass){
         q.validation={deterministic:true,aiVerified:true,checks:{
           sufficientClues:rv.sufficientClues,oneClearAnswer:rv.oneClearAnswer,samePartOfSpeechChoices:rv.samePartOfSpeechChoices,
-          naturalKorean:rv.naturalKorean,ageAppropriate:rv.ageAppropriate,noBackgroundBurden:rv.noBackgroundBurden,
+          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,noBackgroundBurden:rv.noBackgroundBurden,
           noAnswerLeak:rv.noAnswerLeak,naturalAlternativesConsidered:rv.naturalAlternativesConsidered,notTooSimilarToRecent:rv.notTooSimilarToRecent
         }};
         accepted.set(item.id,q);pending.delete(item.id);delete feedback[item.id];
@@ -300,7 +291,9 @@ export default async function handler(req,res){
       answerSlot:Math.max(0,Math.min(4,Number(x.answerSlot)||0)),
       supportLevel:Math.max(0,Math.min(3,Number(x.supportLevel)||0)),
       successStreak:Math.max(0,Number(x.successStreak)||0),
-      firstLearning:Boolean(x.firstLearning)
+      firstLearning:Boolean(x.firstLearning),
+      previousContexts:Array.isArray(x.previousContexts)?x.previousContexts.filter(p=>p&&typeof p==='object').slice(-8).map(p=>({context:String(p.context||'').slice(0,1600),options:Array.isArray(p.options)?p.options.slice(0,5).map(o=>String(o).slice(0,500)):[]})):[],
+      usedPassageKeys:Array.isArray(x.usedPassageKeys)?x.usedPassageKeys.filter(k=>typeof k==='string').slice(-2000):[]
     })).filter(x=>x.word&&x.definition);
     if(!items.length)return res.status(400).json({error:'No valid items'});
     const questions=[];

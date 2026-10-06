@@ -24,7 +24,15 @@ try{
     {id:'3',type:'subjective_context',word:'근거',definition:'생각이나 주장을 뒷받침하는 까닭이나 자료',band:3,domain:'국어',example:'주장을 할 때에는 근거를 함께 제시해야 한다.',answerSlot:0,supportLevel:1,successStreak:0,firstLearning:false},
     {id:'4',type:'subjective_dialogue',word:'변화',definition:'이전과 달라짐',band:3,domain:'생활',example:'계절이 바뀌면서 날씨에도 변화가 생겼다.',answerSlot:0,supportLevel:0,successStreak:3,firstLearning:false}
   ];
-  const questions=await buildValidated(items,['가족이 장보기 계획을 세운 상황']);
+  const startedAt=new Date().toISOString();
+  const t0=performance.now();
+  const first=await buildValidated([{...items[0],id:'first',firstLearning:true}],[]);
+  const firstQuestionMs=Math.round(performance.now()-t0);
+  items[0].previousContexts=[{context:first[0].context,options:first[0].options.map(o=>o.text)}];
+  const t1=performance.now();
+  const questions=await buildValidated(items,['가족이 장보기 계획을 세운 상황',first[0].signature]);
+  const fourQuestionsMs=Math.round(performance.now()-t1);
+  console.log('Question timing ms: '+JSON.stringify({firstQuestionMs,fourQuestionsMs}));
   const checks=questions.map((q,i)=>{
     const item=items[i];
     const objective=item.type.startsWith('mc_');
@@ -37,7 +45,9 @@ try{
       oneBlank:['mc_context','subjective_context','subjective_dialogue'].includes(item.type)?blanks(q.context)===1:true,
       targetHidden:item.type==='mc_usage'?q.showTarget===true:(!q.showTarget&&!String(q.context).includes(item.word)&&!String(q.prompt).includes(item.word)),
       targetAccepted:objective?true:(q.acceptedAnswers||[]).some(x=>norm(x.text)===norm(item.word)&&Number(x.credit)===1),
-      hints:q.hints?.length===2
+      hints:q.hints?.length===2,
+      coherentSituation:q.validation?.checks?.coherentSituation===true,
+      freshSituation:q.validation?.checks?.notTooSimilarToRecent===true
     };
   });
   if(checks.some(c=>Object.entries(c).some(([k,v])=>!['id','type'].includes(k)&&v!==true)))throw new Error('question checks failed '+JSON.stringify(checks));
@@ -67,7 +77,7 @@ try{
   if(!(wrong?.score===0&&wrong?.contextSuccess===false))throw new Error('wrong grading failed '+JSON.stringify(wrong));
 
   await store({
-    ok:true,
+    ok:true,version:'10.7.3',startedAt,timings:{firstQuestionMs,fourQuestionsMs},
     checks,
     samples:questions.map(q=>({
       id:q.id,type:q.type,prompt:q.prompt,context:q.context,showTarget:q.showTarget,
@@ -79,6 +89,6 @@ try{
   });
   console.log('V10.7 FINAL VERIFY PASSED');
 }catch(e){
-  await store({ok:false,error:String(e?.stack||e)});
+  await store({ok:false,version:'10.7.3',error:String(e?.stack||e)});
   throw e;
 }
