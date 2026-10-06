@@ -28,7 +28,7 @@ export async function askModel(prompt,schema){
       body:JSON.stringify({
         model:process.env.OPENAI_MODEL||'gpt-6-luna',
         reasoning:{effort:'low'},
-        max_output_tokens:7000,
+        max_output_tokens:10000,
         input:prompt,
         text:{format:{type:'json_schema',name:'curriculum_review',strict:true,schema}}
       })
