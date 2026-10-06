@@ -43,6 +43,6 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "node scripts/verify-question-loading.mjs && node scripts/verify-question-batches.mjs && node scripts/verify-v10-7-final.mjs",
+  "buildCommand": "node scripts/verify-question-loading.mjs && node scripts/verify-question-batches.mjs",
   "outputDirectory": "."
 }

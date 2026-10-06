@@ -126,3 +126,16 @@ assert.equal(job.duplicateRetries,2,'a persistent duplicate gets one bounded ret
 assert.ok(job.error);
 assert.equal(d.run('preparations.values().next().value.queue.length'),1);
 console.log('Parallel repetition check verified: duplicates are withheld, valid peers retained, retries bounded.');
+
+// Switching children while the next question is pending cannot move the new child.
+const switcher=fixture(undefined,'family',new Map());
+switcher.run('warmDailyQuestions()');await flush();
+switcher.run('requests[0].resolve()');await flush();
+await switcher.run('buildSession()');
+const switching=switcher.run('nextQuestion()');await flush();
+switcher.run(`session.preparation.cancel();session={profile:'inseong',queue:[],results:[],target:20};state.selected='inseong';current=0`);
+await switching;
+assert.equal(switcher.run('current'),0);
+assert.equal(switcher.run('session.profile'),'inseong');
+assert.equal(switcher.alerts.length,0);
+console.log('Profile switch verified: pending responses cannot move another child or show an old-session error.');

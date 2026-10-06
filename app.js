@@ -509,7 +509,7 @@ async function buildSession(mode='daily'){
    try{localStorage.removeItem(p.key)}catch{}
    session={mode,queue:p.queue,preparation:p,results:[],target:20,max:30,difficulty:p.difficulty,ability:clamp(p.difficulty||3,1,9),intros:[],newWords:p.newWords,baseWords:p.baseWords,validated:true,loadingQuestions:null,profile};
    Object.defineProperty(session,'pendingPlans',{get:()=>p.plans.slice(p.queue.length)});
-   current=0;introIndex=0;hintLevel=0;
+   current=0;introIndex=0;hintLevel=0;$('next').disabled=false;
    show('learn');renderQuestion();prefetchQuestions();
  }catch(e){
    if(state.selected===profile&&authUser?.id===account){alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));show('home')}
@@ -734,22 +734,22 @@ function prefetchQuestions(){
  if(session?.preparation&&state.selected===session.profile)prepareExtensions(session);
 }
 async function nextQuestion(){
- if($('next').disabled)return;
+ if($('next').disabled||!session)return;
+ const active=session,nextIndex=current+1,oldText=$('next').textContent;
  $('next').disabled=true;
- const oldText=$('next').textContent;
- current++;
  try{
- if(session&&current>=session.queue.length&&current<session.target){
-   $('next').textContent='다음 문제 준비 중…';
-   try{await extendSessionQuestions()}
-   catch(e){
-     current--;
-     alert('다음 문제를 아직 준비하지 못했어요. 학습 기록은 유지됩니다. 잠시 뒤 다음 문제를 다시 눌러 주세요.');
-     return;
+   if(nextIndex>=active.queue.length&&nextIndex<active.target){
+     $('next').textContent='다음 문제 준비 중…';
+     prepareExtensions(active);
+     await active.preparation.waitFor(nextIndex,true);
    }
+   if(session!==active||state.selected!==active.profile)return;
+   current=nextIndex;renderQuestion();
+ }catch(e){
+   if(session===active&&state.selected===active.profile)alert('다음 문제를 아직 준비하지 못했어요. 학습 기록은 유지됩니다. 잠시 뒤 다음 문제를 다시 눌러 주세요.');
+ }finally{
+   if(session===active){$('next').disabled=false;$('next').textContent=oldText}
  }
- renderQuestion();
- }finally{$('next').disabled=false;$('next').textContent=oldText}
 }
 function finishSession(){
  const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);
