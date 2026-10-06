@@ -251,9 +251,9 @@ async function aiVerify(items,questions,recent){
   const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);
   return out.reviews||[];
 }
-export async function buildValidated(items,recent){
+export async function buildValidated(items,recent,{maxAttempts=3,partial=false}={}){
   const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),feedback={};
-  for(let attempt=0;attempt<3&&pending.size;attempt++){
+  for(let attempt=0;attempt<maxAttempts&&pending.size;attempt++){
     const batch=[...pending.values()].map(item=>{
       const earlier=[...accepted.values()].filter(q=>items.find(x=>x.id===q.id)?.word===item.word);
       return {...item,previousContexts:[...(item.previousContexts||[]),...earlier.map(q=>({context:q.context,options:(q.options||[]).map(o=>o.text)}))],usedPassageKeys:[...(item.usedPassageKeys||[]),...earlier.flatMap(q=>passageKeys(q.context,(q.options||[]).map(o=>o.text)))]};
@@ -304,6 +304,7 @@ export async function buildValidated(items,recent){
   }
   if(pending.size){
     const failed=[...pending.keys()].map(id=>({id,issues:feedback[id]||['unknown_validation_failure']}));
+    if(partial){const out=items.filter(x=>accepted.has(x.id)).map(x=>accepted.get(x.id));out.failed=failed;return out}
     const e=new Error('QUESTION_VALIDATION_FAILED '+JSON.stringify(failed));
     e.failed=failed;throw e;
   }

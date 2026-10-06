@@ -39,6 +39,14 @@ const partial={...ready,ready:ready.ready.slice(0,8)};
 const resumed=await prepare({...job,payload:partial},'key',generate,store);
 assert.equal(resumed.ready.length,20);
 assert.equal(calls,3);
+// A single rejected question does not discard the three validated peers.
+await assert.rejects(prepare(job,'key',async items=>items.filter(i=>i.id!=='2').map(answer),store),/Incomplete validated preparation/);
+const almostReady=checkpoints.at(-1).p_payload;
+assert.equal(almostReady.ready.length,19);
+let retriedIds=[];
+const completed=await prepare({...job,payload:almostReady},'key',async items=>{retriedIds=items.map(i=>i.id);return items.map(answer)},store);
+assert.deepEqual(retriedIds,['2']);
+assert.equal(completed.ready.length,20);
 // One failed group leaves good peer groups durable and marks the job retryable.
 let failed=false;
 const failOnce=async items=>{if(!failed){failed=true;throw Error('Temporary AI failure')}return generate(items)};

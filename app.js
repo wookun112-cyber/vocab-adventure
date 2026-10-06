@@ -477,7 +477,12 @@ function createServerPreparation(meta,saved){
   serverLesson(p.profile,p.serverId).then(remote=>{
    if(p.cancelled)return;
    if(remote?.id!==p.serverId)throw new Error('학습 기록이 바뀌어 준비된 문제를 다시 확인해야 해요.');
-   if(remote.status==='failed')throw new Error('문제 준비가 지연됐어요. 잠시 뒤 다시 눌러 주세요.');
+   if(remote.status==='failed'){
+    // Explicitly running lessons can recover missing questions after bounded
+    // server retries, while keeping every validated question already saved.
+    if(p.adopted){for(const job of p.jobs)job.error=null;p.pump=ordinaryPump;ordinaryPump();return}
+    throw new Error('문제 준비가 지연됐어요. 잠시 뒤 다시 눌러 주세요.');
+   }
    for(const [i,q] of remote.payload?.ready||[]){
     if(!validPreparedQuestion(q,p.plans[i]))throw new Error('문제 검증 정보를 확인하지 못했습니다.');
     p.ready.set(i,q);

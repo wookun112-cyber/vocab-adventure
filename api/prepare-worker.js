@@ -9,8 +9,10 @@ export async function rpc(name,args){
  if(!r.ok)throw Error('Preparation storage '+r.status);
  return r.json();
 }
-export async function prepare(job,key,generate=buildValidated,call=rpc){
+const generatePrepared=(items,recent)=>buildValidated(items,recent,{maxAttempts:1,partial:true});
+export async function prepare(job,key,generate=generatePrepared,call=rpc){
  let payload=job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
+ delete payload.preparationError;delete payload.preparationIssues;
  let checkpoint=Promise.resolve(),obsolete=false;
  const save=failed=>{
   const copy=JSON.parse(JSON.stringify(payload));
@@ -25,37 +27,39 @@ export async function prepare(job,key,generate=buildValidated,call=rpc){
   await save(false);
   const ready=new Map(payload.ready||[]),remaining=payload.plans.map((p,i)=>[i,p]).filter(([i])=>!ready.has(i));
   const groups=[];for(let i=0;i<remaining.length;i+=4)groups.push(remaining.slice(i,i+4));
-  let cursor=0;
+  let cursor=0,duplicates=false;
   const work=async()=>{
    while(cursor<groups.length&&!obsolete){
     const group=groups[cursor++];
     let missing=group;
-    for(let attempt=0;attempt<2&&missing.length;attempt++){
+    for(let attempt=0;attempt<1&&missing.length;attempt++){
      const known=[...ready];
      const items=generationItems(missing.map(([,p])=>p),job.learner,known);
      const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40));
+     if(questions.failed?.length)payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];
      if(obsolete)return;
      const retry=[];
      for(const [i,p] of missing){
       const raw=questions.find(q=>String(q.id)===p.id);
+      if(!raw){retry.push([i,p]);continue}
       if(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation)throw Error('Unverified prepared question');
       const q=browserQuestion(raw,p);
       const used=new Set([...(job.learner.words?.[p.w.w]?.usedPassageKeys||[]),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
-      if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){retry.push([i,p]);continue}
+      if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){duplicates=true;retry.push([i,p]);continue}
       ready.set(i,q);
      }
      payload.ready=[...ready].sort(([a],[b])=>a-b);
      await save(false);
      missing=retry;
     }
-    if(missing.length)throw Error('Repeated sentence withheld');
    }
   };
   const results=await Promise.allSettled(Array.from({length:Math.min(3,groups.length)},work));
   const failed=results.find(r=>r.status==='rejected');
   if(failed)throw failed.reason;
+  if(payload.ready.length<20)throw Error(duplicates?'Repeated sentence withheld':'Incomplete validated preparation');
  }catch(error){
-  if(!obsolete){checkpoint=checkpoint.catch(()=>{});await save(true)}
+  if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);checkpoint=checkpoint.catch(()=>{});await save(true)}
   throw error;
  }
  return payload;

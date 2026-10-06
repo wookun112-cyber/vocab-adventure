@@ -1,5 +1,7 @@
 -- Durable, private work queue. Public RPCs enforce either account ownership
 -- or an unguessable per-job capability; no service-role key is sent to clients.
+create extension if not exists pg_net with schema extensions;
+create extension if not exists pg_cron;
 create schema if not exists vocab_private;
 revoke all on schema vocab_private from public, anon, authenticated;
 create table if not exists vocab_private.preparations (
