@@ -130,6 +130,11 @@ assert.equal(back("expectedParticle('원인','로')"),'으로');
 assert.equal(back("expectedParticle('근거','으로')"),'로');
 back(`globalThis.obj={...sample,type:'mc_context',context:'비가 내렸어요. 물이 고인 ＿＿＿＿은 많은 비였어요.',options:['원인','결과','이유','순서','경험'].map((text,i)=>({text,correct:i===0}))};`);
 assert.ok(back("deterministic(obj,{word:'원인',type:'mc_context',answerSlot:0}).includes('choice_particle_mismatch')"));
+back(`globalThis.repaired=normalizeCandidate(obj,{word:'원인',type:'mc_context',answerSlot:0});`);
+assert.ok(back("repaired.context.includes('＿＿＿＿(은/는)')"));
+assert.equal(back("completeContext(repaired.context,'결과')"),'비가 내렸어요. 물이 고인 결과는 많은 비였어요.');
+assert.equal(back("completeContext(repaired.context,'원인')"),'비가 내렸어요. 물이 고인 원인은 많은 비였어요.');
+assert.equal(back("deterministic(repaired,{word:'원인',type:'mc_context',answerSlot:0}).includes('choice_particle_mismatch')"),false);
 console.log('Sentence quality verified: prior sentences blocked, incoherent situations rejected, target particles corrected, and grammar clues in choices rejected.');
 
 

@@ -42,6 +42,9 @@ function expectedParticle(word,particle){
  if(particle==='으로'||particle==='로')return end&&end!==8?'으로':'로';
  return particle;
 }
+function completeContext(context,word){
+ return String(context||'').replace(/＿＿＿＿\((이|은|을|과|으로)\/(가|는|를|와|로)\)/g,(_,particle)=>word+expectedParticle(word,particle)).replace('＿＿＿＿',word);
+}
 function blankParticle(context){return String(context||'').match(/＿＿＿＿(으로|로|이|가|은|는|을|를|과|와)(?=\s|[,.!?“”"'():;]|$)/)?.[1]||''}
 function normalizeCandidate(q,item){
   q={...q};
@@ -64,6 +67,13 @@ function normalizeCandidate(q,item){
       q.options=opts;
     }
   }else if(!item.type.startsWith('mc_'))q.options=[];
+  if(item.type==='mc_context'){
+    const particle=blankParticle(q.context);
+    if(particle&&(q.options||[]).some(o=>expectedParticle(o.text,particle)!==particle)){
+      const pairs={이:'이/가',가:'이/가',은:'은/는',는:'은/는',을:'을/를',를:'을/를',과:'과/와',와:'과/와',으로:'으로/로',로:'으로/로'};
+      q.context=q.context.replace('＿＿＿＿'+particle,'＿＿＿＿('+pairs[particle]+')');
+    }
+  }
   return q;
 }
 
@@ -188,7 +198,7 @@ function generationPrompt(items,recent,feedback={}){
     '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 목표 어휘를 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. 목표 어휘를 두 번 이상 쓰지 마세요.',
     '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
-    '- 빈칸 다음의 조사(이/가, 은/는, 을/를, 과/와, 으로/로)는 목표어의 받침에 맞아야 합니다. mc_context는 보기 5개를 각각 넣어도 조사가 맞아야 하므로, 가능하면 받침에 무관한 ‘에’, ‘의’ 등의 표현을 쓰고, 받침에 따라 달라지는 조사를 쓴다면 보기의 받침 조건을 모두 맞추세요.',
+    '- 빈칸 다음의 조사(이/가, 은/는, 을/를, 과/와, 으로/로)는 목표어의 받침에 맞아야 합니다. mc_context는 보기 5개를 각각 넣어도 조사가 맞아야 하므로, 가능하면 받침에 무관한 ‘에’, ‘의’ 등의 표현을 쓰고, 받침에 따라 달라지는 조사를 쓴다면 보기의 받침 조건을 모두 맞추세요. 보기에 받침이 섞이면 빈칸 다음에 ‘(이/가)’, ‘(을/를)’처럼 두 조사를 병기할 수 있습니다.',
     '- mc_context 보기 5개는 목표어와 같은 품사의 관련 어휘로 만듭니다. 모든 보기가 문법적으로 빈칸에 들어갈 수 있어야 하고 의미 단서로만 정답이 갈려야 합니다.',
     '- mc_usage는 길이와 문장 형태가 비슷한 자연스러운 상황 5개로 만듭니다. 정답 상황 하나만 목표 어휘의 핵심 의미와 정확히 맞고, 나머지는 관련은 있지만 핵심 행동·의도·결과가 달라야 합니다.',
     '- 오답은 관련성은 있으나 핵심 단서와 맞지 않게 만듭니다. 억지 오답·명백한 품사 불일치 금지입니다.',
@@ -233,7 +243,7 @@ async function aiVerify(items,questions,recent){
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions.map(q=>{
       const item=items.find(x=>x.id===q.id);
-      return {...q,completedContext:String(q.context||'').replace('＿＿＿＿',item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>String(q.context||'').replace('＿＿＿＿',o.text)):[]};
+      return {...q,completedContext:completeContext(q.context,item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>completeContext(q.context,o.text)):[]};
     }))
   ].join('\n');
   const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);

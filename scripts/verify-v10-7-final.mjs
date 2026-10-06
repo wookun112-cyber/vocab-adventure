@@ -98,6 +98,6 @@ try{
   });
   console.log('V10.7 FINAL VERIFY PASSED');
 }catch(e){
-  await store({ok:false,version:'10.7.4',error:String(e?.stack||e)});
+  await store({ok:false,version:'10.7.4',modelCalls,error:String(e?.stack||e)});
   throw e;
 }
