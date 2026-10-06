@@ -2,7 +2,7 @@ import {reviewBand} from './review-band.mjs';
 
 if(!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY missing');
 
-const groups=[[1,4,7],[2,5,8],[3,6,9]];
+const groups=[[1,7],[2,8],[3,9],[4],[5],[6]];
 
 await Promise.all(groups.map(async (group,i)=>{
   for(const band of group){
