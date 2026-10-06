@@ -50,7 +50,7 @@ returns integer language plpgsql security definer set search_path='' as $$
 declare j record; n integer:=0;
 begin
  for j in select id,capability from vocab_private.preparations
-  where status in ('pending','working') and attempts<5 and next_attempt<=now()
+  where status in ('pending','working') and attempts<8 and next_attempt<=now()
   order by next_attempt limit 4 for update skip locked loop
   -- A short HTTP request only accepts the work. waitUntil continues on Vercel.
   perform net.http_post(url:='https://vocab-adventure-neon.vercel.app/api/prepare-worker',
@@ -69,7 +69,7 @@ begin
  -- Worker-only capability authorization. The key lives in the private queue
  -- and the database's outbound header; account RPCs never return it.
  select * into j from vocab_private.preparations where id=p_id and capability=p_key for update;
- if not found or j.status in ('ready','consumed') or j.attempts>=5 or
+ if not found or j.status in ('ready','consumed') or j.attempts>=8 or
    (j.status='working' and j.updated_at>now()-interval '5 minutes') then return null; end if;
  select state into s from public.app_state where user_id=j.user_id;
  l:=s#>array['users',j.profile];
@@ -108,7 +108,7 @@ begin
  end if;
  if j.is_consumed and (p_active_id is null or p_active_id<>j.id) then return null; end if;
  -- No date expiration: unused validated lessons remain useful until records change.
- return jsonb_build_object('id',j.id,'status',case when j.attempts>=5 and j.status<>'ready' then 'failed' else j.status end,'payload',j.payload);
+ return jsonb_build_object('id',j.id,'status',case when j.attempts>=8 and j.status<>'ready' then 'failed' else j.status end,'payload',j.payload);
 end $$;
 
 create or replace function vocab_private.consume_prepared_lesson(p_profile text,p_id uuid)
