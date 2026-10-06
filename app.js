@@ -180,22 +180,21 @@ function distractors(target){
  list.sort((a,b)=>((pair&&a.w===pair.w)?-10:0)+Math.abs((a.band||3)-(target.band||3))-(((pair&&b.w===pair.w)?-10:0)+Math.abs((b.band||3)-(target.band||3))));
  return list.slice(0,3);
 }
+function clozeFromExample(w){
+ const ex=String(w.example||'').trim();
+ if(ex&&ex.includes(w.w)) return ex.replaceAll(w.w,'＿＿＿＿');
+ return '';
+}
 function makeQuestion(w,i){
  const band=w.band||3;
- const types=band>=4?['meaning','passage','distinguish','explain','sentence','context']:['meaning','context','distinguish','explain','sentence'];
+ const cloze=clozeFromExample(w);
+ const canOpen=Boolean(cloze);
+ const types=band>=4?['meaning','cloze','distinguish','cloze','meaning','cloze']:['meaning','cloze','distinguish','cloze','meaning'];
  let type=types[i%types.length];
  if(w.pair&&i%3===2) type='distinguish';
  if(type==='meaning'){
    const ds=distractors(w),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
    return {w,type,label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
- }
- if(type==='passage'){
-   const ctx=w.example||('글쓴이는 여러 정보와 앞뒤 내용을 살펴 “'+w.w+'”이라는 표현을 사용했다.');
-   return {w,type,label:'짧은 글 추론',q:'다음 문맥에서 “'+w.w+'”이 어떤 뜻으로 쓰였는지 자기 말로 설명해 보세요.',ctx,open:true};
- }
- if(type==='context'){
-   const ctx=w.example||('친구들이 “'+w.w+'”이라는 말을 사용해야 할 상황을 이야기하고 있다.');
-   return {w,type,label:'문맥 추론',q:'이 상황에서 “'+w.w+'”이 어떤 의미로 쓰였는지 설명해 보세요.',ctx,open:true};
  }
  if(type==='distinguish'&&w.pair){
    const p=byWord(w.pair);
@@ -203,15 +202,23 @@ function makeQuestion(w,i){
      const opts=[{t:w.w+' — '+w.d,ok:true},{t:p.w+' — '+w.d,ok:false},{t:w.w+' — '+p.d,ok:false},{t:p.w+' — '+p.d,ok:false}].sort(()=>Math.random()-.5);
      return {w,type,label:'유사어 구별',q:'“'+w.w+'”과 “'+p.w+'”을 구별했을 때 옳은 설명을 고르세요.',opts};
    }
+   if(canOpen){
+     return {
+       w,type:'cloze',label:'문맥 빈칸',
+       q:'다음 문맥의 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
+       ctx:cloze,open:true,hideWord:true,expectedAnswer:w.w
+     };
+   }
+ }
+ if(canOpen){
    return {
-     w,type:'distinguish',label:'유사어 구별',
-     q:'“'+w.w+'”과 “'+w.pair+'”의 차이를 설명해 보세요.',
-     open:true,
-     gradingContext:w.contrast||''
+     w,type:'cloze',label:'문맥 빈칸',
+     q:'다음 문맥의 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
+     ctx:cloze,open:true,hideWord:true,expectedAnswer:w.w
    };
  }
- if(type==='sentence') return {w,type,label:'문장 활용',q:'“'+w.w+'”을 넣어 뜻이 분명하게 드러나는 문장 하나를 만들어 보세요.',open:true};
- return {w,type:'explain',label:'자기 말 설명',q:'“'+w.w+'”이 무슨 뜻인지 친구에게 설명하듯 자기 말로 써 보세요.',open:true};
+ const ds=distractors(w),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
+ return {w,type:'meaning',label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
 }
 async function buildSession(mode='daily'){
  const c=child();
@@ -238,10 +245,10 @@ function renderQuestion(){
  const q=session.queue[current]; selectedOption=null; answerSource='typed';
  $('learnType').textContent=session.mode==='level'?'레벨 확인':session.mode==='review'?'집중 복습':'오늘의 학습';
  $('counter').textContent=(current+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
- $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1); $('qWord').textContent=q.w.w; $('qText').textContent=q.q;
+ $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1); $('qWord').textContent=q.hideWord?'빈칸 어휘':q.w.w; $('qWord').classList.toggle('hidden',!!q.hideWord); $('qText').textContent=q.q;
  $('qContext').classList.toggle('hidden',!q.ctx); $('qContext').textContent=q.ctx||'';
  $('feedback').className='feedback hidden'; $('next').classList.add('hidden'); $('answer').value='';
- $('options').innerHTML=''; $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
+ $('options').innerHTML=''; $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open); $('answer').placeholder=q.type==='cloze'?'빈칸에 들어갈 어휘를 써 보세요.':'답을 입력해 보세요.';
  if(q.opts) q.opts.forEach((o,i)=>{const b=document.createElement('button');b.className='option';b.textContent=o.t;b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};$('options').appendChild(b)});
 }
 function applyResult(q,result,feedback,normalized=''){
@@ -287,6 +294,13 @@ async function gradeCurrent(dontKnow){
    applyResult(q,ok?'○':'×',ok?'문맥에 맞게 잘 골랐어요.':'정답의 핵심 뜻은 “'+q.w.d+'”입니다.'); return;
  }
  const answer=$('answer').value.trim(); if(!answer)return alert('답을 쓰거나 “모르겠어”를 눌러주세요.');
+ if(q.type==='cloze'){
+   const normalized=answer.replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
+   const expected=String(q.expectedAnswer||q.w.w).replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
+   const ok=normalized===expected;
+   applyResult(q,ok?'◎':'×',ok?'문맥에 맞는 어휘를 정확히 넣었어요.':'정답은 “'+q.w.w+'”입니다. 문맥에서 어떻게 쓰였는지 다시 확인해 보세요.',answer);
+   return;
+ }
  $('submit').disabled=true;$('submit').textContent='AI 채점 중…';
  try{
    const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
