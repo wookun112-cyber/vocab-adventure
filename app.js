@@ -342,7 +342,7 @@ function pickLeastUsed(candidates,usage,lastWord){
  const sorted=[...pool].sort((a,b)=>(usage.get(a.w)||0)-(usage.get(b.w)||0)||Math.random()-.5);
  return sorted.find(x=>x.w!==lastWord)||sorted[0];
 }
-function makeQuestionPlan(newWords,reviewWords,total=30,mode='daily'){
+function makeQuestionPlan(newWords,reviewWords,total=20,mode='daily'){
  const plans=[],usage=new Map(),newQueue=[...newWords],all=[...reviewWords,...newWords];
  let lastWord='',objectiveSlot=0;
  for(let i=0;i<total;i++){
@@ -367,7 +367,7 @@ function makeQuestionPlan(newWords,reviewWords,total=30,mode='daily'){
  }
  return plans;
 }
-async function fetchValidatedQuestions(plans){
+async function fetchValidatedQuestions(plans,extraRecent=[]){
  const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
  if(!token)throw new Error('로그인이 필요합니다.');
  const body={
@@ -376,7 +376,7 @@ async function fetchValidatedQuestions(plans){
      example:p.w.example||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
      successStreak:p.successStreak,firstLearning:p.firstLearning
    })),
-   recent:(child().recentProblems||[]).slice(-40)
+   recent:[...(child().recentProblems||[]),...(extraRecent||[])].slice(-40)
  };
  const r=await fetch('/api/questions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
  if(!r.ok){
@@ -429,11 +429,11 @@ async function buildSession(mode='daily'){
    }
    const allBase=[...newWords,...reviewWords];
    if(!allBase.length)throw new Error('출제할 어휘를 준비하지 못했습니다.');
-   const plans=makeQuestionPlan(newWords,reviewWords,30,mode);
+   const plans=makeQuestionPlan(newWords,reviewWords,20,mode);
    const queue=await fetchValidatedQuestions(plans);
    session={
      mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9),
-     intros:mode==='daily'?newWords:[],newWords:newWords.map(w=>w.w),validated:true
+     intros:mode==='daily'?newWords:[],newWords:newWords.map(w=>w.w),baseWords:allBase,validated:true
    };
    current=0;introIndex=0;hintLevel=0;
    if(session.intros.length){show('intro');renderIntro()}else{show('learn');renderQuestion()}
@@ -612,7 +612,48 @@ function fallbackOpen(q,answer){
  const key=q.w.w,def=q.w.d; const words=def.replace(/[.,()]/g,'').split(/\s+/).filter(x=>x.length>=2).slice(0,5);
  const hit=answer.includes(key)||words.some(x=>answer.includes(x)); applyResult(q,hit?'△':'×',hit?'AI 연결 전이라 임시 채점했어요. 뜻의 방향은 맞아 보여요.':'AI 연결 전이라 임시 채점했어요. 핵심 뜻을 다시 확인해 보세요: '+def,answer);
 }
-function nextQuestion(){current++;renderQuestion()}
+function makeExtensionPlan(start,count){
+ const base=session?.baseWords||session?.queue?.map(q=>q.w)||[];
+ const usage=new Map();
+ for(const q of session.queue||[])usage.set(q.w.w,(usage.get(q.w.w)||0)+1);
+ let lastWord=session.queue?.at(-1)?.w?.w||'';
+ let objectiveSlot=(session.queue||[]).filter(q=>q.type?.startsWith('mc_')).length%5;
+ const plans=[];
+ for(let i=start;i<start+count;i++){
+   const type=TYPE_SEQUENCE[i%TYPE_SEQUENCE.length],objective=type.startsWith('mc_');
+   const w=pickLeastUsed(base,usage,lastWord);if(!w)break;
+   usage.set(w.w,(usage.get(w.w)||0)+1);lastWord=w.w;
+   const st=wordState(w.w);
+   plans.push({
+     id:String(i),type,w,answerSlot:objective?(objectiveSlot++%5):0,
+     supportLevel:st.supportLevel||0,successStreak:st.streak||0,firstLearning:false
+   });
+ }
+ return plans;
+}
+async function extendSessionQuestions(){
+ const need=Math.max(0,session.target-session.queue.length);
+ if(!need)return true;
+ const plans=makeExtensionPlan(session.queue.length,need);
+ if(plans.length!==need)throw new Error('추가 문제 대상을 준비하지 못했습니다.');
+ $('cloudPill').textContent='추가 문제 준비 중';
+ const recent=session.queue.map(q=>q.signature).filter(Boolean);
+ const extra=await fetchValidatedQuestions(plans,recent);
+ session.queue.push(...extra);
+ $('cloudPill').textContent='클라우드 연결';
+ return true;
+}
+async function nextQuestion(){
+ current++;
+ if(session&&current>=session.queue.length&&current<session.target){
+   try{await extendSessionQuestions()}
+   catch(e){
+     alert('추가 문제 검증을 완료하지 못해 현재 문제까지만 학습을 마칩니다.');
+     session.target=session.queue.length;
+   }
+ }
+ renderQuestion();
+}
 function finishSession(){
  const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);
  if(session.mode!=='level'){
