@@ -195,8 +195,12 @@ async function buildFixedCurriculum(){
  btn.disabled=ready;
 }
 function scorePriority(w){
- const s=wordState(w.w); let p=s.wrong*5+(5-s.streak)*2+(s.seen?2:0);
- if(w.pair&&wordState(w.pair)?.wrong)p+=5; if(s.mastered)p-=12;
+ const st=wordState(w.w);
+ let p=st.wrong*6+(5-Math.min(5,st.streak))*2+(st.supportLevel||0)*4+(st.seen?2:0);
+ if(isDue(st.nextReviewAt))p+=10;
+ if(st.targetRecall<2)p+=4;
+ if(st.mastered&&!isDue(st.nextReviewAt))p-=30;
+ if(st.streak>=5&&!isDue(st.nextReviewAt))p-=25;
  return p+Math.random()*2;
 }
 function chooseNew(n=5){
@@ -205,7 +209,35 @@ function chooseNew(n=5){
    .map(w=>({w,score:Math.abs((w.band||3)-target)*5+(w.source==='fixed'?-3:2)+Math.random()*4}))
    .sort((a,b)=>a.score-b.score).slice(0,n).map(x=>x.w);
 }
-function chooseReview(n=15){return WORDS.filter(w=>child().words[w.w]?.seen&&!child().words[w.w]?.mastered).sort((a,b)=>scorePriority(b)-scorePriority(a)).slice(0,n)}
+function chooseReview(n=15){
+ const seen=WORDS.filter(w=>child().words[w.w]?.seen);
+ const due=seen.filter(w=>isDue(wordState(w.w).nextReviewAt)).sort((a,b)=>scorePriority(b)-scorePriority(a));
+ const active=seen.filter(w=>{
+   const st=wordState(w.w);
+   return !isDue(st.nextReviewAt)&&st.streak<5&&!st.mastered;
+ }).sort((a,b)=>scorePriority(b)-scorePriority(a));
+ const out=[];
+ for(const w of [...due,...active]){
+   if(out.some(x=>x.w===w.w))continue;
+   out.push(w);if(out.length>=n)break;
+ }
+ return out;
+}
+function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={}){
+ let days=1;
+ if(revealed||credit<.5){
+   st.reviewStage=0;days=1;
+ }else if(hintUsed||credit<1){
+   st.reviewStage=Math.min(st.reviewStage||0,1);days=1;
+ }else if(independent){
+   const intervals=[1,3,7,14,30];
+   const stage=Math.max(0,Math.min(intervals.length-1,Number(st.reviewStage)||0));
+   days=intervals[stage];
+   st.reviewStage=Math.min(stage+1,intervals.length-1);
+ }
+ st.lastReviewAt=today();
+ st.nextReviewAt=dayOffset(days);
+}
 function takeRandom(arr){
  if(!arr.length)return null;
  return arr[Math.floor(Math.random()*arr.length)];
