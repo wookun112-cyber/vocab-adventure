@@ -351,9 +351,8 @@ function makeQuestionPlan(newWords,reviewWords,total=30,mode='daily'){
    let w=null;
    if(mode==='daily'&&i<5&&objective&&newQueue.length)w=newQueue.shift();
    if(!w){
-     let candidates=reviewWords.length?reviewWords:all;
-     if(!candidates.length)candidates=all;
-     w=pickLeastUsed(candidates,usage,lastWord)||pickLeastUsed(all,usage,lastWord);
+     const candidates=all;
+     w=pickLeastUsed(candidates,usage,lastWord);
    }
    if(!w)continue;
    usage.set(w.w,(usage.get(w.w)||0)+1);lastWord=w.w;
