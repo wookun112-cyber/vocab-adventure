@@ -283,6 +283,8 @@ function makeQuestionPlan(newWords,reviewWords,total=20,mode='daily'){
  }
  return plans;
 }
+const QUESTION_BATCH_SIZE=4;
+let preparingSession=false;
 async function fetchValidatedQuestions(plans,extraRecent=[]){
  const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
  if(!token)throw new Error('로그인이 필요합니다.');
@@ -297,7 +299,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[]){
  const r=await fetch('/api/questions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
  if(!r.ok){
    const j=await r.json().catch(()=>({}));
-   throw new Error(j.error||'문제 검증에 실패했습니다.');
+   throw new Error([502,503,504].includes(r.status)?'문제를 준비하는 서버 응답이 늦어졌어요. 잠시 뒤 다시 눌러 주세요.':(j.error||'문제 검증에 실패했습니다.'));
  }
  const j=await r.json();
  if(!j.validated||!Array.isArray(j.questions)||j.questions.length!==plans.length)throw new Error('검증된 문제 수가 맞지 않습니다.');
@@ -328,6 +330,9 @@ function renderIntro(){
 function nextIntro(){introIndex++;renderIntro()}
 
 async function buildSession(mode='daily'){
+ if(preparingSession)return;
+ preparingSession=true;
+ for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=true;
  const c=child();
  $('cloudPill').textContent='문제 준비 중';
  try{
@@ -346,17 +351,21 @@ async function buildSession(mode='daily'){
    const allBase=[...newWords,...reviewWords];
    if(!allBase.length)throw new Error('출제할 어휘를 준비하지 못했습니다.');
    const plans=makeQuestionPlan(newWords,reviewWords,20,mode);
-   const queue=await fetchValidatedQuestions(plans);
+   const queue=await fetchValidatedQuestions(plans.slice(0,QUESTION_BATCH_SIZE));
    session={
      mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9),
-     intros:mode==='daily'?newWords:[],newWords:newWords.map(w=>w.w),baseWords:allBase,validated:true
+     intros:mode==='daily'?newWords:[],newWords:newWords.map(w=>w.w),baseWords:allBase,validated:true,
+     pendingPlans:plans.slice(QUESTION_BATCH_SIZE),loadingQuestions:null,profile:state.selected
    };
    current=0;introIndex=0;hintLevel=0;
    if(session.intros.length){show('intro');renderIntro()}else{show('learn');renderQuestion()}
+   prefetchQuestions();
  }catch(e){
    alert('문제 생성·검증을 완료하지 못했어요. 검증되지 않은 문제는 출제하지 않습니다.\n'+String(e?.message||e));
    show('home');
  }finally{
+   preparingSession=false;
+   for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=false;
    $('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');
  }
 }
@@ -381,6 +390,7 @@ function renderQuestion(){
    b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};
    $('options').appendChild(b);
  });
+ prefetchQuestions();
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
 function applyResult(q,result,feedback,normalized='',meta={}){
@@ -430,18 +440,18 @@ function applyResult(q,result,feedback,normalized='',meta={}){
    }
    if(answered===20){
      const ratio=session.results.reduce((sum,x)=>sum+x.credit,0)/20;
-     if(ratio>=.35&&ratio<=.85)session.target=Math.min(26,session.queue.length);
+     if(ratio>=.35&&ratio<=.85)session.target=Math.min(26,session.max);
    }else if(answered===26&&session.target===26){
      const last6=session.results.slice(-6).reduce((sum,x)=>sum+x.credit,0);
-     if(last6>=2&&last6<=4.5)session.target=Math.min(30,session.queue.length);
+     if(last6>=2&&last6<=4.5)session.target=Math.min(30,session.max);
    }
  }else{
    if(recent.length>=6){
      if(bad>=4)child().difficulty=clamp(child().difficulty-.3,1,9);
      else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,9);
    }
-   if(session.target===20&&current>=14&&bad>=3)session.target=Math.min(26,session.queue.length);
-   else if(session.target===26&&current>=24&&bad>=3)session.target=Math.min(30,session.queue.length);
+   if(session.target===20&&current>=14&&bad>=3)session.target=Math.min(26,session.max);
+   else if(session.target===26&&current>=24&&bad>=3)session.target=Math.min(30,session.max);
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
@@ -548,27 +558,49 @@ function makeExtensionPlan(start,count){
  return plans;
 }
 async function extendSessionQuestions(){
+ const active=session;
+ if(active.loadingQuestions)return active.loadingQuestions;
  const need=Math.max(0,session.target-session.queue.length);
  if(!need)return true;
- const plans=makeExtensionPlan(session.queue.length,need);
- if(plans.length!==need)throw new Error('추가 문제 대상을 준비하지 못했습니다.');
+ const count=Math.min(QUESTION_BATCH_SIZE,need);
+ const planned=(active.pendingPlans||[]).slice(0,count);
+ const plans=planned.length?planned:makeExtensionPlan(session.queue.length,count);
+ if(!plans.length)throw new Error('추가 문제 대상을 준비하지 못했습니다.');
+ for(const plan of plans){
+   const st=wordState(plan.w.w);
+   plan.supportLevel=st.supportLevel||0;plan.successStreak=st.streak||0;plan.firstLearning=st.seen===0;
+ }
  $('cloudPill').textContent='추가 문제 준비 중';
  const recent=session.queue.map(q=>q.signature).filter(Boolean);
- const extra=await fetchValidatedQuestions(plans,recent);
- session.queue.push(...extra);
- $('cloudPill').textContent='클라우드 연결';
- return true;
+ active.loadingQuestions=(async()=>{
+   const extra=await fetchValidatedQuestions(plans,recent);
+   if(session!==active||state.selected!==active.profile)return false;
+   active.queue.push(...extra);
+   if(planned.length)active.pendingPlans.splice(0,planned.length);
+   return true;
+ })();
+ try{return await active.loadingQuestions}
+ finally{active.loadingQuestions=null;$('cloudPill').textContent='클라우드 연결'}
+}
+function prefetchQuestions(){
+ if(!session||session.queue.length>=session.target||session.queue.length-current>QUESTION_BATCH_SIZE)return;
+ extendSessionQuestions().catch(()=>{});
 }
 async function nextQuestion(){
+ if($('next').disabled)return;
+ $('next').disabled=true;
  current++;
+ try{
  if(session&&current>=session.queue.length&&current<session.target){
    try{await extendSessionQuestions()}
    catch(e){
-     alert('추가 문제 검증을 완료하지 못해 현재 문제까지만 학습을 마칩니다.');
-     session.target=session.queue.length;
+     current--;
+     alert('다음 문제를 아직 준비하지 못했어요. 학습 기록은 유지됩니다. 잠시 뒤 다음 문제를 다시 눌러 주세요.');
+     return;
    }
  }
  renderQuestion();
+ }finally{$('next').disabled=false}
 }
 function finishSession(){
  const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);

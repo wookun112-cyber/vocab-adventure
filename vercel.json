@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "api/questions.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "api/*.js": {
       "maxDuration": 30
@@ -43,5 +43,5 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "node scripts/verify-v10-7-final.mjs"
+  "buildCommand": "node scripts/verify-question-batches.mjs && node scripts/verify-v10-7-final.mjs"
 }

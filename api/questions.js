@@ -183,10 +183,10 @@ function alternativeSchema(items){
     }}},required:['answers'],additionalProperties:false
   };
 }
-async function reviewAlternatives(pairs){
+async function reviewAlternatives(pairs,feedback={}){
   if(!pairs.length)return new Map();
   const items=pairs.map(({item,q})=>({
-    id:item.id,target:item.word,definition:item.definition,type:item.type,context:q.context,prompt:q.prompt,partOfSpeech:q.partOfSpeech
+    id:item.id,target:item.word,definition:item.definition,type:item.type,context:q.context,prompt:q.prompt,partOfSpeech:q.partOfSpeech,previousReviewIssues:feedback[item.id]||[]
   }));
   const prompt=[
     '한국어 주관식 빈칸 문제의 허용 답안을 별도로 검토하세요.',
@@ -195,6 +195,7 @@ async function reviewAlternatives(pairs){
     '다른 표현도 문맥에서 목표 단어와 같은 핵심 의미를 정확히 전달하면 credit 1, 핵심은 일부 맞지만 의미가 좁거나 넓어지는 경우만 credit 0.5입니다.',
     '문맥에 어색한 사전식 유의어는 넣지 마세요. 조사·활용형은 채점기에서 허용하므로 기본형 중심으로 적으세요.',
     '복수의 자연스러운 정답이 있다면 모두 포함하세요. 자연스러운 대체어가 없으면 목표 단어만 반환하세요.',
+    'previousReviewIssues에 이전 검수자가 지적한 자연스러운 대체어가 있으면 새 문맥에도 실제로 맞는지 검토하고, 맞으면 반드시 허용 답안에 포함하세요.',
     '대상: '+JSON.stringify(items)
   ].join('\n');
   const out=await ask(prompt,alternativeSchema(items),'subjective_answer_review',7500);
@@ -218,6 +219,8 @@ async function aiVerify(items,questions,recent){
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
+    '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
+    '주관식에 다른 자연스러운 단어가 들어갈 수 있다는 사실 자체는 오류가 아닙니다. acceptedAnswers에 그 단어가 적절한 점수로 포함됐는지 검사하고, 빠진 자연스러운 답은 issues에 구체적으로 적으세요.',
     '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
     '목표/정의/유형: '+JSON.stringify(items),
     '최근 서명: '+JSON.stringify(recent||[]),
@@ -244,7 +247,7 @@ export async function buildValidated(items,recent){
     }
     const subjective=toVerify.filter(x=>!x.item.type.startsWith('mc_'));
     if(subjective.length){
-      const altMap=await reviewAlternatives(subjective);
+      const altMap=await reviewAlternatives(subjective,feedback);
       for(const pair of subjective){
         const list=altMap.get(pair.item.id);
         if(list?.length)pair.q.acceptedAnswers=list;
@@ -301,8 +304,8 @@ export default async function handler(req,res){
     })).filter(x=>x.word&&x.definition);
     if(!items.length)return res.status(400).json({error:'No valid items'});
     const questions=[];
-    for(let i=0;i<items.length;i+=20){
-      const chunk=items.slice(i,i+20);
+    for(let i=0;i<items.length;i+=4){
+      const chunk=items.slice(i,i+4);
       const out=await buildValidated(chunk,[...recent,...questions.map(q=>q.signature)]);
       questions.push(...out);
     }
