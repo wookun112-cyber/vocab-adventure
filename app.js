@@ -173,19 +173,57 @@ function scorePriority(w){
  if(w.pair&&wordState(w.pair)?.wrong)p+=5; if(s.mastered)p-=12;
  return p+Math.random()*2;
 }
-function chooseNew(n=5){return WORDS.filter(w=>!(child().words[w.w]?.seen)).sort((a,b)=>Math.abs((a.band||3)-child().difficulty)-Math.abs((b.band||3)-child().difficulty)).slice(0,n)}
+function chooseNew(n=5){
+ const target=child().difficulty;
+ return WORDS.filter(w=>!(child().words[w.w]?.seen))
+   .map(w=>({w,score:Math.abs((w.band||3)-target)*5+(w.source==='fixed'?-3:2)+Math.random()*4}))
+   .sort((a,b)=>a.score-b.score).slice(0,n).map(x=>x.w);
+}
 function chooseReview(n=15){return WORDS.filter(w=>child().words[w.w]?.seen&&!child().words[w.w]?.mastered).sort((a,b)=>scorePriority(b)-scorePriority(a)).slice(0,n)}
-function distractors(target){
- const pair=target.pair&&byWord(target.pair); let list=WORDS.filter(x=>x.w!==target.w);
- list.sort((a,b)=>((pair&&a.w===pair.w)?-10:0)+Math.abs((a.band||3)-(target.band||3))-(((pair&&b.w===pair.w)?-10:0)+Math.abs((b.band||3)-(target.band||3))));
- return list.slice(0,3);
+function takeRandom(arr){
+ if(!arr.length)return null;
+ return arr[Math.floor(Math.random()*arr.length)];
+}
+function distractors(target,usedTexts=new Set(),reservedWords=new Set()){
+ const pair=target.pair&&byWord(target.pair);
+ const eligible=WORDS.filter(x=>
+   x.w!==target.w &&
+   !reservedWords.has(x.w) &&
+   x.d && x.d!==target.d &&
+   !usedTexts.has(x.d)
+ );
+ const chosen=[],chosenWords=new Set(),chosenCats=new Set();
+ const add=x=>{
+   if(!x||chosenWords.has(x.w)||usedTexts.has(x.d)||x.d===target.d)return false;
+   chosen.push(x);chosenWords.add(x.w);chosenCats.add(x.cat||'');return true;
+ };
+ const closeSame=eligible.filter(x=>x.cat===target.cat&&Math.abs((x.band||3)-(target.band||3))<=1);
+ const closeOther=eligible.filter(x=>x.cat!==target.cat&&Math.abs((x.band||3)-(target.band||3))<=1);
+ const nearby=eligible.filter(x=>Math.abs((x.band||3)-(target.band||3))<=2);
+ if(pair&&eligible.some(x=>x.w===pair.w)&&Math.random()<.55)add(pair);
+ add(takeRandom(closeSame.filter(x=>!chosenWords.has(x.w))));
+ add(takeRandom(closeOther.filter(x=>!chosenWords.has(x.w))));
+ while(chosen.length<3){
+   const pool=(nearby.length?nearby:eligible)
+     .filter(x=>!chosenWords.has(x.w))
+     .map(x=>({x,score:(chosenCats.has(x.cat||'')?2:0)+Math.random()*5}))
+     .sort((a,b)=>a.score-b.score);
+   if(!pool.length)break;
+   add(pool[0].x);
+ }
+ if(chosen.length<3){
+   for(const x of eligible.sort(()=>Math.random()-.5)){
+     add(x);if(chosen.length>=3)break;
+   }
+ }
+ return chosen.slice(0,3);
 }
 function clozeFromExample(w){
  const ex=String(w.example||'').trim();
  if(ex&&ex.includes(w.w)) return ex.replaceAll(w.w,'＿＿＿＿');
  return '';
 }
-function makeQuestion(w,i){
+function makeQuestion(w,i,optionState=null){
  const band=w.band||3;
  const cloze=clozeFromExample(w);
  const canOpen=Boolean(cloze);
@@ -193,13 +231,17 @@ function makeQuestion(w,i){
  let type=types[i%types.length];
  if(w.pair&&i%3===2) type='distinguish';
  if(type==='meaning'){
-   const ds=distractors(w),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
+   const used=optionState?.usedTexts||new Set(),reserved=optionState?.reservedWords||new Set();
+   const ds=distractors(w,used,reserved),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
+   if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
    return {w,type,label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
  }
  if(type==='distinguish'&&w.pair){
    const p=byWord(w.pair);
    if(p){
-     const opts=[{t:w.w+' — '+w.d,ok:true},{t:p.w+' — '+w.d,ok:false},{t:w.w+' — '+p.d,ok:false},{t:p.w+' — '+p.d,ok:false}].sort(()=>Math.random()-.5);
+     const raw=[{t:w.w+' — '+w.d,ok:true},{t:p.w+' — '+w.d,ok:false},{t:w.w+' — '+p.d,ok:false},{t:p.w+' — '+p.d,ok:false}];
+     const opts=raw.sort(()=>Math.random()-.5);
+     if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
      return {w,type,label:'유사어 구별',q:'“'+w.w+'”과 “'+p.w+'”을 구별했을 때 옳은 설명을 고르세요.',opts};
    }
    if(canOpen){
@@ -217,7 +259,9 @@ function makeQuestion(w,i){
      ctx:cloze,open:true,hideWord:true,expectedAnswer:w.w
    };
  }
- const ds=distractors(w),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
+ const used=optionState?.usedTexts||new Set(),reserved=optionState?.reservedWords||new Set();
+ const ds=distractors(w,used,reserved),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
+ if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
  return {w,type:'meaning',label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
 }
 async function buildSession(mode='daily'){
@@ -237,7 +281,9 @@ async function buildSession(mode='daily'){
    pool=[...chooseNew(5),...chooseReview(15)];
  }
  if(pool.length<20) pool=[...pool,...WORDS.filter(w=>!pool.some(x=>x.w===w.w)).sort((a,b)=>Math.abs((a.band||3)-c.difficulty)-Math.abs((b.band||3)-c.difficulty)).slice(0,30-pool.length)];
- session={mode,queue:pool.map((w,i)=>makeQuestion(w,i)),results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9)};
+ const optionState={usedTexts:new Set(),reservedWords:new Set(pool.map(w=>w.w))};
+ const queue=pool.map((w,i)=>makeQuestion(w,i,optionState));
+ session={mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9)};
  current=0; show('learn'); renderQuestion();
 }
 function renderQuestion(){
