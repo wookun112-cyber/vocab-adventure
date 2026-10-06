@@ -39,5 +39,6 @@
       "source": "/",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "buildCommand": "node scripts/repair-curriculum.mjs"
 }
