@@ -42,5 +42,6 @@
       "source": "/",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "buildCommand": "node scripts/verify-v10-7-final.mjs"
 }
