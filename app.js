@@ -240,9 +240,12 @@ function makeQuestion(w,i,optionState=null){
    const p=byWord(w.pair);
    if(p){
      const raw=[{t:w.w+' — '+w.d,ok:true},{t:p.w+' — '+w.d,ok:false},{t:w.w+' — '+p.d,ok:false},{t:p.w+' — '+p.d,ok:false}];
-     const opts=raw.sort(()=>Math.random()-.5);
-     if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
-     return {w,type,label:'유사어 구별',q:'“'+w.w+'”과 “'+p.w+'”을 구별했을 때 옳은 설명을 고르세요.',opts};
+     const repeats=optionState&&raw.some(o=>optionState.usedTexts.has(o.t));
+     if(!repeats){
+       const opts=raw.sort(()=>Math.random()-.5);
+       if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
+       return {w,type,label:'유사어 구별',q:'“'+w.w+'”과 “'+p.w+'”을 구별했을 때 옳은 설명을 고르세요.',opts};
+     }
    }
    if(canOpen){
      return {
