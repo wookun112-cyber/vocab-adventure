@@ -171,6 +171,47 @@ async function generate(items,recent,feedback){
   const out=await ask(generationPrompt(items,recent,feedback),questionSchema(items),'validated_vocab_questions');
   return out.questions||[];
 }
+function alternativeSchema(items){
+  return {
+    type:'object',properties:{answers:{type:'array',minItems:items.length,maxItems:items.length,items:{
+      type:'object',properties:{
+        id:{type:'string'},
+        alternatives:{type:'array',minItems:1,maxItems:7,items:{type:'object',properties:{
+          text:{type:'string'},credit:{type:'number',enum:[1,0.5]},rationale:{type:'string'}
+        },required:['text','credit','rationale'],additionalProperties:false}}
+      },required:['id','alternatives'],additionalProperties:false
+    }}},required:['answers'],additionalProperties:false
+  };
+}
+async function reviewAlternatives(pairs){
+  if(!pairs.length)return new Map();
+  const items=pairs.map(({item,q})=>({
+    id:item.id,target:item.word,definition:item.definition,type:item.type,context:q.context,prompt:q.prompt,partOfSpeech:q.partOfSpeech
+  }));
+  const prompt=[
+    '한국어 주관식 빈칸 문제의 허용 답안을 별도로 검토하세요.',
+    '목표 단어와 단순히 유의어라는 이유만으로 허용하지 말고, 실제 빈칸에 넣었을 때 문법과 의미가 자연스러운지를 판단하세요.',
+    '목표 단어 자체는 반드시 credit 1입니다.',
+    '다른 표현도 문맥에서 목표 단어와 같은 핵심 의미를 정확히 전달하면 credit 1, 핵심은 일부 맞지만 의미가 좁거나 넓어지는 경우만 credit 0.5입니다.',
+    '문맥에 어색한 사전식 유의어는 넣지 마세요. 조사·활용형은 채점기에서 허용하므로 기본형 중심으로 적으세요.',
+    '복수의 자연스러운 정답이 있다면 모두 포함하세요. 자연스러운 대체어가 없으면 목표 단어만 반환하세요.',
+    '대상: '+JSON.stringify(items)
+  ].join('\n');
+  const out=await ask(prompt,alternativeSchema(items),'subjective_answer_review',5000);
+  const map=new Map();
+  for(const row of out.answers||[]){
+    const src=items.find(x=>x.id===String(row.id));if(!src)continue;
+    const list=[],seen=new Set();
+    const add=x=>{
+      const key=norm(x.text);if(!key||seen.has(key))return;
+      seen.add(key);list.push({text:String(x.text).trim(),credit:Number(x.credit)===0.5?0.5:1,rationale:String(x.rationale||'')});
+    };
+    add({text:src.target,credit:1,rationale:'목표 어휘'});
+    for(const x of row.alternatives||[])add(x);
+    map.set(src.id,list.slice(0,7));
+  }
+  return map;
+}
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
@@ -200,6 +241,14 @@ export async function buildValidated(items,recent){
       const issues=deterministic(q,item);
       if(issues.length)deterministicIssues[item.id]=issues;
       else toVerify.push({item,q});
+    }
+    const subjective=toVerify.filter(x=>!x.item.type.startsWith('mc_'));
+    if(subjective.length){
+      const altMap=await reviewAlternatives(subjective);
+      for(const pair of subjective){
+        const list=altMap.get(pair.item.id);
+        if(list?.length)pair.q.acceptedAnswers=list;
+      }
     }
     const reviews=toVerify.length?await aiVerify(toVerify.map(x=>x.item),toVerify.map(x=>x.q),recent):[];
     const reviewMap=new Map(reviews.map(x=>[String(x.id),x]));
