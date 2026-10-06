@@ -322,44 +322,148 @@ function makeQuestion(w,i,optionState=null,clozePassage=''){
  if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
  return {w,type:'meaning',label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
 }
+const QUIZ_TYPES=['mc_context','mc_usage','subjective_context','subjective_dialogue'];
+const TYPE_SEQUENCE=[
+ 'mc_context','mc_usage','mc_context','mc_usage','mc_context',
+ 'subjective_context','mc_usage','subjective_dialogue','subjective_context','mc_context',
+ 'subjective_dialogue','mc_usage','subjective_context','subjective_dialogue','mc_context',
+ 'subjective_context','mc_usage','subjective_dialogue','subjective_context','subjective_dialogue',
+ 'mc_context','subjective_context','mc_usage','subjective_dialogue','mc_context',
+ 'subjective_context','mc_usage','subjective_dialogue','mc_context','subjective_context'
+];
+const TYPE_LABELS={mc_context:'문맥 선택',mc_usage:'사용 상황',subjective_context:'문맥 빈칸',subjective_dialogue:'대화 완성'};
+const apiDomain=cat=>({'사고':'수학·논리','수학':'수학·논리','논리':'수학·논리'}[cat]||(['국어','사회','과학','수학·논리','감정·관계','생활'].includes(cat)?cat:'국어'));
+
+function pickLeastUsed(candidates,usage,lastWord){
+ const pool=candidates.filter(Boolean);
+ if(!pool.length)return null;
+ const sorted=[...pool].sort((a,b)=>(usage.get(a.w)||0)-(usage.get(b.w)||0)||Math.random()-.5);
+ return sorted.find(x=>x.w!==lastWord)||sorted[0];
+}
+function makeQuestionPlan(newWords,reviewWords,total=30,mode='daily'){
+ const plans=[],usage=new Map(),newQueue=[...newWords],all=[...reviewWords,...newWords];
+ let lastWord='',objectiveSlot=0;
+ for(let i=0;i<total;i++){
+   const type=TYPE_SEQUENCE[i%TYPE_SEQUENCE.length];
+   const objective=type.startsWith('mc_');
+   let w=null;
+   if(mode==='daily'&&i<5&&objective&&newQueue.length)w=newQueue.shift();
+   if(!w){
+     let candidates=reviewWords.length?reviewWords:all;
+     if(!candidates.length)candidates=all;
+     w=pickLeastUsed(candidates,usage,lastWord)||pickLeastUsed(all,usage,lastWord);
+   }
+   if(!w)continue;
+   usage.set(w.w,(usage.get(w.w)||0)+1);lastWord=w.w;
+   const st=wordState(w.w);
+   plans.push({
+     id:String(i),type,w,
+     answerSlot:objective?(objectiveSlot++%5):0,
+     supportLevel:st.supportLevel||0,
+     successStreak:st.streak||0,
+     firstLearning:st.seen===0
+   });
+ }
+ return plans;
+}
+async function fetchValidatedQuestions(plans){
+ const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
+ if(!token)throw new Error('로그인이 필요합니다.');
+ const body={
+   items:plans.map(p=>({
+     id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,domain:apiDomain(p.w.cat),
+     example:p.w.example||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
+     successStreak:p.successStreak,firstLearning:p.firstLearning
+   })),
+   recent:(child().recentProblems||[]).slice(-40)
+ };
+ const r=await fetch('/api/questions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
+ if(!r.ok){
+   const j=await r.json().catch(()=>({}));
+   throw new Error(j.error||'문제 검증에 실패했습니다.');
+ }
+ const j=await r.json();
+ if(!j.validated||!Array.isArray(j.questions)||j.questions.length!==plans.length)throw new Error('검증된 문제 수가 맞지 않습니다.');
+ const planMap=new Map(plans.map(p=>[p.id,p]));
+ return j.questions.map(q=>{
+   const p=planMap.get(String(q.id)); if(!p)throw new Error('문제 연결 오류');
+   return {
+     w:p.w,type:q.type,label:TYPE_LABELS[q.type]||'문맥',q:q.prompt,ctx:q.context||'',
+     showTarget:!!q.showTarget,open:q.type.startsWith('subjective_'),hideWord:!q.showTarget,
+     opts:(q.options||[]).map(o=>({t:o.text,ok:!!o.correct,reason:o.reason||''})),
+     acceptedAnswers:q.acceptedAnswers||[],hints:q.hints||[],feedbackCorrect:q.feedbackCorrect||'',
+     signature:q.signature||'',validation:q.validation||null
+   };
+ });
+}
+function renderIntro(){
+ const list=session?.intros||[];
+ if(introIndex>=list.length){show('learn');renderQuestion();return}
+ const w=list[introIndex],st=wordState(w.w);
+ if(!st.introducedAt)st.introducedAt=today();
+ $('introCounter').textContent=(introIndex+1)+' / '+list.length;
+ $('introWord').textContent=w.w;
+ $('introDefinition').textContent=w.d;
+ $('introExample').textContent=w.example||('“'+w.w+'”이 실제 문장에서 어떻게 쓰이는지 다음 문제에서 확인해 봅니다.');
+ $('introNext').textContent=introIndex===list.length-1?'문제 시작':'다음 단어';
+ localSave();
+}
+function nextIntro(){introIndex++;renderIntro()}
+
 async function buildSession(mode='daily'){
  const c=child();
- if(mode==='level') await ensureCatalog(c.difficulty,'diagnostic'); else await ensureCatalog(c.difficulty,'daily');
- let pool=[];
- if(mode==='level'){
-   const unseen=WORDS.filter(w=>!(c.words[w.w]?.seen));
-   const byBand={1:[],2:[],3:[],4:[],5:[],6:[],7:[],8:[],9:[]};
-   for(const w of unseen) (byBand[w.band||3]||(byBand[w.band||3]=[])).push(w);
-   for(let b=1;b<=9;b++) byBand[b].sort(()=>Math.random()-.5);
-   const mixed=[]; for(let round=0;round<5;round++)for(let b=1;b<=9;b++)if(byBand[b][round])mixed.push(byBand[b][round]);
-   pool=mixed.slice(0,30);
- } else if(mode==='review'){
-   pool=chooseReview(20); if(pool.length<12)pool=[...pool,...chooseNew(20-pool.length)];
- } else {
-   pool=[...chooseNew(5),...chooseReview(15)];
+ $('cloudPill').textContent='문제 준비 중';
+ try{
+   if(mode==='level')await ensureCatalog(c.difficulty,'diagnostic'); else await ensureCatalog(c.difficulty,'daily');
+   let newWords=[],reviewWords=[];
+   if(mode==='level'){
+     const candidates=WORDS.filter(w=>!(c.words[w.w]?.seen)).sort(()=>Math.random()-.5);
+     reviewWords=candidates.slice(0,30);
+   }else if(mode==='review'){
+     reviewWords=chooseReview(20);
+     if(!reviewWords.length)return alert('아직 복습할 기록이 충분하지 않아요. 오늘의 학습을 먼저 진행해 주세요.');
+   }else{
+     newWords=chooseNew(5);
+     reviewWords=chooseReview(15);
+   }
+   const allBase=[...newWords,...reviewWords];
+   if(!allBase.length)throw new Error('출제할 어휘를 준비하지 못했습니다.');
+   const plans=makeQuestionPlan(newWords,reviewWords,30,mode);
+   const queue=await fetchValidatedQuestions(plans);
+   session={
+     mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9),
+     intros:mode==='daily'?newWords:[],newWords:newWords.map(w=>w.w),validated:true
+   };
+   current=0;introIndex=0;hintLevel=0;
+   if(session.intros.length){show('intro');renderIntro()}else{show('learn');renderQuestion()}
+ }catch(e){
+   alert('문제 생성·검증을 완료하지 못했어요. 검증되지 않은 문제는 출제하지 않습니다.\n'+String(e?.message||e));
+   show('home');
+ }finally{
+   $('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');
  }
- if(pool.length<20) pool=[...pool,...WORDS.filter(w=>!pool.some(x=>x.w===w.w)).sort((a,b)=>Math.abs((a.band||3)-c.difficulty)-Math.abs((b.band||3)-c.difficulty)).slice(0,30-pool.length)];
- const optionState={usedTexts:new Set(),reservedWords:new Set(pool.map(w=>w.w))};
- const subjectiveWords=pool.filter((_,i)=>i%2===1);
- const ctxMap=await fetchClozeContexts(subjectiveWords);
- let subjectIndex=0;
- const queue=pool.map((w,i)=>{
-   const ctx=i%2===1?(ctxMap.get(subjectIndex++)||''):'';
-   return makeQuestion(w,i,optionState,ctx);
- });
- session={mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9)};
- current=0; show('learn'); renderQuestion();
 }
 function renderQuestion(){
  if(current>=session.queue.length||current>=session.target){finishSession();return}
- const q=session.queue[current]; selectedOption=null; answerSource='typed';
+ const q=session.queue[current]; selectedOption=null; answerSource='typed';hintLevel=0;
  $('learnType').textContent=session.mode==='level'?'레벨 확인':session.mode==='review'?'집중 복습':'오늘의 학습';
  $('counter').textContent=(current+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
- $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1); $('qWord').textContent=q.hideWord?'빈칸 어휘':q.w.w; $('qWord').classList.toggle('hidden',!!q.hideWord); $('qText').textContent=q.q;
+ $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1);
+ $('qWord').textContent=q.showTarget?q.w.w:'';
+ $('qWord').classList.toggle('hidden',!q.showTarget);
+ $('qText').textContent=q.q;
  $('qContext').classList.toggle('hidden',!q.ctx); $('qContext').textContent=q.ctx||'';
- $('feedback').className='feedback hidden'; $('next').classList.add('hidden'); $('answer').value='';
- $('options').innerHTML=''; $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open); $('answer').placeholder=q.type==='cloze'?'빈칸에 들어갈 어휘를 써 보세요.':'답을 입력해 보세요.';
- if(q.opts) q.opts.forEach((o,i)=>{const b=document.createElement('button');b.className='option';b.textContent=o.t;b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};$('options').appendChild(b)});
+ $('feedback').className='feedback hidden'; $('hintBox').className='feedback hidden'; $('hintBox').textContent='';
+ $('next').classList.add('hidden'); $('answer').value='';
+ $('options').innerHTML='';
+ $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
+ $('answer').placeholder=q.type==='subjective_dialogue'?'대화에 어울리는 어휘를 써 보세요.':'빈칸에 들어갈 어휘를 써 보세요.';
+ $('hint').classList.remove('hidden'); $('hint').textContent='힌트';
+ if(q.opts?.length)q.opts.forEach((o,i)=>{
+   const b=document.createElement('button');b.className='option';b.textContent=o.t;
+   b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};
+   $('options').appendChild(b);
+ });
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
 function applyResult(q,result,feedback,normalized=''){
