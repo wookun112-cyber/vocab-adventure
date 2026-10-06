@@ -203,7 +203,7 @@ function distractors(target,usedTexts=new Set(),reservedWords=new Set()){
  if(pair&&eligible.some(x=>x.w===pair.w)&&Math.random()<.55)add(pair);
  add(takeRandom(closeSame.filter(x=>!chosenWords.has(x.w))));
  add(takeRandom(closeOther.filter(x=>!chosenWords.has(x.w))));
- while(chosen.length<3){
+ while(chosen.length<4){
    const pool=(nearby.length?nearby:eligible)
      .filter(x=>!chosenWords.has(x.w))
      .map(x=>({x,score:(chosenCats.has(x.cat||'')?2:0)+Math.random()*5}))
@@ -213,57 +213,46 @@ function distractors(target,usedTexts=new Set(),reservedWords=new Set()){
  }
  if(chosen.length<3){
    for(const x of eligible.sort(()=>Math.random()-.5)){
-     add(x);if(chosen.length>=3)break;
+     add(x);if(chosen.length>=4)break;
    }
  }
- return chosen.slice(0,3);
+ return chosen.slice(0,4);
 }
 function clozeFromExample(w){
  const ex=String(w.example||'').trim();
  if(ex&&ex.includes(w.w)) return ex.replaceAll(w.w,'＿＿＿＿');
  return '';
 }
-function makeQuestion(w,i,optionState=null){
- const band=w.band||3;
- const cloze=clozeFromExample(w);
- const canOpen=Boolean(cloze);
- const types=band>=4?['meaning','cloze','distinguish','cloze','meaning','cloze']:['meaning','cloze','distinguish','cloze','meaning'];
- let type=types[i%types.length];
- if(w.pair&&i%3===2) type='distinguish';
- if(type==='meaning'){
-   const used=optionState?.usedTexts||new Set(),reserved=optionState?.reservedWords||new Set();
-   const ds=distractors(w,used,reserved),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
-   if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
-   return {w,type,label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
- }
- if(type==='distinguish'&&w.pair){
-   const p=byWord(w.pair);
-   if(p){
-     const raw=[{t:w.w+' — '+w.d,ok:true},{t:p.w+' — '+w.d,ok:false},{t:w.w+' — '+p.d,ok:false},{t:p.w+' — '+p.d,ok:false}];
-     const repeats=optionState&&raw.some(o=>optionState.usedTexts.has(o.t));
-     if(!repeats){
-       const opts=raw.sort(()=>Math.random()-.5);
-       if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
-       return {w,type,label:'유사어 구별',q:'“'+w.w+'”과 “'+p.w+'”을 구별했을 때 옳은 설명을 고르세요.',opts};
-     }
-   }
-   if(canOpen){
+async function fetchClozeContexts(words){
+ const map=new Map();
+ if(!authUser||!words.length)return map;
+ try{
+   const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
+   if(!token)return map;
+   const items=words.map((w,i)=>({id:String(i),word:w.w,definition:w.d,example:w.example||'',band:w.band||3,domain:w.cat||'국어'}));
+   const r=await fetch('/api/cloze-contexts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({items})});
+   if(!r.ok)return map;
+   const j=await r.json();
+   for(const x of j.items||[])map.set(Number(x.id),String(x.passage||''));
+ }catch{}
+ return map;
+}
+function makeQuestion(w,i,optionState=null,clozePassage=''){
+ const subjective=i%2===1;
+ if(subjective){
+   const fallback=clozeFromExample(w);
+   const ctx=clozePassage||fallback;
+   if(ctx){
      return {
        w,type:'cloze',label:'문맥 빈칸',
-       q:'다음 문맥의 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
-       ctx:cloze,open:true,hideWord:true,expectedAnswer:w.w
+       q:'다음 지문을 읽고 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
+       ctx,open:true,hideWord:true,expectedAnswer:w.w
      };
    }
  }
- if(canOpen){
-   return {
-     w,type:'cloze',label:'문맥 빈칸',
-     q:'다음 문맥의 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
-     ctx:cloze,open:true,hideWord:true,expectedAnswer:w.w
-   };
- }
  const used=optionState?.usedTexts||new Set(),reserved=optionState?.reservedWords||new Set();
- const ds=distractors(w,used,reserved),opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
+ const ds=distractors(w,used,reserved);
+ const opts=[{t:w.d,ok:true},...ds.map(x=>({t:x.d,ok:false}))].sort(()=>Math.random()-.5);
  if(optionState)for(const o of opts)optionState.usedTexts.add(o.t);
  return {w,type:'meaning',label:'뜻 이해',q:'다음 중 “'+w.w+'”의 뜻으로 가장 알맞은 것은?',opts};
 }
@@ -285,7 +274,13 @@ async function buildSession(mode='daily'){
  }
  if(pool.length<20) pool=[...pool,...WORDS.filter(w=>!pool.some(x=>x.w===w.w)).sort((a,b)=>Math.abs((a.band||3)-c.difficulty)-Math.abs((b.band||3)-c.difficulty)).slice(0,30-pool.length)];
  const optionState={usedTexts:new Set(),reservedWords:new Set(pool.map(w=>w.w))};
- const queue=pool.map((w,i)=>makeQuestion(w,i,optionState));
+ const subjectiveWords=pool.filter((_,i)=>i%2===1);
+ const ctxMap=await fetchClozeContexts(subjectiveWords);
+ let subjectIndex=0;
+ const queue=pool.map((w,i)=>{
+   const ctx=i%2===1?(ctxMap.get(subjectIndex++)||''):'';
+   return makeQuestion(w,i,optionState,ctx);
+ });
  session={mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9)};
  current=0; show('learn'); renderQuestion();
 }
@@ -300,29 +295,30 @@ function renderQuestion(){
  $('options').innerHTML=''; $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open); $('answer').placeholder=q.type==='cloze'?'빈칸에 들어갈 어휘를 써 보세요.':'답을 입력해 보세요.';
  if(q.opts) q.opts.forEach((o,i)=>{const b=document.createElement('button');b.className='option';b.textContent=o.t;b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};$('options').appendChild(b)});
 }
+function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
 function applyResult(q,result,feedback,normalized=''){
  const s=wordState(q.w.w),good=result==='◎'||result==='○'; s.seen++; s.last=result; s.types[q.type]=(s.types[q.type]||0)+1;
  if(good){s.correct++;s.streak++;if(!s.days.includes(today()))s.days.push(today())}else if(result==='△'){s.assisted++;s.streak=0}else{s.wrong++;s.streak=0}
  s.level=clamp(1+Math.floor(s.correct/2)-Math.floor(s.wrong/2),1,5);
  s.mastered=s.streak>=5&&s.days.length>=3&&s.level>=4;
  if(q.w.pair&&!good&&!s.confusions.includes(q.w.pair))s.confusions.push(q.w.pair);
- session.results.push({word:q.w.w,result,type:q.type,band:q.w.band||3});
- const recent=session.results.slice(-6),bad=recent.filter(x=>!['◎','○'].includes(x.result)).length;
+ session.results.push({word:q.w.w,result,credit:resultCredit(result),type:q.type,band:q.w.band||3});
+ const recent=session.results.slice(-6),bad=recent.filter(x=>(x.credit??resultCredit(x.result))<.75).length;
  if(session.mode==='level'){
    const answered=session.results.length;
    if(answered%4===0){
-     const block=session.results.slice(-4),g=block.filter(x=>['◎','○'].includes(x.result)).length;
-     if(g>=3)session.ability=clamp(session.ability+.5,1,9); else if(g<=1)session.ability=clamp(session.ability-.5,1,9);
+     const block=session.results.slice(-4),g=block.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0);
+     if(g>=3)session.ability=clamp(session.ability+.5,1,9); else if(g<=1.5)session.ability=clamp(session.ability-.5,1,9);
      const used=session.queue.slice(0,current+1),rest=session.queue.slice(current+1).sort((a,b)=>Math.abs((a.w.band||3)-session.ability)-Math.abs((b.w.band||3)-session.ability));
      session.queue=[...used,...rest];
    }
    if(answered===20){
-     const ratio=session.results.filter(x=>['◎','○'].includes(x.result)).length/20;
-     const last4=session.results.slice(-4).filter(x=>['◎','○'].includes(x.result)).length;
-     if((ratio>=.4&&ratio<=.8)||last4===2)session.target=Math.min(25,session.queue.length);
+     const ratio=session.results.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/20;
+     const last4=session.results.slice(-4).reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0);
+     if((ratio>=.4&&ratio<=.8)||(last4>=1.5&&last4<=2.5))session.target=Math.min(25,session.queue.length);
    }else if(answered===25&&session.target===25){
-     const last5=session.results.slice(-5).filter(x=>['◎','○'].includes(x.result)).length;
-     if(last5>=2&&last5<=3)session.target=Math.min(30,session.queue.length);
+     const last5=session.results.slice(-5).reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0);
+     if(last5>=2&&last5<=3.5)session.target=Math.min(30,session.queue.length);
    }
  }else{
    if(recent.length>=5){if(bad>=3)child().difficulty=clamp(child().difficulty-.3,1,9);else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,9)}
@@ -346,8 +342,25 @@ async function gradeCurrent(dontKnow){
  if(q.type==='cloze'){
    const normalized=answer.replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
    const expected=String(q.expectedAnswer||q.w.w).replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
-   const ok=normalized===expected;
-   applyResult(q,ok?'◎':'×',ok?'문맥에 맞는 어휘를 정확히 넣었어요.':'정답은 “'+q.w.w+'”입니다. 문맥에서 어떻게 쓰였는지 다시 확인해 보세요.',answer);
+   if(normalized===expected){
+     applyResult(q,'◎','문맥에 맞는 어휘를 정확히 넣었어요.',answer);
+     return;
+   }
+   $('submit').disabled=true;$('submit').textContent='의미 확인 중…';
+   try{
+     const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
+     const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({
+       taskType:'cloze_synonym',question:q.q+'\n지문: '+q.ctx,targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,answer,source:answerSource
+     })});
+     if(r.ok){
+       const j=await r.json();
+       const result=j.result==='◎'||j.result==='○'?'△':(j.result==='△'?'△':'×');
+       const feedback=result==='△'?'정답과 뜻이 비슷한 말이라 부분점수를 줬어요. 정확한 목표 어휘는 “'+q.w.w+'”입니다.':'정답은 “'+q.w.w+'”입니다. 지문의 단서를 다시 살펴보세요.';
+       applyResult(q,result,feedback,j.normalizedAnswer||answer);
+     }else applyResult(q,'×','정답은 “'+q.w.w+'”입니다. 지문의 단서를 다시 살펴보세요.',answer);
+   }catch{
+     applyResult(q,'×','정답은 “'+q.w.w+'”입니다. 지문의 단서를 다시 살펴보세요.',answer);
+   }finally{$('submit').disabled=false;$('submit').textContent='채점하기'}
    return;
  }
  $('submit').disabled=true;$('submit').textContent='AI 채점 중…';
@@ -365,15 +378,15 @@ function fallbackOpen(q,answer){
 }
 function nextQuestion(){current++;renderQuestion()}
 function finishSession(){
- const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round((good+ind*.25)/Math.max(1,total)*100);
+ const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);
  if(session.mode!=='level'){
    if(c.lastDate!==today()){c.learningDays++;c.lastDate=today()}
    c.sessions.unshift({date:today(),score,total,good,wrong,difficulty:c.difficulty});
    c.sessions=c.sessions.slice(0,60);
  }else{
-   const weighted=r.reduce((sum,x)=>sum+((['◎','○'].includes(x.result)?1:0)*(x.band||3)),0);
-   const goodN=Math.max(1,good);
-   const evidence=good?weighted/goodN:1;
+   const weighted=r.reduce((sum,x)=>sum+((x.credit??resultCredit(x.result))*(x.band||3)),0);
+   const creditTotal=Math.max(.5,r.reduce((sum,x)=>sum+(x.credit??resultCredit(x.result)),0));
+   const evidence=weighted/creditTotal;
    c.difficulty=clamp((session.ability*0.65+evidence*0.35),1,9);
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
