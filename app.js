@@ -203,7 +203,12 @@ function makeQuestion(w,i){
      const opts=[{t:w.w+' — '+w.d,ok:true},{t:p.w+' — '+w.d,ok:false},{t:w.w+' — '+p.d,ok:false},{t:p.w+' — '+p.d,ok:false}].sort(()=>Math.random()-.5);
      return {w,type,label:'유사어 구별',q:'“'+w.w+'”과 “'+p.w+'”을 구별했을 때 옳은 설명을 고르세요.',opts};
    }
-   if(w.contrast)return {w,type:'distinguish',label:'유사어 구별',q:'“'+w.w+'”과 “'+w.pair+'”의 차이를 설명해 보세요.',ctx:w.contrast,open:true};
+   return {
+     w,type:'distinguish',label:'유사어 구별',
+     q:'“'+w.w+'”과 “'+w.pair+'”의 차이를 설명해 보세요.',
+     open:true,
+     gradingContext:w.contrast||''
+   };
  }
  if(type==='sentence') return {w,type,label:'문장 활용',q:'“'+w.w+'”을 넣어 뜻이 분명하게 드러나는 문장 하나를 만들어 보세요.',open:true};
  return {w,type:'explain',label:'자기 말 설명',q:'“'+w.w+'”이 무슨 뜻인지 친구에게 설명하듯 자기 말로 써 보세요.',open:true};
@@ -285,7 +290,7 @@ async function gradeCurrent(dontKnow){
  $('submit').disabled=true;$('submit').textContent='AI 채점 중…';
  try{
    const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
-   const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({question:q.q+(q.ctx?'\n상황: '+q.ctx:''),targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,answer,source:answerSource})});
+   const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({question:q.q+(q.ctx?'\n상황: '+q.ctx:''),targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,gradingContext:q.gradingContext||'',answer,source:answerSource})});
    if(r.ok){const j=await r.json();applyResult(q,j.result||'△',j.feedback||'답을 확인했어요.',j.normalizedAnswer||answer)}
    else{fallbackOpen(q,answer)}
  }catch{fallbackOpen(q,answer)}
