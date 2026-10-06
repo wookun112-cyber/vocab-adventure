@@ -153,6 +153,8 @@ async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, 5개 보기 품사/형태 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
+    '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
+    '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
     '목표/정의/유형: '+JSON.stringify(items),
     '최근 서명: '+JSON.stringify(recent||[]),
@@ -183,7 +185,11 @@ export async function buildValidated(items,recent){
       const d=deterministicIssues[item.id]||[];
       const rv=reviewMap.get(item.id);
       const aiIssues=rv?rv.issues:[];
-      const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&rv.oneClearAnswer&&rv.samePartOfSpeechChoices&&rv.naturalKorean&&rv.ageAppropriate&&rv.noBackgroundBurden&&rv.noAnswerLeak&&rv.naturalAlternativesConsidered&&rv.notTooSimilarToRecent;
+      const objective=item.type.startsWith('mc_');
+      const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&
+        (!objective||rv.oneClearAnswer)&&(!objective||rv.samePartOfSpeechChoices)&&
+        rv.naturalKorean&&rv.ageAppropriate&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
+        (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent;
       if(pass){
         q.validation={deterministic:true,aiVerified:true,checks:{
           sufficientClues:rv.sufficientClues,oneClearAnswer:rv.oneClearAnswer,samePartOfSpeechChoices:rv.samePartOfSpeechChoices,
