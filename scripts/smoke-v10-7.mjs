@@ -1,3 +1,13 @@
+const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
+const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
+const STORE_TOKEN='v107-smoke-store-6n2PxQ';
+async function store(result){
+ const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/tmp_store_smoke_v107',{
+   method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({p_token:STORE_TOKEN,p_result:result})
+ });
+ if(!r.ok)throw new Error('store failed '+r.status+' '+await r.text());
+}
 import {buildValidated} from '../api/questions.js';
 import {runGrade} from '../api/grade.js';
 
@@ -10,6 +20,7 @@ const items=[
   {id:'q4',type:'subjective_dialogue',word:'변화',definition:'이전과 달라짐',band:3,domain:'생활',example:'계절이 바뀌면서 날씨에도 변화가 생겼다.',answerSlot:0,supportLevel:0,successStreak:3,firstLearning:false}
 ];
 
+try{
 const qs=await buildValidated(items,['학교 급식 메뉴를 조사한 상황|보기A§보기B§보기C§보기D§보기E']);
 console.log('SMOKE_QUESTIONS_BEGIN');
 for(const q of qs){
@@ -37,4 +48,17 @@ for(const answer of ['원인','이유','결과']){
   const g=await runGrade({...base,answer});
   console.log('GRADE_CASE '+JSON.stringify({answer,result:g.result,score:g.score,contextSuccess:g.contextSuccess,targetRecall:g.targetRecall,feedback:g.feedback}));
 }
+const payload={
+  ok:true,
+  questions:qs.map(q=>({
+    id:q.id,type:q.type,prompt:q.prompt,context:q.context,showTarget:q.showTarget,
+    options:q.options,acceptedAnswers:q.acceptedAnswers,hints:q.hints,signature:q.signature,validation:q.validation
+  })),
+  grades
+};
+await store(payload);
 console.log('SMOKE_DONE');
+}catch(e){
+  await store({ok:false,error:String(e?.stack||e)});
+  throw e;
+}
