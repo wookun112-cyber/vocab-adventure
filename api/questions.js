@@ -168,7 +168,7 @@ function generationPrompt(items,recent,feedback={}){
   ].join('\n');
 }
 async function generate(items,recent,feedback){
-  const out=await ask(generationPrompt(items,recent,feedback),questionSchema(items),'validated_vocab_questions');
+  const out=await ask(generationPrompt(items,recent,feedback),questionSchema(items),'validated_vocab_questions',15000);
   return out.questions||[];
 }
 function alternativeSchema(items){
@@ -197,7 +197,7 @@ async function reviewAlternatives(pairs){
     '복수의 자연스러운 정답이 있다면 모두 포함하세요. 자연스러운 대체어가 없으면 목표 단어만 반환하세요.',
     '대상: '+JSON.stringify(items)
   ].join('\n');
-  const out=await ask(prompt,alternativeSchema(items),'subjective_answer_review',5000);
+  const out=await ask(prompt,alternativeSchema(items),'subjective_answer_review',7500);
   const map=new Map();
   for(const row of out.answers||[]){
     const src=items.find(x=>x.id===String(row.id));if(!src)continue;
@@ -223,7 +223,7 @@ async function aiVerify(items,questions,recent){
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions)
   ].join('\n');
-  const out=await ask(prompt,verifySchema(items),'vocab_question_review',6500);
+  const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);
   return out.reviews||[];
 }
 export async function buildValidated(items,recent){
@@ -301,8 +301,8 @@ export default async function handler(req,res){
     })).filter(x=>x.word&&x.definition);
     if(!items.length)return res.status(400).json({error:'No valid items'});
     const questions=[];
-    for(let i=0;i<items.length;i+=10){
-      const chunk=items.slice(i,i+10);
+    for(let i=0;i<items.length;i+=20){
+      const chunk=items.slice(i,i+20);
       const out=await buildValidated(chunk,[...recent,...questions.map(q=>q.signature)]);
       questions.push(...out);
     }
