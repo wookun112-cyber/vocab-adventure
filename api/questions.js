@@ -32,6 +32,28 @@ const sentenceCount=s=>(String(s||'').match(/[.!?]/g)||[]).length;
 const blankCount=s=>(String(s||'').match(/＿＿＿＿/g)||[]).length;
 const hasCompare=s=>/(차이|비교|구별|둘 중|두 단어|와\s*“?.+”?\s*(?:의)?\s*차이)/.test(String(s||''));
 const hasDefinePrompt=s=>/(뜻을\s*(?:설명|써|말)|정의(?:를)?\s*(?:설명|써|말)|무슨 뜻인지 설명)/.test(String(s||''));
+function normalizeCandidate(q,item){
+  q={...q};
+  if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)){
+    let c=String(q.context||'');
+    c=c.replace(/＿{2,}|_{3,}|□{2,}|○{2,}|\[\s*빈칸\s*\]|\(\s*빈칸\s*\)|<\s*빈칸\s*>/g,'＿＿＿＿');
+    if(blankCount(c)===0&&c.includes(item.word))c=c.replace(item.word,'＿＿＿＿');
+    q.context=c;
+  }
+  if(item.type==='mc_usage')q.context=String(q.context||'').replace(/＿{2,}|_{3,}/g,'');
+  q.showTarget=item.type==='mc_usage';
+  if(item.type.startsWith('mc_')&&Array.isArray(q.options)){
+    const opts=q.options.map(x=>({...x}));
+    const idx=opts.findIndex(x=>x.correct);
+    if(idx>=0&&opts.filter(x=>x.correct).length===1&&idx!==item.answerSlot){
+      const [correct]=opts.splice(idx,1);
+      opts.splice(item.answerSlot,0,correct);
+      q.options=opts;
+    }
+  }else if(!item.type.startsWith('mc_'))q.options=[];
+  return q;
+}
+
 
 function deterministic(q,item){
   const issues=[];
@@ -172,8 +194,9 @@ export async function buildValidated(items,recent){
     const deterministicIssues={};
     const toVerify=[];
     for(const item of batch){
-      const q=byId.get(item.id);
+      let q=byId.get(item.id);
       if(!q){deterministicIssues[item.id]=['missing_generated_question'];continue}
+      q=normalizeCandidate(q,item);byId.set(item.id,q);
       const issues=deterministic(q,item);
       if(issues.length)deterministicIssues[item.id]=issues;
       else toVerify.push({item,q});
