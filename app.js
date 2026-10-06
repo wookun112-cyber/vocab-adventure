@@ -45,7 +45,7 @@ let WORDS=[...SEED_WORDS];
 const byWord=w=>WORDS.find(x=>x.w===w);
 const freshWord=()=>({seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[]});
 const freshChild=name=>({name,difficulty:2,confidence:0,learningDays:0,sessions:[],words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),lastDate:null,levelTestCompleted:false});
-const initial=()=>({v:3,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성')},updatedAt:Date.now()});
+const initial=()=>({v:4,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성'),guest:freshChild('게스트')},updatedAt:Date.now()});
 let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null;
 
 function child(){return state.users[state.selected]}
@@ -61,7 +61,7 @@ function rebuildCatalog(){
  WORDS=[...SEED_WORDS];
  const seen=new Set(WORDS.map(x=>x.w));
  for(const x of Object.values(state.catalog||{})){
-   const studied=Boolean(state.users?.ayoung?.words?.[x?.w]?.seen||state.users?.inseong?.words?.[x?.w]?.seen);
+   const studied=Object.values(state.users||{}).some(u=>(u?.words?.[x?.w]?.seen||0)>0);
    if(!studied||!x?.w||seen.has(x.w))continue;
    seen.add(x.w);
    WORDS.push({...x,band:clamp(Number(x.band)||3,1,9)});
@@ -75,9 +75,9 @@ function rebuildCatalog(){
 function mergeState(raw){
  const base=initial(); const src=raw&&typeof raw==='object'?raw:{};
  base.catalog=src.catalog&&typeof src.catalog==='object'?src.catalog:{};
- base.selected=src.selected==='inseong'?'inseong':'ayoung';
+ base.selected=['ayoung','inseong','guest'].includes(src.selected)?src.selected:'ayoung';
  base.updatedAt=src.updatedAt||Date.now();
- for(const id of ['ayoung','inseong']){
+ for(const id of ['ayoung','inseong','guest']){
    const childSrc=src.users?.[id]||{},dst=base.users[id];
    Object.assign(dst,childSrc);
    dst.words={...dst.words,...(childSrc.words||{})};
@@ -310,13 +310,15 @@ function finishSession(){
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
  }
- cloudSave(); renderAll(); show('report');
+ cloudSave(); renderAll(); show(state.selected==='guest'?'home':'report');
  alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
  if(session.mode!=='level')setTimeout(()=>ensureCatalog(c.difficulty,'daily'),400);
 }
 function renderAll(){
- const c=child(); document.querySelectorAll('.profile').forEach(x=>x.classList.toggle('active',x.dataset.profile===state.selected));
- $('ayoungLevel').textContent='현재 단계 '+bandLabel(state.users.ayoung.difficulty)+' · '+state.users.ayoung.difficulty.toFixed(1); $('inseongLevel').textContent='현재 단계 '+bandLabel(state.users.inseong.difficulty)+' · '+state.users.inseong.difficulty.toFixed(1);
+ const c=child(); document.querySelectorAll('[data-profile]').forEach(x=>x.classList.toggle('active',x.dataset.profile===state.selected));
+ $('ayoungLevel').textContent='현재 단계 '+bandLabel(state.users.ayoung.difficulty)+' · '+state.users.ayoung.difficulty.toFixed(1);
+ $('inseongLevel').textContent='현재 단계 '+bandLabel(state.users.inseong.difficulty)+' · '+state.users.inseong.difficulty.toFixed(1);
+ $('guestLevel').textContent='현재 단계 '+bandLabel(state.users.guest.difficulty)+' · '+state.users.guest.difficulty.toFixed(1);
  $('hello').textContent=c.name+'의 오늘 탐험'; $('subtitle').textContent=c.name+' · '+bandLabel(c.difficulty)+' 단계';
  $('statScore').textContent=c.sessions[0]?.score??'-'; $('statWords').textContent=Object.values(c.words).filter(x=>x.seen>0).length; $('statMaster').textContent=Object.values(c.words).filter(x=>x.mastered).length; $('statDay').textContent=Math.max(1,c.learningDays);
  renderWordbook();renderReport();
@@ -326,12 +328,12 @@ function renderWordbook(){
  $('wordList').innerHTML=arr.length?arr.map(w=>{const s=c.words[w.w];return '<div class="item row between"><div><strong>'+w.w+'</strong><br><small>'+w.d+'</small><br><small>정답 '+s.correct+' · 오답 '+s.wrong+' · '+s.days.length+'일 학습</small></div><span class="tag">Lv.'+s.level+(s.mastered?' 숙달':'')+'</span></div>'}).join(''):'<div class="card muted">아직 학습 기록이 없어요.</div>';
 }
 function renderReport(){
- const reportId=reportProfile||state.selected; const c=state.users[reportId],studied=WORDS.filter(w=>(c.words[w.w]?.seen||0)>0),weak=[...studied].sort((a,b)=>(c.words[b.w]?.wrong||0)-(c.words[a.w]?.wrong||0)).slice(0,5),conf=[...new Set(weak.flatMap(w=>c.words[w.w]?.confusions||[]))].slice(0,4);
+ const reportId=['ayoung','inseong'].includes(reportProfile)?reportProfile:(['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung'); reportProfile=reportId; const c=state.users[reportId],studied=WORDS.filter(w=>(c.words[w.w]?.seen||0)>0),weak=[...studied].sort((a,b)=>(c.words[b.w]?.wrong||0)-(c.words[a.w]?.wrong||0)).slice(0,5),conf=[...new Set(weak.flatMap(w=>c.words[w.w]?.confusions||[]))].slice(0,4);
  $('reportTitle').textContent=c.name+' 부모 리포트';
  document.querySelectorAll('[data-report-profile]').forEach(b=>b.classList.toggle('active',b.dataset.reportProfile===reportId));
  $('reportBody').innerHTML='<div class="grid4"><div class="stat"><strong>'+(c.sessions[0]?.score??'-')+'</strong><span>최근 점수</span></div><div class="stat"><strong>'+studied.length+'</strong><span>학습 단어</span></div><div class="stat"><strong>'+studied.filter(w=>c.words[w.w]?.mastered).length+'</strong><span>숙달</span></div><div class="stat"><strong>'+c.difficulty.toFixed(1)+'</strong><span>현재 난이도</span></div></div><div class="card"><h3>다음 우선순위</h3><div class="list">'+(weak.length?weak.map(w=>'<div class="item"><strong>'+w.w+'</strong> <small>오답 '+c.words[w.w].wrong+'회 · '+w.d+'</small></div>').join(''):'<span class="muted">학습을 시작하면 자동으로 분석됩니다.</span>')+'</div></div><div class="card"><h3>부모용 한줄 요약</h3><p class="muted">'+(weak.length?'현재 '+weak.map(x=>x.w).join(', ')+'을 우선 복습하면 좋습니다. 현재 학습 단계는 '+bandLabel(c.difficulty)+'입니다.'+(conf.length?' 특히 '+conf.join(', ')+'과의 구별을 다시 확인합니다.':''):'아직 충분한 학습 기록이 없습니다.')+'</p></div>';
 }
-function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook')renderWordbook();if(id==='report'){if(!reportProfile)reportProfile=state.selected;renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
+function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook')renderWordbook();if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
 async function login(){setMsg('로그인 중…');const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)setMsg('로그인 실패: 이메일과 비밀번호를 확인해 주세요.',true)}
 async function signup(){const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<6)return setMsg('이메일과 6자 이상의 비밀번호를 입력해 주세요.',true);setMsg('계정을 만드는 중…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg(data.session?'계정이 만들어졌어요.':'확인 메일을 보냈어요. 메일의 확인 링크를 눌러 주세요.')}
 async function resendConfirm(){const email=$('email').value.trim();if(!email)return setMsg('먼저 이메일을 입력해 주세요.',true);setMsg('확인 메일을 다시 보내는 중…');const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg('새 확인 메일을 보냈어요. 가장 최근 메일의 링크를 눌러 주세요.')}
