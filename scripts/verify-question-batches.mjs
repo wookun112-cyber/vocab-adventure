@@ -124,7 +124,13 @@ back(`flags.acceptedAnswers=[{text:'원인',credit:1,rationale:'목표어'}];ite
 await assert.rejects(back('buildValidated([item],[])'),/previous_sentence_reused/);
 back(`item.previousContexts=[];flags.coherentSituation=false;`);
 await assert.rejects(back('buildValidated([item],[])'),/QUESTION_VALIDATION_FAILED/);
-console.log('Sentence quality verified: actual prior sentences blocked and incoherent situations rejected.');
+assert.equal(back("normalizeCandidate({context:'사진을 비교해 봤어요. 이런 변화을 기록했어요.',options:[]},{word:'변화',type:'subjective_context'}).context"),'사진을 비교해 봤어요. 이런 ＿＿＿＿를 기록했어요.');
+assert.equal(back("expectedParticle('관찰','로')"),'로');
+assert.equal(back("expectedParticle('원인','로')"),'으로');
+assert.equal(back("expectedParticle('근거','으로')"),'로');
+back(`globalThis.obj={...sample,type:'mc_context',context:'비가 내렸어요. 물이 고인 ＿＿＿＿은 많은 비였어요.',options:['원인','결과','이유','순서','경험'].map((text,i)=>({text,correct:i===0}))};`);
+assert.ok(back("deterministic(obj,{word:'원인',type:'mc_context',answerSlot:0}).includes('choice_particle_mismatch')"));
+console.log('Sentence quality verified: prior sentences blocked, incoherent situations rejected, target particles corrected, and grammar clues in choices rejected.');
 
 
 // Feedback comes after the attempt; same-day repeats are practice, not mastery evidence.

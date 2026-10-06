@@ -4,6 +4,15 @@ import {runGrade} from '../api/grade.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const TOKEN='v107-final-verify-Q8m4R2x7';
+const modelCalls=[];
+const originalFetch=globalThis.fetch;
+globalThis.fetch=async(url,options)=>{
+  if(!String(url).startsWith('https://api.openai.com/'))return originalFetch(url,options);
+  const started=performance.now(),body=JSON.parse(options.body);
+  const response=await originalFetch(url,options);
+  modelCalls.push({name:body.text?.format?.name,ms:Math.round(performance.now()-started),status:response.status});
+  return response;
+};
 
 async function store(result){
   const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/tmp_store_v107_verify',{
@@ -77,7 +86,7 @@ try{
   if(!(wrong?.score===0&&wrong?.contextSuccess===false))throw new Error('wrong grading failed '+JSON.stringify(wrong));
 
   await store({
-    ok:true,version:'10.7.3',startedAt,timings:{firstQuestionMs,fourQuestionsMs},
+    ok:true,version:'10.7.4',startedAt,timings:{firstQuestionMs,fourQuestionsMs},modelCalls,
     checks,
     samples:questions.map(q=>({
       id:q.id,type:q.type,prompt:q.prompt,context:q.context,showTarget:q.showTarget,
@@ -89,6 +98,6 @@ try{
   });
   console.log('V10.7 FINAL VERIFY PASSED');
 }catch(e){
-  await store({ok:false,version:'10.7.3',error:String(e?.stack||e)});
+  await store({ok:false,version:'10.7.4',error:String(e?.stack||e)});
   throw e;
 }

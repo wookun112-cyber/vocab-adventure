@@ -32,12 +32,25 @@ const sentenceCount=s=>(String(s||'').match(/[.!?]/g)||[]).length;
 const blankCount=s=>(String(s||'').match(/＿＿＿＿/g)||[]).length;
 const hasCompare=s=>/(?:두|둘|2개(?:의)?)\s*(?:단어|어휘).{0,30}(?:차이|비교|구별)|(?:차이|비교|구별).{0,30}(?:두|둘|2개(?:의)?)\s*(?:단어|어휘)|[“"][^”"]+[”"]\s*(?:와|과|랑|하고)\s*[“"][^”"]+[”"].{0,30}(?:차이|비교|구별)/.test(String(s||''));
 const hasDefinePrompt=s=>/(뜻을\s*(?:설명|써|말)|정의(?:를)?\s*(?:설명|써|말)|무슨 뜻인지 설명)/.test(String(s||''));
+function finalConsonant(word){
+ const last=String(word||'').normalize('NFC').at(-1)?.charCodeAt(0);
+ return last>=0xac00&&last<=0xd7a3?(last-0xac00)%28:null;
+}
+function expectedParticle(word,particle){
+ const end=finalConsonant(word);if(end===null)return particle;
+ for(const [has,none] of [['이','가'],['은','는'],['을','를'],['과','와']])if(particle===has||particle===none)return end?has:none;
+ if(particle==='으로'||particle==='로')return end&&end!==8?'으로':'로';
+ return particle;
+}
+function blankParticle(context){return String(context||'').match(/＿＿＿＿(으로|로|이|가|은|는|을|를|과|와)(?=\s|[,.!?“”"'():;]|$)/)?.[1]||''}
 function normalizeCandidate(q,item){
   q={...q};
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)){
     let c=String(q.context||'');
     c=c.replace(/＿{2,}|_{3,}|□{2,}|○{2,}|\[\s*빈칸\s*\]|\(\s*빈칸\s*\)|<\s*빈칸\s*>/g,'＿＿＿＿');
     if(blankCount(c)===0&&c.includes(item.word))c=c.replace(item.word,'＿＿＿＿');
+    const particle=blankParticle(c);
+    if(particle)c=c.replace('＿＿＿＿'+particle,'＿＿＿＿'+expectedParticle(item.word,particle));
     q.context=c;
   }
   if(item.type==='mc_usage')q.context=String(q.context||'').replace(/＿{2,}|_{3,}/g,'');
@@ -92,6 +105,10 @@ function deterministic(q,item){
     if(new Set((q.options||[]).map(x=>norm(x.text))).size!==5)issues.push('duplicate_choices');
     const idx=(q.options||[]).findIndex(x=>x.correct);
     if(idx!==item.answerSlot)issues.push('wrong_answer_slot');
+    if(item.type==='mc_context'){
+      const particle=blankParticle(q.context);
+      if(particle&&(q.options||[]).some(o=>expectedParticle(o.text,particle)!==particle))issues.push('choice_particle_mismatch');
+    }
     if(item.type==='mc_context'&&!correct.some(x=>norm(x.text)===norm(item.word)))issues.push('target_not_correct_choice');
     if(item.type==='mc_usage'&&hasCompare((q.options||[]).map(x=>x.text).join(' ')))issues.push('usage_choices_compare_words');
   }else{
@@ -171,6 +188,7 @@ function generationPrompt(items,recent,feedback={}){
     '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 목표 어휘를 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. 목표 어휘를 두 번 이상 쓰지 마세요.',
     '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
+    '- 빈칸 다음의 조사(이/가, 은/는, 을/를, 과/와, 으로/로)는 목표어의 받침에 맞아야 합니다. mc_context는 보기 5개를 각각 넣어도 조사가 맞아야 하므로, 가능하면 받침에 무관한 ‘에’, ‘의’ 등의 표현을 쓰고, 받침에 따라 달라지는 조사를 쓴다면 보기의 받침 조건을 모두 맞추세요.',
     '- mc_context 보기 5개는 목표어와 같은 품사의 관련 어휘로 만듭니다. 모든 보기가 문법적으로 빈칸에 들어갈 수 있어야 하고 의미 단서로만 정답이 갈려야 합니다.',
     '- mc_usage는 길이와 문장 형태가 비슷한 자연스러운 상황 5개로 만듭니다. 정답 상황 하나만 목표 어휘의 핵심 의미와 정확히 맞고, 나머지는 관련은 있지만 핵심 행동·의도·결과가 달라야 합니다.',
     '- 오답은 관련성은 있으나 핵심 단서와 맞지 않게 만듭니다. 억지 오답·명백한 품사 불일치 금지입니다.',
@@ -202,6 +220,7 @@ async function aiVerify(items,questions,recent){
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
+    'completedContext와 choiceContexts는 빈칸을 채운 실제 완성 문장입니다. 반드시 이 문장들을 소리 내어 읽듯 검사하세요. 목표어를 넣었을 때 조사·활용·서술어가 틀리면 naturalKorean=false입니다. 객관식은 오답도 문법상 맞아야 하며 문법 오류로 답을 고르게 하면 samePartOfSpeechChoices=false입니다.',
     'coherentSituation은 인물·시간·행동·이유·결과의 앞뒤 연결과 목표어를 넣은 완성 문장의 조사·서술어 호응을 검사합니다. 어색한 번역투, 불필요한 반복, 갑작스러운 결론, 일상적으로 성립하지 않는 상황, 설명문을 옮긴 가짜 대화는 통과시키지 마세요.',
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
@@ -212,7 +231,10 @@ async function aiVerify(items,questions,recent){
     '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
     '목표/정의/유형: '+JSON.stringify(items.map(({usedPassageKeys,...item})=>item)),
     '최근 서명: '+JSON.stringify(recent||[]),
-    '후보 문제: '+JSON.stringify(questions)
+    '후보 문제: '+JSON.stringify(questions.map(q=>{
+      const item=items.find(x=>x.id===q.id);
+      return {...q,completedContext:String(q.context||'').replace('＿＿＿＿',item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>String(q.context||'').replace('＿＿＿＿',o.text)):[]};
+    }))
   ].join('\n');
   const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);
   return out.reviews||[];
