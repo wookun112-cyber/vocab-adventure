@@ -9,9 +9,10 @@ export async function rpc(name,args){
  if(!r.ok)throw Error('Preparation storage '+r.status);
  return r.json();
 }
-const generatePrepared=(items,recent)=>buildValidated(items,recent,{maxAttempts:1,partial:true});
+const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  let payload=job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
+ const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,f.issues]));
  delete payload.preparationError;delete payload.preparationIssues;
  let checkpoint=Promise.resolve(),obsolete=false;
  const save=failed=>{
@@ -35,7 +36,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
     for(let attempt=0;attempt<1&&missing.length;attempt++){
      const known=[...ready];
      const items=generationItems(missing.map(([,p])=>p),job.learner,known);
-     const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40));
+     const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40),feedback);
      if(questions.failed?.length)payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];
      if(obsolete)return;
      const retry=[];

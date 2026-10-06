@@ -65,6 +65,15 @@ await assert.rejects(back('buildValidated([item],[])'),/QUESTION_VALIDATION_FAIL
 back('flags.noAnswerLeak=true;flags.valid=true;flags.issues=[];flags.acceptedAnswers=[{text:"이유",credit:1,rationale:"대체어"}];');
 await assert.rejects(back('buildValidated([item],[])'),/target_missing_from_accepted_answers/);
 console.log('Independent verification: two calls, final alternatives used, leaks and missing target answers rejected.');
+back(`globalThis.prompts=[];ask=async(prompt,schema,name)=>{prompts.push({prompt,name});return name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]}};flags.valid=false;flags.issues=['needs_revision'];`);
+const partial=await back('buildValidated([item],[],{maxAttempts:1,partial:true,initialFeedback:{1:["fix_previous_grammar"]}})');
+assert.equal(partial.length,0);
+assert.equal(partial.failed[0].id,'1');
+assert.ok(back('prompts[0].prompt.includes("fix_previous_grammar")'));
+await back(`aiVerify([{...item,type:'mc_usage'}],[{...sample,type:'mc_usage',context:'',options:[{text:'비가 운동장에 물이 고이게 했어요.',correct:true}]}],[])`);
+assert.ok(back('prompts.at(-1).prompt.includes(\'"completedContext":"비가 운동장에 물이 고이게 했어요."\')'));
+back('flags.valid=true;flags.issues=[]');
+console.log('Background review verified: rejected items retain revision feedback; usage questions review the actual correct situation.');
 // Sentence fingerprints survive punctuation changes; guidance text may repeat.
 const memoryKeys=run("passageKeys('밤새 많은 비가 내렸어요. 운동장 곳곳에 물이 고였어요.',[])");
 const apiKeys=back("passageKeys('밤새 많은 비가 내렸어요. 운동장 곳곳에 물이 고였어요.',[])");

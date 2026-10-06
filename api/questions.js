@@ -197,6 +197,7 @@ function generationPrompt(items,recent,feedback={}){
     '- 정답을 억지로 넣기 위해 같은 설명을 반복하거나 \"이것은 X이다\"라는 정의 문장을 덧붙이지 마세요. 단서가 사건 속에서 드러나는 간결하고 완결된 문장으로 씁니다.',
     '- 대화는 실제 아이들이 말할 법한 짧은 발화로 작성하고, 앞사람의 말에 자연스럽게 응답하세요. 설명문을 따옴표 안에 넣은 가짜 대화는 금지합니다.',
     '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 목표 어휘를 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. 목표 어휘를 두 번 이상 쓰지 마세요.',
+    '- 목표어가 동사·형용사의 기본형이면 철자를 활용형으로 바꾸거나 어간 일부만 빈칸으로 만들지 마세요. 기본형 전체가 자연스럽게 들어가는 관찰 기록이나 실제 활동의 직접 인용을 활용하세요. 예: 관찰표에 ‘하늘이 맑다’라고 적었다. 목표어를 억지로 끼운 문장이나 정의를 묻는 문항은 금지합니다.',
     '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
     '- 빈칸 다음의 조사(이/가, 은/는, 을/를, 과/와, 으로/로)는 목표어의 받침에 맞아야 합니다. mc_context는 보기 5개를 각각 넣어도 조사가 맞아야 하므로, 가능하면 받침에 무관한 ‘에’, ‘의’ 등의 표현을 쓰고, 받침에 따라 달라지는 조사를 쓴다면 보기의 받침 조건을 모두 맞추세요. 보기에 받침이 섞이면 빈칸 다음에 ‘(이/가)’, ‘(을/를)’처럼 두 조사를 병기할 수 있습니다.',
@@ -232,6 +233,7 @@ async function aiVerify(items,questions,recent){
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     'completedContext는 목표 정답을 넣은 실제 완성 문장입니다. 이 문장은 문법과 의미가 모두 자연스러워야 합니다. 목표어를 넣었을 때 조사·활용·서술어가 틀리면 naturalKorean=false입니다.',
+    'mc_usage의 completedContext는 정답 상황 보기입니다. 이 유형은 빈칸이나 목표어를 삽입하는 문장이 없는 것이 정상입니다. 정답 상황 보기의 자연스러움과 목표어의 의미에 맞는 행동을 검사하세요.',
     'choiceContexts의 오답은 형식 문법(품사, 조사, 활용, 문장 구조)만 검사하세요. 오답을 넣어 내용이 틀리거나 뜻이 어색해지고, 어휘의 통상적 의미 결합·연어가 맞지 않는 것은 문맥 어휘 문제의 의도한 오답이므로 허용합니다. 이를 문법 오류나 자연성 오류로 오판하여 valid=false로 하지 마세요. 예: 정답이 ‘영향’인 ‘미치는 빈칸’에 같은 품사의 ‘원인’이 들어가 의미 결합이 틀리는 것은 오답으로 정상입니다. 품사가 다르거나 조사가 틀리는 경우만 samePartOfSpeechChoices=false입니다.',
     'coherentSituation은 인물·시간·행동·이유·결과의 앞뒤 연결과 목표어를 넣은 완성 문장의 조사·서술어 호응을 검사합니다. 어색한 번역투, 불필요한 반복, 갑작스러운 결론, 일상적으로 성립하지 않는 상황, 설명문을 옮긴 가짜 대화는 통과시키지 마세요.',
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
@@ -245,14 +247,14 @@ async function aiVerify(items,questions,recent){
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions.map(q=>{
       const item=items.find(x=>x.id===q.id);
-      return {...q,completedContext:completeContext(q.context,item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>completeContext(q.context,o.text)):[]};
+      return {...q,completedContext:q.type==='mc_usage'?(q.options||[]).find(o=>o.correct)?.text||'':completeContext(q.context,item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>completeContext(q.context,o.text)):[]};
     }))
   ].join('\n');
   const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);
   return out.reviews||[];
 }
-export async function buildValidated(items,recent,{maxAttempts=3,partial=false}={}){
-  const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),feedback={};
+export async function buildValidated(items,recent,{maxAttempts=3,partial=false,initialFeedback={}}={}){
+  const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),feedback={...initialFeedback};
   for(let attempt=0;attempt<maxAttempts&&pending.size;attempt++){
     const batch=[...pending.values()].map(item=>{
       const earlier=[...accepted.values()].filter(q=>items.find(x=>x.id===q.id)?.word===item.word);
