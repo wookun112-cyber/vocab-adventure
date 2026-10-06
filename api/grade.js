@@ -12,19 +12,15 @@ async function verifyUser(auth){
   const r=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:{apikey:SUPABASE_KEY,Authorization:auth}});
   return r.ok;
 }
-export default async function handler(req,res){
-  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
-  if(!(await verifyUser(req.headers.authorization)))return res.status(401).json({error:'Login required'});
-  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
-  try{
-    const {
-      question,answer,source='typed',targetWord='',definition='',band=3,
-      gradingContext='',taskType='general',acceptedAnswers=[]
-    }=req.body||{};
-    if(!question||typeof answer!=='string')return res.status(400).json({error:'Bad request'});
+export async function runGrade(payload){
+  const {
+    question,answer,source='typed',targetWord='',definition='',band=3,
+    gradingContext='',taskType='general',acceptedAnswers=[]
+  }=payload||{};
+  if(!question||typeof answer!=='string')throw new Error('Bad request');
 
-    const contextMode=taskType==='context_answer';
-    const prompt=contextMode?`당신은 한국어 어휘 문맥 문제를 채점합니다.
+  const contextMode=taskType==='context_answer';
+  const prompt=contextMode?`당신은 한국어 어휘 문맥 문제를 채점합니다.
 목표 어휘: ${targetWord}
 기준 뜻: ${definition}
 권장 학습 단계: ${band}
@@ -61,35 +57,40 @@ ${question}
 반드시 JSON만 출력:
 {"normalizedAnswer":"...","result":"◎|○|△|?|×","score":0.0,"contextSuccess":false,"targetRecall":false,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`;
 
-    const schema={
-      type:'object',
-      properties:{
-        normalizedAnswer:{type:'string'},
-        result:{type:'string',enum:contextMode?['○','△','×']:['◎','○','△','?','×']},
-        score:{type:'number',enum:contextMode?[0,0.5,1]:undefined,minimum:contextMode?undefined:0,maximum:contextMode?undefined:1},
-        contextSuccess:{type:'boolean'},
-        targetRecall:{type:'boolean'},
-        feedback:{type:'string'},
-        correctionApplied:{type:'boolean'},
-        correctionNote:{type:'string'}
-      },
-      required:['normalizedAnswer','result','score','contextSuccess','targetRecall','feedback','correctionApplied','correctionNote'],
-      additionalProperties:false
-    };
-    if(contextMode){delete schema.properties.score.minimum;delete schema.properties.score.maximum}
-    else delete schema.properties.score.enum;
-
-    const model=process.env.OPENAI_MODEL||'gpt-6-luna';
-    const r=await fetch('https://api.openai.com/v1/responses',{
-      method:'POST',
-      headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model,reasoning:{effort:'low'},max_output_tokens:500,input:prompt,
-        text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
-      })
-    });
-    if(!r.ok)return res.status(502).json({error:'OpenAI '+r.status+': '+(await r.text()).slice(0,220)});
-    const parsed=JSON.parse(extractText(await r.json()).trim());
-    return res.status(200).json({...parsed,model});
-  }catch(e){return res.status(500).json({error:String(e?.message||e)})}
+  const scoreSchema=contextMode
+    ?{type:'number',enum:[0,0.5,1]}
+    :{type:'number',minimum:0,maximum:1};
+  const schema={
+    type:'object',
+    properties:{
+      normalizedAnswer:{type:'string'},
+      result:{type:'string',enum:contextMode?['○','△','×']:['◎','○','△','?','×']},
+      score:scoreSchema,
+      contextSuccess:{type:'boolean'},
+      targetRecall:{type:'boolean'},
+      feedback:{type:'string'},
+      correctionApplied:{type:'boolean'},
+      correctionNote:{type:'string'}
+    },
+    required:['normalizedAnswer','result','score','contextSuccess','targetRecall','feedback','correctionApplied','correctionNote'],
+    additionalProperties:false
+  };
+  const model=process.env.OPENAI_MODEL||'gpt-6-luna';
+  const r=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model,reasoning:{effort:'low'},max_output_tokens:500,input:prompt,
+      text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
+    })
+  });
+  if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,220));
+  return {...JSON.parse(extractText(await r.json()).trim()),model};
+}
+export default async function handler(req,res){
+  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
+  if(!(await verifyUser(req.headers.authorization)))return res.status(401).json({error:'Login required'});
+  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
+  try{return res.status(200).json(await runGrade(req.body||{}))}
+  catch(e){return res.status(500).json({error:String(e?.message||e)})}
 }
