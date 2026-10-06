@@ -223,6 +223,17 @@ function clozeFromExample(w){
  if(ex&&ex.includes(w.w)) return ex.replaceAll(w.w,'＿＿＿＿');
  return '';
 }
+function fallbackClozeContext(w){
+ const ex=String(w.example||'').trim();
+ if(ex&&ex.includes(w.w)){
+   const blanked=ex.replaceAll(w.w,'＿＿＿＿');
+   return blanked+' 앞뒤의 상황을 보면 빈칸에는 이 상황이나 개념을 가장 정확하게 나타내는 어휘가 들어갑니다.';
+ }
+ if(ex){
+   return ex+' 이 상황을 가장 정확하게 나타내는 어휘를 생각해 보세요. 그 어휘를 빈칸에 넣으면 문맥이 자연스럽게 이어집니다: ＿＿＿＿';
+ }
+ return '다음 상황에 알맞은 어휘를 생각해 보세요. “'+String(w.d||'').replace(/[.。]$/,'')+'”라는 뜻이 문맥에 자연스럽게 드러나도록 빈칸에 한 단어를 넣습니다: ＿＿＿＿';
+}
 async function fetchClozeContexts(words){
  const map=new Map();
  if(!authUser||!words.length)return map;
@@ -240,15 +251,12 @@ async function fetchClozeContexts(words){
 function makeQuestion(w,i,optionState=null,clozePassage=''){
  const subjective=i%2===1;
  if(subjective){
-   const fallback=clozeFromExample(w);
-   const ctx=clozePassage||fallback;
-   if(ctx){
-     return {
-       w,type:'cloze',label:'문맥 빈칸',
-       q:'다음 지문을 읽고 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
-       ctx,open:true,hideWord:true,expectedAnswer:w.w
-     };
-   }
+   const ctx=clozePassage||fallbackClozeContext(w);
+   return {
+     w,type:'cloze',label:'문맥 빈칸',
+     q:'다음 지문을 읽고 빈칸에 들어갈 가장 알맞은 어휘를 직접 써 보세요.',
+     ctx,open:true,hideWord:true,expectedAnswer:w.w
+   };
  }
  const used=optionState?.usedTexts||new Set(),reserved=optionState?.reservedWords||new Set();
  const ds=distractors(w,used,reserved);
