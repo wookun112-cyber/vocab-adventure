@@ -1,6 +1,9 @@
 {
   "version": 2,
   "functions": {
+    "api/prepare-worker.js": {
+      "maxDuration": 300
+    },
     "api/questions.js": {
       "maxDuration": 300
     },
@@ -43,6 +46,6 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "node scripts/verify-question-loading.mjs && node scripts/verify-question-batches.mjs",
+  "buildCommand": "node scripts/verify-server-preparation.mjs && node scripts/verify-question-loading.mjs && node scripts/verify-question-batches.mjs",
   "outputDirectory": "."
 }

@@ -114,11 +114,26 @@ function mergeState(raw){
  rebuildCatalog();
  return state;
 }
+let cloudSavePending=false,cloudSaveTask=null;
 async function cloudSave(silent=true){
- if(!authUser||saving)return; saving=true; state.updatedAt=Date.now(); localSave();
- const {error}=await sb.from('app_state').upsert({user_id:authUser.id,state,updated_at:new Date().toISOString()});
- saving=false; $('cloudPill').textContent=error?'저장 오류':'클라우드 저장됨'; $('cloudPill').classList.toggle('on',!error);
- if(error&&!silent) alert('클라우드 저장에 실패했어요. 인터넷 연결을 확인해 주세요.');
+ if(!authUser)return;
+ cloudSavePending=true;
+ if(cloudSaveTask)return cloudSaveTask;
+ const account=authUser.id;
+ cloudSaveTask=(async()=>{
+  saving=true;
+  try{
+   do{
+    cloudSavePending=false;state.updatedAt=Date.now();localSave();
+    const snapshot=JSON.parse(JSON.stringify(state));
+    const {error}=await sb.from('app_state').upsert({user_id:account,state:snapshot,updated_at:new Date().toISOString()});
+    $('cloudPill').textContent=error?'저장 오류':'클라우드 저장됨';$('cloudPill').classList.toggle('on',!error);
+    if(error&&!silent)alert('클라우드 저장에 실패했어요. 인터넷 연결을 확인해 주세요.');
+    if(error)break;
+   }while(cloudSavePending&&authUser?.id===account);
+  }finally{saving=false;cloudSaveTask=null}
+ })();
+ return cloudSaveTask;
 }
 async function expandCatalog(band=3,mode='daily',count=24){
  if(!authUser)return 0;
@@ -372,7 +387,7 @@ function validPreparedQuestion(q,plan){return q?.w?.w===plan?.w?.w&&q.type===pla
 function questionPassageKeys(q){return passageKeys(q.ctx,(q.opts||[]).map(o=>o.t))}
 function savePreparation(p){
  if(p.adopted||p.cancelled)return;
- try{localStorage.setItem(p.key,JSON.stringify({engine:PREPARATION_ENGINE,created:p.created,account:p.account,profile:p.profile,snapshot:p.snapshot,mode:p.mode,difficulty:p.difficulty,newWords:p.newWords,baseWords:p.baseWords,plans:p.plans,ready:[...p.ready]}))}catch{}
+ try{localStorage.setItem(p.key,JSON.stringify({engine:PREPARATION_ENGINE,created:p.created,account:p.account,profile:p.profile,snapshot:p.snapshot,mode:p.mode,difficulty:p.difficulty,newWords:p.newWords,baseWords:p.baseWords,plans:p.plans,serverId:p.serverId,ready:[...p.ready]}))}catch{}
 }
 function createPreparation(meta,saved=[]){
  const p={...meta,queue:[],ready:new Map(),jobs:[],waiters:[],running:0,adopted:false,cancelled:false};
@@ -444,6 +459,38 @@ function createPreparation(meta,saved=[]){
  p.cancel=()=>{p.cancelled=true;p.notify()};
  return p;
 }
+async function serverLesson(profile,activeId=null){
+ if(!['ayoung','inseong'].includes(profile))return null;
+ const {data,error}=await sb.rpc('get_prepared_lesson',{p_profile:profile,p_active_id:activeId});
+ if(error)throw new Error('저장된 학습 문제를 확인하지 못했어요. 다시 눌러 주세요.');
+ return data;
+}
+function createServerPreparation(meta,saved){
+ const p=createPreparation(meta,saved),ordinaryPump=p.pump;
+ let polling=false,timer=null;
+ p.pump=()=>{
+  if(p.cancelled||authUser?.id!==p.account||state.selected!==p.profile||polling)return;
+  if(p.ready.size>=p.plans.length){if(p.plans.length>20)ordinaryPump();return}
+  // Adaptive additions use the existing validated API after the server's base lesson.
+  if(p.ready.size>=20){ordinaryPump();return}
+  polling=true;
+  serverLesson(p.profile,p.serverId).then(remote=>{
+   if(p.cancelled)return;
+   if(remote?.id!==p.serverId)throw new Error('학습 기록이 바뀌어 준비된 문제를 다시 확인해야 해요.');
+   if(remote.status==='failed')throw new Error('문제 준비가 지연됐어요. 잠시 뒤 다시 눌러 주세요.');
+   for(const [i,q] of remote.payload?.ready||[]){
+    if(!validPreparedQuestion(q,p.plans[i]))throw new Error('문제 검증 정보를 확인하지 못했습니다.');
+    p.ready.set(i,q);
+   }
+   for(const job of p.jobs)job.error=null;
+  }).catch(error=>{for(const job of p.jobs)job.error=error}).finally(()=>{
+   polling=false;p.notify();
+   if(!p.cancelled&&p.ready.size<20&&!p.jobs.some(j=>j.error))timer=setTimeout(()=>p.pump(),2000);
+  });
+ };
+ const cancel=p.cancel;p.cancel=()=>{clearTimeout(timer);cancel()};
+ return p;
+}
 async function getPreparation(mode='daily'){
  const profile=state.selected,account=authUser?.id,key=preparationKey(mode,profile,account);
  if(!account)throw new Error('로그인이 필요합니다.');
@@ -454,6 +501,25 @@ async function getPreparation(mode='daily'){
  const loading=(async()=>{
    let saved=null;
    try{saved=JSON.parse(localStorage.getItem(key)||'null')}catch{}
+   if(mode==='daily'&&['ayoung','inseong'].includes(profile)){
+     let remote=await serverLesson(profile),tries=0;
+     while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries++<90){
+       $('cloudPill').textContent='아이별 학습 문제를 서버에서 미리 준비 중';
+       await new Promise(resolve=>setTimeout(resolve,2000));
+       if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
+       remote=await serverLesson(profile);
+     }
+     if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
+     if(remote?.payload?.snapshot===snapshot&&remote.payload.engine===PREPARATION_ENGINE&&remote.payload.plans?.length===20&&remote.status!=='failed'){
+       const data=remote.payload;
+       for(const plan of data.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
+       rebuildCatalog();
+       const p=createServerPreparation({...data,key,serverId:remote.id},data.ready||[]);
+       preparations.set(key,p);p.pump();return p;
+     }
+     // A consumed or outdated server lesson cannot be replayed from local storage.
+     if(saved?.serverId)saved=null;
+   }
    let meta;
    const restored=saved?.engine===PREPARATION_ENGINE&&saved.account===account&&saved.profile===profile&&saved.snapshot===snapshot&&Date.now()-saved.created<PREPARATION_TTL&&saved.mode===mode&&saved.plans?.length===20;
    if(restored){
@@ -505,6 +571,11 @@ async function buildSession(mode='daily'){
    const p=await getPreparation(mode);
    await p.waitFor(0,true);
    if(state.selected!==profile||authUser?.id!==account)return;
+   if(p.serverId){
+     const {data,error}=await sb.rpc('consume_prepared_lesson',{p_profile:profile,p_id:p.serverId});
+     if(error||!data){p.cancel();preparations.delete(p.key);localStorage.removeItem(p.key);throw new Error('이 학습은 이미 시작되었거나 기록이 바뀌었어요. 시작 버튼을 다시 눌러 주세요.')}
+     if(state.selected!==profile||authUser?.id!==account)return;
+   }
    p.adopted=true;preparations.delete(p.key);
    try{localStorage.removeItem(p.key)}catch{}
    session={mode,queue:p.queue,preparation:p,results:[],target:20,max:30,difficulty:p.difficulty,ability:clamp(p.difficulty||3,1,9),intros:[],newWords:p.newWords,baseWords:p.baseWords,validated:true,loadingQuestions:null,profile};
@@ -765,9 +836,9 @@ function finishSession(){
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
  }
- cloudSave(); renderAll(); show(state.selected==='guest'?'home':'report');
+ c.preparationRevision=(c.preparationRevision||0)+1;
+ cloudSave().then(()=>warmDailyQuestions()); renderAll(); show(state.selected==='guest'?'home':'report');
  alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
- setTimeout(()=>warmDailyQuestions(),400);
 }
 function renderAll(){
  const c=child(); document.querySelectorAll('[data-profile]').forEach(x=>x.classList.toggle('active',x.dataset.profile===state.selected));

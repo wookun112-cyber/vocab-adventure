@@ -1,0 +1,74 @@
+import {waitUntil} from '@vercel/functions';
+import {buildValidated} from './questions.js';
+import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
+const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
+const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
+const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
+export async function rpc(name,args){
+ const r=await fetch(URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(20000)});
+ if(!r.ok)throw Error('Preparation storage '+r.status);
+ return r.json();
+}
+export async function prepare(job,key,generate=buildValidated,call=rpc){
+ let payload=job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
+ let checkpoint=Promise.resolve(),obsolete=false;
+ const save=failed=>{
+  const copy=JSON.parse(JSON.stringify(payload));
+  checkpoint=checkpoint.then(async()=>{
+   if(obsolete)return;
+   const ok=await call('save_preparation',{p_id:job.id,p_key:key,p_lease:job.lease,p_payload:copy,p_failed:failed});
+   if(!ok){obsolete=true;throw Error('Preparation superseded')}
+  });
+  return checkpoint;
+ };
+ try{
+  await save(false);
+  const ready=new Map(payload.ready||[]),remaining=payload.plans.map((p,i)=>[i,p]).filter(([i])=>!ready.has(i));
+  const groups=[];for(let i=0;i<remaining.length;i+=4)groups.push(remaining.slice(i,i+4));
+  let cursor=0;
+  const work=async()=>{
+   while(cursor<groups.length&&!obsolete){
+    const group=groups[cursor++];
+    let missing=group;
+    for(let attempt=0;attempt<2&&missing.length;attempt++){
+     const known=[...ready];
+     const items=generationItems(missing.map(([,p])=>p),job.learner,known);
+     const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40));
+     if(obsolete)return;
+     const retry=[];
+     for(const [i,p] of missing){
+      const raw=questions.find(q=>String(q.id)===p.id);
+      if(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation)throw Error('Unverified prepared question');
+      const q=browserQuestion(raw,p);
+      const used=new Set([...(job.learner.words?.[p.w.w]?.usedPassageKeys||[]),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
+      if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){retry.push([i,p]);continue}
+      ready.set(i,q);
+     }
+     payload.ready=[...ready].sort(([a],[b])=>a-b);
+     await save(false);
+     missing=retry;
+    }
+    if(missing.length)throw Error('Repeated sentence withheld');
+   }
+  };
+  const results=await Promise.allSettled(Array.from({length:Math.min(3,groups.length)},work));
+  const failed=results.find(r=>r.status==='rejected');
+  if(failed)throw failed.reason;
+ }catch(error){
+  if(!obsolete){checkpoint=checkpoint.catch(()=>{});await save(true)}
+  throw error;
+ }
+ return payload;
+}
+export default async function handler(req,res){
+ if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
+ const id=req.body?.id,key=req.headers['x-preparation-key'];
+ if(!uuid(id)||!uuid(key))return res.status(401).json({error:'Unauthorized'});
+ if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
+ try{
+  const job=await rpc('claim_preparation',{p_id:id,p_key:key});
+  if(!job)return res.status(202).json({accepted:false});
+  waitUntil(prepare(job,key).catch(()=>{console.error('Prepared lesson will retry from its saved checkpoint.')}));
+  return res.status(202).json({accepted:true});
+ }catch{return res.status(503).json({error:'Preparation unavailable'})}
+}

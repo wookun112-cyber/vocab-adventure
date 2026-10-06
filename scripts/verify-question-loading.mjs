@@ -11,7 +11,7 @@ function fixture(seed,account='family',shared=storage){
    document:{getElementById:node,querySelectorAll:()=>[]},window:{scrollTo(){}},
    localStorage:{setItem:(k,v)=>shared.set(k,v),getItem:k=>shared.get(k)||null,removeItem:k=>shared.delete(k)},
    alert:m=>alerts.push(m),fetch:()=>{throw Error('Unexpected network')},
-   createClient:()=>({auth:{getSession:async()=>({data:{session:{access_token:'test'}}})}})
+   createClient:()=>({rpc:async()=>({data:null,error:null}),auth:{getSession:async()=>({data:{session:{access_token:'test'}}})}})
  });
  vm.runInContext(source,ctx);
  const run=code=>vm.runInContext(code,ctx);
@@ -139,3 +139,39 @@ assert.equal(switcher.run('current'),0);
 assert.equal(switcher.run('session.profile'),'inseong');
 assert.equal(switcher.alerts.length,0);
 console.log('Profile switch verified: pending responses cannot move another child or show an old-session error.');
+
+// A server-prepared daily lesson starts directly, including on a fresh device.
+const remote=fixture(undefined,'family',new Map());
+remote.run(`state.selected='inseong';globalThis.remoteReads=0;globalThis.consumes=0;
+ const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
+ globalThis.serverPayload={engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'inseong',snapshot:preparationSnapshot('inseong'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
+ sb.rpc=async(name,args)=>{if(name==='consume_prepared_lesson'){consumes++;return {data:consumes===1,error:null}}remoteReads++;return {data:{id:'server-job',status:'ready',payload:serverPayload},error:null}};
+`);
+await remote.run('buildSession()');
+assert.equal(remote.run('session.queue.length'),20);
+assert.equal(remote.run('requests.length'),0);
+assert.equal(remote.run('consumes'),1);
+for(let i=0;i<19;i++)await remote.run('nextQuestion()');
+assert.equal(remote.run('requests.length'),0);
+assert.equal(remote.run('remoteReads'),1,'ready server lesson needs one storage read');
+assert.equal(remote.run('current'),19);
+// Another device that won the consumption race cannot replay the same lesson.
+remote.run('session=null;current=0');
+await remote.run('buildSession()');
+assert.equal(remote.run('session'),null);
+assert.equal(remote.run('requests.length'),0);
+assert.equal(remote.alerts.length,1);
+// Partial preparation polls saved results; it never calls the generation API again.
+const partialRemote=fixture(undefined,'family',new Map());
+partialRemote.run(`state.selected='ayoung';globalThis.completed=false;
+ const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
+ globalThis.remotePayload={engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'ayoung',snapshot:preparationSnapshot('ayoung'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:[[0,answerFor(plans[0])]]};
+ sb.rpc=async(name)=>name==='consume_prepared_lesson'?{data:true,error:null}:{data:{id:'partial-job',status:completed?'consumed':'working',payload:{...remotePayload,ready:completed?plans.map((p,i)=>[i,answerFor(p)]):remotePayload.ready}},error:null};
+`);
+await partialRemote.run('buildSession()');
+assert.equal(partialRemote.run('session.queue.length'),1);
+await flush();partialRemote.run('completed=true;session.preparation.pump()');await flush();
+assert.equal(partialRemote.run('session.queue.length'),20);
+assert.equal(partialRemote.run('requests.length'),0);
+partialRemote.run('session.preparation.cancel()');
+console.log('Server loading verified: fresh-device start and 19 transitions require zero generation requests; single-use ownership, partial polling, and consumption races are enforced.');

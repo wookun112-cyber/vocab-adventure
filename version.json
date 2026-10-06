@@ -1,1 +1,50 @@
-{"version":"10.8.1","channel":"production","curriculum":"elementary-to-high-3","accepted_range":[5000,7000],"current_active_words":5622,"grade_labels":"recommended_stages_not_first_appearance","second_review":"2026-10-06","profiles":["ayoung","inseong","guest"],"subjective_questions":"context_fill_blank_only","choice_generation":"diverse_no_repeat_per_session","quiz_mix":"objective_50_subjective_50","objective_choices":5,"subjective_context":"2-3_sentence_ai_passage","comparison_questions":false,"quiz_engine":"validated_contextual_v2","question_types":["mc_context","mc_usage","subjective_context","subjective_dialogue"],"review_schedule_days":[1,3,7,14,30],"context_and_recall_separate":true,"progressive_hints":true,"prepublication_validation":"deterministic_plus_independent_ai_review","existing_progress_preserved":true,"question_loading":"persistent_prepared_sessions_with_four_parallel_batches","learning_flow":"context_attempt_then_definition_and_feedback","same_session_repeats":"practice_only_not_mastery_evidence","subjective_validation":"independent_review_with_final_accepted_answers","repeat_prevention":"per_word_sentence_fingerprints_and_previous_context_review","sentence_quality":"completed_sentence_review_with_particle_concordance","question_cache":"account_and_profile_scoped_unused_validated_questions","parallel_repeat_prevention":"scenario_reservation_and_sentence_fingerprint_recheck"}
+{
+  "version": "10.9.0",
+  "channel": "production",
+  "curriculum": "elementary-to-high-3",
+  "accepted_range": [
+    5000,
+    7000
+  ],
+  "current_active_words": 5622,
+  "grade_labels": "recommended_stages_not_first_appearance",
+  "second_review": "2026-10-06",
+  "profiles": [
+    "ayoung",
+    "inseong",
+    "guest"
+  ],
+  "subjective_questions": "context_fill_blank_only",
+  "choice_generation": "diverse_no_repeat_per_session",
+  "quiz_mix": "objective_50_subjective_50",
+  "objective_choices": 5,
+  "subjective_context": "2-3_sentence_ai_passage",
+  "comparison_questions": false,
+  "quiz_engine": "validated_contextual_v2",
+  "question_types": [
+    "mc_context",
+    "mc_usage",
+    "subjective_context",
+    "subjective_dialogue"
+  ],
+  "review_schedule_days": [
+    1,
+    3,
+    7,
+    14,
+    30
+  ],
+  "context_and_recall_separate": true,
+  "progressive_hints": true,
+  "prepublication_validation": "deterministic_plus_independent_ai_review",
+  "existing_progress_preserved": true,
+  "question_loading": "server_prepared_personalized_lessons_before_app_launch",
+  "learning_flow": "context_attempt_then_definition_and_feedback",
+  "same_session_repeats": "practice_only_not_mastery_evidence",
+  "subjective_validation": "independent_review_with_final_accepted_answers",
+  "repeat_prevention": "per_word_sentence_fingerprints_and_previous_context_review",
+  "sentence_quality": "completed_sentence_review_with_particle_concordance",
+  "question_cache": "cloud_per_account_per_learner_single_use",
+  "parallel_repeat_prevention": "scenario_reservation_and_sentence_fingerprint_recheck",
+  "background_preparation": "on_learning_completion_with_durable_checkpoints_and_scheduled_retry"
+}
