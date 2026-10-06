@@ -45,7 +45,7 @@ function makeSchema(n){
 export async function reviewBand(band){
   let done=0;
   while(true){
-    const rows=await rpc('tmp_review_fetch_band_20261006',{p_token:T,p_band:band,p_after_id:0,p_limit:40});
+    const rows=await rpc('tmp_review_fetch_band_20261006',{p_token:T,p_band:band,p_after_id:0,p_limit:60});
     if(!rows.length) break;
     const result=await askModel(makePrompt(rows),makeSchema(rows.length));
     const applied=await rpc('tmp_review_apply_20261006',{p_token:T,p_reviews:result.reviews});
