@@ -60,3 +60,14 @@ assert.equal(run('JSON.stringify(state.users)'),run('records'));
 const config=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url)));
 assert.equal(config.functions['api/questions.js'].maxDuration,300);
 console.log('Question batching verified: initial 4, single-flight, failure retry, 20→26 extension, records preserved.');
+// A comparison situation is valid; asking learners to compare two target words is not.
+const backend=vm.createContext({console,process,Map,Set});
+const api=fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8')
+ .replace('export async function buildValidated','async function buildValidated')
+ .replace('export default async function handler','async function handler');
+vm.runInContext(api,backend);
+const compare=s=>vm.runInContext(`hasCompare(${JSON.stringify(s)})`,backend);
+assert.equal(compare('차이점이라는 말을 쓰기에 알맞은 상황을 고르세요.'),false);
+assert.equal(compare('두 단어의 차이를 설명하세요.'),true);
+assert.equal(compare('“원인”과 “결과”의 차이를 고르세요.'),true);
+console.log('Validation regression verified: comparison vocabulary allowed; two-target comparison rejected.');

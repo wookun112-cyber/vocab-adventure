@@ -30,7 +30,7 @@ async function ask(prompt,schema,name,max=9000){
 const norm=s=>String(s||'').replace(/[\s"'“”‘’.,!?()[\]{}]/g,'').toLowerCase();
 const sentenceCount=s=>(String(s||'').match(/[.!?]/g)||[]).length;
 const blankCount=s=>(String(s||'').match(/＿＿＿＿/g)||[]).length;
-const hasCompare=s=>/(차이|비교|구별|둘 중|두 단어|와\s*“?.+”?\s*(?:의)?\s*차이)/.test(String(s||''));
+const hasCompare=s=>/(?:두|둘|2개(?:의)?)\s*(?:단어|어휘).{0,30}(?:차이|비교|구별)|(?:차이|비교|구별).{0,30}(?:두|둘|2개(?:의)?)\s*(?:단어|어휘)|[“"][^”"]+[”"]\s*(?:와|과|랑|하고)\s*[“"][^”"]+[”"].{0,30}(?:차이|비교|구별)/.test(String(s||''));
 const hasDefinePrompt=s=>/(뜻을\s*(?:설명|써|말)|정의(?:를)?\s*(?:설명|써|말)|무슨 뜻인지 설명)/.test(String(s||''));
 function normalizeCandidate(q,item){
   q={...q};
@@ -58,7 +58,7 @@ function normalizeCandidate(q,item){
 function deterministic(q,item){
   const issues=[];
   if(q.type!==item.type)issues.push('requested_type_mismatch');
-  if(hasCompare(q.prompt)||hasCompare(q.context))issues.push('comparison_question');
+  if(hasCompare(q.prompt))issues.push('comparison_question');
   if(hasDefinePrompt(q.prompt))issues.push('definition_explanation_prompt');
   const hidden=item.type!=='mc_usage';
   if(hidden&&q.showTarget)issues.push('hidden_type_showTarget_true');
