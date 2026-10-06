@@ -466,37 +466,70 @@ function renderQuestion(){
  });
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
-function applyResult(q,result,feedback,normalized=''){
- const s=wordState(q.w.w),good=result==='◎'||result==='○'; s.seen++; s.last=result; s.types[q.type]=(s.types[q.type]||0)+1;
- if(good){s.correct++;s.streak++;if(!s.days.includes(today()))s.days.push(today())}else if(result==='△'){s.assisted++;s.streak=0}else{s.wrong++;s.streak=0}
- s.level=clamp(1+Math.floor(s.correct/2)-Math.floor(s.wrong/2),1,5);
- s.mastered=s.streak>=5&&s.days.length>=3&&s.level>=4;
- if(q.w.pair&&!good&&!s.confusions.includes(q.w.pair))s.confusions.push(q.w.pair);
- session.results.push({word:q.w.w,result,credit:resultCredit(result),type:q.type,band:q.w.band||3});
- const recent=session.results.slice(-6),bad=recent.filter(x=>(x.credit??resultCredit(x.result))<.75).length;
+function applyResult(q,result,feedback,normalized='',meta={}){
+ const st=wordState(q.w.w);
+ let credit=Number.isFinite(meta.credit)?clamp(meta.credit,0,1):resultCredit(result);
+ const hintUsed=Boolean(meta.hintUsed);
+ const revealed=Boolean(meta.revealed);
+ const contextSuccess=meta.contextSuccess??credit>=.5;
+ const targetRecall=Boolean(meta.targetRecall);
+ const independent=Boolean(meta.independent??(!hintUsed&&!revealed&&credit>=1));
+ if(hintUsed&&credit>=1){credit=.75;result='△'}
+ st.seen++;st.last=result;st.types[q.type]=(st.types[q.type]||0)+1;
+ if(credit>=1){st.correct++}else if(credit>0){st.assisted++}else{st.wrong++}
+ if(independent&&contextSuccess&&credit>=1){
+   st.streak++;st.independentCorrect++;
+   if(!st.days.includes(today()))st.days.push(today());
+ }else st.streak=0;
+ if(contextSuccess)st.contextSuccess++;
+ if(targetRecall){
+   st.targetRecall++;
+   if(independent&&!st.recallDays.includes(today()))st.recallDays.push(today());
+ }
+ if(hintUsed&&contextSuccess)st.hintedCorrect++;
+ if(revealed)st.revealed++;
+ if(credit<.5)st.supportLevel=clamp((st.supportLevel||0)+1,0,3);
+ else if(independent&&credit>=1)st.supportLevel=clamp((st.supportLevel||0)-1,0,3);
+ if(q.signature&&independent&&contextSuccess){
+   if(!st.contextKeys.includes(q.signature))st.contextKeys.push(q.signature);
+   st.contextKeys=st.contextKeys.slice(-12);
+ }
+ st.level=clamp(1+Math.floor((st.independentCorrect||0)/2)-Math.floor(st.wrong/2),1,5);
+ st.mastered=st.streak>=5&&st.days.length>=3&&st.contextKeys.length>=3&&(st.independentCorrect||0)>=5&&(st.targetRecall||0)>=2&&st.recallDays.length>=2;
+ scheduleReview(st,{credit,independent,revealed,hintUsed});
+ if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
+ const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,hintUsed,revealed,signature:q.signature||''};
+ session.results.push(rec);
+ if(q.signature){
+   const c=child();c.recentProblems=Array.isArray(c.recentProblems)?c.recentProblems:[];
+   c.recentProblems.push(q.signature);c.recentProblems=c.recentProblems.slice(-60);
+ }
+ const recent=session.results.slice(-6),bad=recent.filter(x=>x.credit<.75).length;
  if(session.mode==='level'){
    const answered=session.results.length;
    if(answered%4===0){
-     const block=session.results.slice(-4),g=block.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0);
+     const last=session.results.slice(-4),g=last.reduce((sum,x)=>sum+x.credit,0);
      if(g>=3)session.ability=clamp(session.ability+.5,1,9); else if(g<=1.5)session.ability=clamp(session.ability-.5,1,9);
-     const used=session.queue.slice(0,current+1),rest=session.queue.slice(current+1).sort((a,b)=>Math.abs((a.w.band||3)-session.ability)-Math.abs((b.w.band||3)-session.ability));
-     session.queue=[...used,...rest];
    }
    if(answered===20){
-     const ratio=session.results.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/20;
-     const last4=session.results.slice(-4).reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0);
-     if((ratio>=.4&&ratio<=.8)||(last4>=1.5&&last4<=2.5))session.target=Math.min(25,session.queue.length);
-   }else if(answered===25&&session.target===25){
-     const last5=session.results.slice(-5).reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0);
-     if(last5>=2&&last5<=3.5)session.target=Math.min(30,session.queue.length);
+     const ratio=session.results.reduce((sum,x)=>sum+x.credit,0)/20;
+     if(ratio>=.35&&ratio<=.85)session.target=Math.min(26,session.queue.length);
+   }else if(answered===26&&session.target===26){
+     const last6=session.results.slice(-6).reduce((sum,x)=>sum+x.credit,0);
+     if(last6>=2&&last6<=4.5)session.target=Math.min(30,session.queue.length);
    }
  }else{
-   if(recent.length>=5){if(bad>=3)child().difficulty=clamp(child().difficulty-.3,1,9);else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,9)}
-   if(current>=14&&bad>=3&&session.target<session.max)session.target=Math.min(session.max,session.target+5);
+   if(recent.length>=6){
+     if(bad>=4)child().difficulty=clamp(child().difficulty-.3,1,9);
+     else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,9);
+   }
+   if(session.target===20&&current>=14&&bad>=3)session.target=Math.min(26,session.queue.length);
+   else if(session.target===26&&current>=24&&bad>=3)session.target=Math.min(30,session.queue.length);
  }
- $('feedback').className='feedback '+(good?'good':result==='×'?'bad':'');
- $('feedback').innerHTML='<strong>'+result+' '+(good?'좋아요!':result==='△'?'조금 더 다듬어 볼게요.':'다시 생각해 볼 단어예요.')+'</strong><br>'+feedback+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
- $('feedback').classList.remove('hidden'); $('next').classList.remove('hidden'); $('submit').classList.add('hidden');
+ const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
+ $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
+ $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(feedback)+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  cloudSave();
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
