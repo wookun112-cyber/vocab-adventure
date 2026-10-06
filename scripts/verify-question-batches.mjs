@@ -21,10 +21,12 @@ run(`state.selected='guest'; state.users.guest.words['근거'].seen=7;
  globalThis.calls=[];
  fetchValidatedQuestions=async plans=>{calls.push(plans.length);return plans.map(p=>({w:p.w,type:p.type,signature:'s'+p.id}))};
  ensureCatalog=async()=>{};chooseNew=()=>[word];chooseReview=()=>[word];
- renderIntro=()=>{};renderQuestion=()=>{};show=()=>{};
+ globalThis.shown=[];renderIntro=()=>{throw new Error('Answer preview before quiz')};renderQuestion=()=>{};show=id=>shown.push(id);
  prefetchQuestions=()=>{};
 `);
 await run('buildSession()');
+assert.equal(run('session.intros.length'),0);
+assert.equal(run('shown[0]'),'learn');
 assert.equal(run('session.queue.length'),4);
 assert.equal(run('session.pendingPlans.length'),16);
 assert.equal(run('session.target'),20);
@@ -71,3 +73,24 @@ assert.equal(compare('차이점이라는 말을 쓰기에 알맞은 상황을 �
 assert.equal(compare('두 단어의 차이를 설명하세요.'),true);
 assert.equal(compare('“원인”과 “결과”의 차이를 고르세요.'),true);
 console.log('Validation regression verified: comparison vocabulary allowed; two-target comparison rejected.');
+
+// Feedback comes after the attempt; same-day repeats are practice, not mastery evidence.
+run(`cloudSave=()=>{};session.results=[];current=0;
+ globalThis.q={w:{w:'새표제어',d:'새 단어 뜻',band:2},type:'subjective_context',signature:'새 상황'};
+ applyResult(q,'◎','문맥 해설','',{credit:1,contextSuccess:true,targetRecall:true,independent:true});`);
+assert.equal(run("wordState('새표제어').independentCorrect"),1);
+const due=run("wordState('새표제어').nextReviewAt");
+run(`applyResult(q,'◎','문맥 해설','',{credit:1,contextSuccess:true,targetRecall:true,independent:true})`);
+assert.equal(run("wordState('새표제어').correct"),2);
+assert.equal(run("wordState('새표제어').independentCorrect"),1);
+assert.equal(run("wordState('새표제어').streak"),1);
+assert.equal(run("wordState('새표제어').nextReviewAt"),due);
+assert.equal(run('session.results.at(-1).practiceOnly'),true);
+assert.ok(node('feedback').innerHTML.includes('새 단어 뜻'));
+run(`session.results=[];applyResult(q,'◎','문맥 해설','',{credit:1,contextSuccess:true,targetRecall:true,independent:true})`);
+assert.equal(run("wordState('새표제어').independentCorrect"),1);
+run(`wordState('새표제어').lastFeedbackDate=dayOffset(-1);session.results=[];
+ applyResult(q,'◎','다른 문맥 해설','',{credit:1,contextSuccess:true,targetRecall:true,independent:true})`);
+assert.equal(run("wordState('새표제어').independentCorrect"),2);
+assert.equal(run("wordState('새표제어').streak"),2);
+console.log('Learning flow verified: no pre-answer definition; same-day repetitions preserve scores without inflating mastery or review intervals.');

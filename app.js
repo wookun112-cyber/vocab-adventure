@@ -224,6 +224,7 @@ function chooseReview(n=15){
  return out;
 }
 function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={}){
+ if(credit>=1&&!independent&&!revealed&&!hintUsed)return;
  let days=1;
  const alreadyReviewedToday=st.lastReviewAt===today();
  if(revealed||credit<.5){
@@ -354,11 +355,11 @@ async function buildSession(mode='daily'){
    const queue=await fetchValidatedQuestions(plans.slice(0,QUESTION_BATCH_SIZE));
    session={
      mode,queue,results:[],target:20,max:30,difficulty:c.difficulty,ability:clamp(c.difficulty||3,1,9),
-     intros:mode==='daily'?newWords:[],newWords:newWords.map(w=>w.w),baseWords:allBase,validated:true,
+     intros:[],newWords:newWords.map(w=>w.w),baseWords:allBase,validated:true,
      pendingPlans:plans.slice(QUESTION_BATCH_SIZE),loadingQuestions:null,profile:state.selected
    };
    current=0;introIndex=0;hintLevel=0;
-   if(session.intros.length){show('intro');renderIntro()}else{show('learn');renderQuestion()}
+   show('learn');renderQuestion();
    prefetchQuestions();
  }catch(e){
    alert('문제 생성·검증을 완료하지 못했어요. 검증되지 않은 문제는 출제하지 않습니다.\n'+String(e?.message||e));
@@ -400,14 +401,16 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const revealed=Boolean(meta.revealed);
  const contextSuccess=meta.contextSuccess??credit>=.5;
  const targetRecall=Boolean(meta.targetRecall);
- const independent=Boolean(meta.independent??(!hintUsed&&!revealed&&credit>=1));
+ const practiceOnly=st.lastFeedbackDate===today()||session.results.some(r=>r.word===q.w.w);
+ const independent=!practiceOnly&&Boolean(meta.independent??(!hintUsed&&!revealed&&credit>=1));
  if(hintUsed&&credit>=1){credit=.75;result='△'}
  st.seen++;st.last=result;st.types[q.type]=(st.types[q.type]||0)+1;
+ st.lastFeedbackDate=today();
  if(credit>=1){st.correct++}else if(credit>0){st.assisted++}else{st.wrong++}
  if(independent&&contextSuccess&&credit>=1){
    st.streak++;st.independentCorrect++;
    if(!st.days.includes(today()))st.days.push(today());
- }else st.streak=0;
+ }else if(credit<1||hintUsed||revealed)st.streak=0;
  if(contextSuccess)st.contextSuccess++;
  if(targetRecall){
    st.targetRecall++;
@@ -425,13 +428,13 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  st.mastered=st.streak>=5&&st.days.length>=3&&st.contextKeys.length>=3&&(st.independentCorrect||0)>=5&&(st.targetRecall||0)>=2&&st.recallDays.length>=2;
  scheduleReview(st,{credit,independent,revealed,hintUsed});
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
- const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,hintUsed,revealed,signature:q.signature||''};
+ const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,signature:q.signature||''};
  session.results.push(rec);
  if(q.signature){
    const c=child();c.recentProblems=Array.isArray(c.recentProblems)?c.recentProblems:[];
    const optionKey=q.opts?.length?'|'+q.opts.map(o=>o.t).join('§'):'';c.recentProblems.push(q.signature+optionKey);c.recentProblems=c.recentProblems.slice(-60);
  }
- const recent=session.results.slice(-6),bad=recent.filter(x=>x.credit<.75).length;
+ const recent=session.results.filter(x=>!x.practiceOnly).slice(-6),bad=recent.filter(x=>x.credit<.75).length;
  if(session.mode==='level'){
    const answered=session.results.length;
    if(answered%4===0){
@@ -446,7 +449,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
      if(last6>=2&&last6<=4.5)session.target=Math.min(30,session.max);
    }
  }else{
-   if(recent.length>=6){
+   if(!practiceOnly&&recent.length>=6){
      if(bad>=4)child().difficulty=clamp(child().difficulty-.3,1,9);
      else if(bad<=1)child().difficulty=clamp(child().difficulty+.2,1,9);
    }
@@ -455,7 +458,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
- $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(feedback)+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  cloudSave();
 }

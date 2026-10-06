@@ -1,4 +1,4 @@
-const CACHE='vocab-adventure-v10-7-1';
+const CACHE='vocab-adventure-v10-7-2';
 const ASSETS=['/','/index.html','/app.css','/app.js','/manifest.webmanifest','/version.json','/icon.svg'];
 
 self.addEventListener('install',e=>{
