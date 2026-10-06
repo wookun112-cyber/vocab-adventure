@@ -533,47 +533,79 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  cloudSave();
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function showHint(){
+ if(!session?.queue?.[current]||!$('next').classList.contains('hidden'))return;
+ const q=session.queue[current],hints=q.hints||[];
+ if(!hints.length){$('hint').classList.add('hidden');return}
+ hintLevel=Math.min(hints.length,hintLevel+1);
+ $('hintBox').textContent='힌트 '+hintLevel+': '+hints[hintLevel-1];
+ $('hintBox').className='feedback';
+ $('hint').textContent=hintLevel<hints.length?'힌트 하나 더':'힌트 모두 사용';
+ if(hintLevel>=hints.length)$('hint').disabled=true;
+}
+const normalizeTyped=s=>String(s||'').replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
+
 async function gradeCurrent(dontKnow){
- const q=session.queue[current]; if(!$('next').classList.contains('hidden'))return;
- if(dontKnow){applyResult(q,'×','괜찮아요. 뜻은 “'+q.w.d+'”예요. 같은 문제를 바로 반복하지 않고 나중에 다른 문맥에서 다시 만나요.');return}
- if(q.opts){
-   if(selectedOption==null)return; const ok=q.opts[selectedOption].ok;
-   document.querySelectorAll('.option').forEach((x,i)=>{if(q.opts[i].ok)x.classList.add('correct');else if(i===selectedOption&&!ok)x.classList.add('wrong')});
-   applyResult(q,ok?'○':'×',ok?'문맥에 맞게 잘 골랐어요.':'정답의 핵심 뜻은 “'+q.w.d+'”입니다.'); return;
- }
- const answer=$('answer').value.trim(); if(!answer)return alert('답을 쓰거나 “모르겠어”를 눌러주세요.');
- if(q.type==='cloze'){
-   const normalized=answer.replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
-   const expected=String(q.expectedAnswer||q.w.w).replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
-   if(normalized===expected){
-     applyResult(q,'◎','문맥에 맞는 어휘를 정확히 넣었어요.',answer);
-     return;
-   }
-   $('submit').disabled=true;$('submit').textContent='의미 확인 중…';
-   try{
-     const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
-     const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({
-       taskType:'cloze_synonym',question:q.q+'\n지문: '+q.ctx,targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,answer,source:answerSource
-     })});
-     if(r.ok){
-       const j=await r.json();
-       const result=j.result==='◎'||j.result==='○'?'△':(j.result==='△'?'△':'×');
-       const feedback=result==='△'?'정답과 뜻이 비슷한 말이라 부분점수를 줬어요. 정확한 목표 어휘는 “'+q.w.w+'”입니다.':'정답은 “'+q.w.w+'”입니다. 지문의 단서를 다시 살펴보세요.';
-       applyResult(q,result,feedback,j.normalizedAnswer||answer);
-     }else applyResult(q,'×','정답은 “'+q.w.w+'”입니다. 지문의 단서를 다시 살펴보세요.',answer);
-   }catch{
-     applyResult(q,'×','정답은 “'+q.w.w+'”입니다. 지문의 단서를 다시 살펴보세요.',answer);
-   }finally{$('submit').disabled=false;$('submit').textContent='채점하기'}
+ const q=session.queue[current];if(!$('next').classList.contains('hidden'))return;
+ const hintUsed=hintLevel>0;
+ if(dontKnow){
+   const clue=q.feedbackCorrect||('정답은 “'+q.w.w+'”입니다.');
+   applyResult(q,'×',clue+' 정답을 본 뒤 따라 쓰는 것은 숙달로 계산하지 않아요.','',{
+     credit:0,contextSuccess:false,targetRecall:false,independent:false,hintUsed,revealed:true
+   });
    return;
  }
- $('submit').disabled=true;$('submit').textContent='AI 채점 중…';
+ if(q.opts?.length){
+   if(selectedOption==null)return;
+   const selected=q.opts[selectedOption],correct=q.opts.find(o=>o.ok),ok=Boolean(selected?.ok);
+   document.querySelectorAll('.option').forEach((x,i)=>{
+     if(q.opts[i].ok)x.classList.add('correct');
+     else if(i===selectedOption&&!ok)x.classList.add('wrong');
+   });
+   const feedback=ok
+     ?(q.feedbackCorrect||'지문의 핵심 단서와 이 어휘의 쓰임이 잘 맞아요.')
+     :((selected?.reason?selected.reason+' ':'')+(q.feedbackCorrect||('정답은 “'+(correct?.t||q.w.w)+'”입니다.')));
+   applyResult(q,ok?'○':'×',feedback,'',{
+     credit:ok?1:0,contextSuccess:ok,targetRecall:false,independent:ok&&!hintUsed,hintUsed,revealed:false
+   });
+   return;
+ }
+ const answer=$('answer').value.trim();
+ if(!answer)return alert('답을 쓰거나 “모르겠어”를 눌러주세요.');
+ const expected=normalizeTyped(q.w.w),typed=normalizeTyped(answer);
+ if(typed===expected){
+   applyResult(q,'◎',q.feedbackCorrect||'문맥의 단서를 보고 목표 어휘를 직접 떠올렸어요.',answer,{
+     credit:1,contextSuccess:true,targetRecall:true,independent:!hintUsed,hintUsed,revealed:false
+   });
+   return;
+ }
+ $('submit').disabled=true;$('submit').textContent='문맥 채점 중…';
  try{
-   const {data}=await sb.auth.getSession(); const token=data.session?.access_token;
-   const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({question:q.q+(q.ctx?'\n상황: '+q.ctx:''),targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,gradingContext:q.gradingContext||'',answer,source:answerSource})});
-   if(r.ok){const j=await r.json();applyResult(q,j.result||'△',j.feedback||'답을 확인했어요.',j.normalizedAnswer||answer)}
-   else{fallbackOpen(q,answer)}
- }catch{fallbackOpen(q,answer)}
- finally{$('submit').disabled=false;$('submit').textContent='채점하기'}
+   const {data}=await sb.auth.getSession();const token=data.session?.access_token;
+   if(!token)throw new Error('로그인이 필요합니다.');
+   const r=await fetch('/api/grade',{
+     method:'POST',
+     headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+     body:JSON.stringify({
+       taskType:'context_answer',
+       question:q.q+'\n지문: '+q.ctx,
+       targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,
+       acceptedAnswers:q.acceptedAnswers||[],answer,source:answerSource
+     })
+   });
+   if(!r.ok)throw new Error('채점 서버 오류');
+   const j=await r.json();
+   const credit=Number(j.score)===1?1:Number(j.score)===0.5?.5:0;
+   const result=credit===1?'○':credit===.5?'△':'×';
+   applyResult(q,result,j.feedback||q.feedbackCorrect||'문맥에 맞는지 확인했어요.',j.normalizedAnswer||answer,{
+     credit,contextSuccess:Boolean(j.contextSuccess),targetRecall:Boolean(j.targetRecall),
+     independent:credit===1&&!hintUsed,hintUsed,revealed:false
+   });
+ }catch(e){
+   alert('채점을 완료하지 못했어요. 답은 기록하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 채점해 주세요.');
+ }finally{
+   $('submit').disabled=false;$('submit').textContent='채점하기';
+ }
 }
 function fallbackOpen(q,answer){
  const key=q.w.w,def=q.w.d; const words=def.replace(/[.,()]/g,'').split(/\s+/).filter(x=>x.length>=2).slice(0,5);
