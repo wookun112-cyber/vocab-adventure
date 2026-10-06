@@ -2,88 +2,94 @@ const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 
 function extractText(data){
-  if(typeof data?.output_text==='string') return data.output_text;
+  if(typeof data?.output_text==='string')return data.output_text;
   const parts=[];
-  for(const item of data?.output||[]) for(const c of item?.content||[]) if(typeof c?.text==='string') parts.push(c.text);
+  for(const item of data?.output||[])for(const c of item?.content||[])if(typeof c?.text==='string')parts.push(c.text);
   return parts.join('\n');
 }
 async function verifyUser(auth){
-  if(!auth?.startsWith('Bearer ')) return false;
+  if(!auth?.startsWith('Bearer '))return false;
   const r=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:{apikey:SUPABASE_KEY,Authorization:auth}});
   return r.ok;
 }
 export default async function handler(req,res){
-  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
-  if(!(await verifyUser(req.headers.authorization))) return res.status(401).json({error:'Login required'});
-  if(!process.env.OPENAI_API_KEY) return res.status(503).json({error:'AI not configured'});
+  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
+  if(!(await verifyUser(req.headers.authorization)))return res.status(401).json({error:'Login required'});
+  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
   try{
-    const {question,answer,source='typed',targetWord='',definition='',band=3,gradingContext='',taskType='general'}=req.body||{};
-    if(!question||typeof answer!=='string') return res.status(400).json({error:'Bad request'});
+    const {
+      question,answer,source='typed',targetWord='',definition='',band=3,
+      gradingContext='',taskType='general',acceptedAnswers=[]
+    }=req.body||{};
+    if(!question||typeof answer!=='string')return res.status(400).json({error:'Bad request'});
 
-    const synonymMode=taskType==='cloze_synonym';
-    const prompt=synonymMode?`당신은 한국어 어휘 빈칸 문제의 대체 답안을 판정하는 엔진입니다.
+    const contextMode=taskType==='context_answer';
+    const prompt=contextMode?`당신은 한국어 어휘 문맥 문제를 채점합니다.
 목표 어휘: ${targetWord}
 기준 뜻: ${definition}
 권장 학습 단계: ${band}
 문제와 지문:
 ${question}
+미리 검토된 허용 답안 후보(절대적인 목록은 아님): ${JSON.stringify(acceptedAnswers)}
 학생 답: ${answer}
 입력 방식: ${source}
 
-판정 규칙:
-1. 학생 답이 목표 어휘와 의미가 사실상 같고, 해당 빈칸에 문법적으로·문맥적으로 자연스럽게 들어갈 수 있으면 △로 판정합니다. 이는 약 50% 부분점수입니다.
-2. 단순 관련어, 상위어·하위어, 뜻이 일부만 겹치는 말, 문맥상 어색한 말은 ×입니다.
-3. 목표 어휘 자체인데 띄어쓰기·철자 정도의 사소한 오류만 있다면 ○로 판정할 수 있습니다.
-4. source가 voice이면 명백한 STT 오인식만 보정합니다. 발음은 평가하지 않습니다.
-5. feedback은 짧게 씁니다.
+채점 원칙:
+1. 목표는 문맥 이해와 적절한 어휘 사용입니다. 학생이 목표 어휘와 다른 표현을 썼더라도 그 문맥에서 뜻과 쓰임이 완전히 자연스러우면 정답(score 1)입니다.
+2. 단순히 유의어라는 이유만으로 정답이나 반점을 주지 마세요. 실제 문장에 넣었을 때 문법과 의미가 모두 맞아야 합니다.
+3. 의미가 일부만 맞거나 핵심 단서 하나만 반영하면 부분정답(score 0.5)입니다.
+4. 관련어이지만 핵심 의미가 다르거나 문맥에 어색하면 오답(score 0)입니다.
+5. 띄어쓰기, 조사, 활용형 차이는 허용합니다. 의미가 명확한 사소한 오타는 이해와 별도로 보정하고 정답으로 인정할 수 있습니다.
+6. targetRecall은 학생이 목표 어휘 자체 또는 명백한 활용형/사소한 오타 형태를 직접 떠올린 경우에만 true입니다. 다른 완전한 대체 표현이면 contextSuccess=true, targetRecall=false입니다.
+7. contextSuccess는 score 1이면 true, score 0.5이면 부분 이해로 false, score 0이면 false입니다.
+8. source가 voice이면 명백한 STT 오인식만 보정합니다. 발음은 평가하지 않습니다.
+9. feedback은 문맥의 핵심 단서와 학생 답이 왜 맞거나 부족한지 1~2문장으로 설명합니다.
 반드시 JSON만 출력:
-{"normalizedAnswer":"...","result":"○|△|×","score":0.0,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`:`당신은 초등~고등학생 한국어 어휘 학습 답안을 채점하는 엔진입니다.
+{"normalizedAnswer":"...","result":"○|△|×","score":0.0,"contextSuccess":false,"targetRecall":false,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`:`당신은 한국어 어휘 학습 답안을 채점합니다.
 목표 단어: ${targetWord}
 기준 뜻: ${definition}
 권장 학습 단계: ${band}
 문제: ${question}
-내부 채점 참고(학생에게 보여주지 않는 기준): ${gradingContext}
-입력 방식: ${source}
+내부 채점 참고: ${gradingContext}
 학생 답: ${answer}
+입력 방식: ${source}
 
 규칙:
-1. 사전식 암기보다 문맥 이해와 실제 사용을 평가합니다.
-2. 내부 채점 참고는 채점 기준으로만 사용하고, 정답을 그대로 복사해 피드백에 노출하지 않습니다.
-3. source가 voice이면 학생 답은 음성인식 결과입니다. 문맥상 명백한 STT 오인식만 내부적으로 자연스럽게 보정한 뒤 의미를 채점합니다.
-4. 발음은 절대로 평가하거나 교정하지 않습니다.
-5. 실제 의미 오류를 STT 오류라고 억지로 고치지 않습니다.
-6. 결과는 ◎(독립적으로 정확), ○(정답), △(부분 이해/도움 필요), ?(우연 정답 의심), ×(오답) 중 하나입니다.
-7. feedback은 짧고 학생이 이해하기 쉽게 씁니다.
+- 문맥 이해와 실제 사용을 우선합니다.
+- source가 voice이면 명백한 STT 오인식만 보정합니다. 발음은 평가하지 않습니다.
+- feedback은 짧고 명확하게 씁니다.
 반드시 JSON만 출력:
-{"normalizedAnswer":"...","result":"◎|○|△|?|×","score":0.0,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`;
+{"normalizedAnswer":"...","result":"◎|○|△|?|×","score":0.0,"contextSuccess":false,"targetRecall":false,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`;
+
+    const schema={
+      type:'object',
+      properties:{
+        normalizedAnswer:{type:'string'},
+        result:{type:'string',enum:contextMode?['○','△','×']:['◎','○','△','?','×']},
+        score:{type:'number',enum:contextMode?[0,0.5,1]:undefined,minimum:contextMode?undefined:0,maximum:contextMode?undefined:1},
+        contextSuccess:{type:'boolean'},
+        targetRecall:{type:'boolean'},
+        feedback:{type:'string'},
+        correctionApplied:{type:'boolean'},
+        correctionNote:{type:'string'}
+      },
+      required:['normalizedAnswer','result','score','contextSuccess','targetRecall','feedback','correctionApplied','correctionNote'],
+      additionalProperties:false
+    };
+    if(contextMode){delete schema.properties.score.minimum;delete schema.properties.score.maximum}
+    else delete schema.properties.score.enum;
 
     const model=process.env.OPENAI_MODEL||'gpt-6-luna';
-    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({
-      model,
-      reasoning:{effort:'low'},
-      max_output_tokens:400,
-      input:prompt,
-      text:{format:{
-        type:'json_schema',
-        name:'vocab_grade',
-        strict:true,
-        schema:{
-          type:'object',
-          properties:{
-            normalizedAnswer:{type:'string'},
-            result:{type:'string',enum:synonymMode?['○','△','×']:['◎','○','△','?','×']},
-            score:{type:'number',minimum:0,maximum:1},
-            feedback:{type:'string'},
-            correctionApplied:{type:'boolean'},
-            correctionNote:{type:'string'}
-          },
-          required:['normalizedAnswer','result','score','feedback','correctionApplied','correctionNote'],
-          additionalProperties:false
-        }
-      }}
-    })});
-    if(!r.ok){const t=await r.text();return res.status(502).json({error:'OpenAI '+r.status+': '+t.slice(0,180)})}
-    const text=extractText(await r.json()).trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
-    return res.status(200).json({...JSON.parse(text),model});
+    const r=await fetch('https://api.openai.com/v1/responses',{
+      method:'POST',
+      headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model,reasoning:{effort:'low'},max_output_tokens:500,input:prompt,
+        text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
+      })
+    });
+    if(!r.ok)return res.status(502).json({error:'OpenAI '+r.status+': '+(await r.text()).slice(0,220)});
+    const parsed=JSON.parse(extractText(await r.json()).trim());
+    return res.status(200).json({...parsed,model});
   }catch(e){return res.status(500).json({error:String(e?.message||e)})}
 }
