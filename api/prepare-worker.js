@@ -12,7 +12,8 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  let payload=job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
- const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,f.issues]));
+ const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
+ const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));
  delete payload.preparationError;delete payload.preparationIssues;
  let checkpoint=Promise.resolve(),obsolete=false;
  const save=failed=>{
@@ -33,11 +34,11 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
    while(cursor<groups.length&&!obsolete){
     const group=groups[cursor++];
     let missing=group;
-    for(let attempt=0;attempt<1&&missing.length;attempt++){
+    for(let attempt=0;attempt<(remaining.length<=4?2:1)&&missing.length;attempt++){
      const known=[...ready];
      const items=generationItems(missing.map(([,p])=>p),job.learner,known);
      const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40),feedback);
-     if(questions.failed?.length)payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];
+     if(questions.failed?.length){payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];for(const f of questions.failed)feedback[f.id]=failureFeedback(f)}
      if(obsolete)return;
      const retry=[];
      for(const [i,p] of missing){

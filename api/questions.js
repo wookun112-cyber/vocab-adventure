@@ -38,14 +38,14 @@ function finalConsonant(word){
 }
 function expectedParticle(word,particle){
  const end=finalConsonant(word);if(end===null)return particle;
- for(const [has,none] of [['이','가'],['은','는'],['을','를'],['과','와']])if(particle===has||particle===none)return end?has:none;
+ for(const [has,none] of [['이','가'],['은','는'],['을','를'],['과','와'],['이라고','라고'],['이라는','라는'],['이라','라']])if(particle===has||particle===none)return end?has:none;
  if(particle==='으로'||particle==='로')return end&&end!==8?'으로':'로';
  return particle;
 }
 function completeContext(context,word){
- return String(context||'').replace(/＿＿＿＿\((이|은|을|과|으로)\/(가|는|를|와|로)\)/g,(_,particle)=>word+expectedParticle(word,particle)).replace('＿＿＿＿',word);
+ return String(context||'').replace(/＿＿＿＿\((이라고|이라는|이라|이|은|을|과|으로)\/(라고|라는|라|가|는|를|와|로)\)/g,(_,particle)=>word+expectedParticle(word,particle)).replace('＿＿＿＿',word);
 }
-function blankParticle(context){return String(context||'').match(/＿＿＿＿(으로|로|이|가|은|는|을|를|과|와)(?=\s|[,.!?“”"'():;]|$)/)?.[1]||''}
+function blankParticle(context){return String(context||'').match(/＿＿＿＿(이라고|이라는|이라|라고|라는|라|으로|로|이|가|은|는|을|를|과|와)(?=\s|[,.!?“”"'():;]|$)/)?.[1]||''}
 function normalizeCandidate(q,item){
   q={...q};
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)){
@@ -70,7 +70,7 @@ function normalizeCandidate(q,item){
   if(item.type==='mc_context'){
     const particle=blankParticle(q.context);
     if(particle&&(q.options||[]).some(o=>expectedParticle(o.text,particle)!==particle)){
-      const pairs={이:'이/가',가:'이/가',은:'은/는',는:'은/는',을:'을/를',를:'을/를',과:'과/와',와:'과/와',으로:'으로/로',로:'으로/로'};
+      const pairs={이:'이/가',가:'이/가',은:'은/는',는:'은/는',을:'을/를',를:'을/를',과:'과/와',와:'과/와',으로:'으로/로',로:'으로/로',이라고:'이라고/라고',라고:'이라고/라고',이라는:'이라는/라는',라는:'이라는/라는',이라:'이라/라',라:'이라/라'};
       q.context=q.context.replace('＿＿＿＿'+particle,'＿＿＿＿('+pairs[particle]+')');
     }
   }
@@ -256,7 +256,7 @@ async function aiVerify(items,questions,recent){
   return out.reviews||[];
 }
 export async function buildValidated(items,recent,{maxAttempts=3,partial=false,initialFeedback={}}={}){
-  const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),feedback={...initialFeedback};
+  const pending=new Map(items.map(x=>[x.id,x])),accepted=new Map(),lastCandidates=new Map(),feedback={...initialFeedback};
   for(let attempt=0;attempt<maxAttempts&&pending.size;attempt++){
     const batch=[...pending.values()].map(item=>{
       const earlier=[...accepted.values()].filter(q=>items.find(x=>x.id===q.id)?.word===item.word);
@@ -269,7 +269,7 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
     for(const item of batch){
       let q=byId.get(item.id);
       if(!q){deterministicIssues[item.id]=['missing_generated_question'];continue}
-      q=normalizeCandidate(q,item);byId.set(item.id,q);
+      q=normalizeCandidate(q,item);byId.set(item.id,q);lastCandidates.set(item.id,q);
       const issues=deterministic(q,item);
       if(issues.length)deterministicIssues[item.id]=issues;
       else toVerify.push({item,q});
@@ -307,7 +307,7 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
     }
   }
   if(pending.size){
-    const failed=[...pending.keys()].map(id=>({id,issues:feedback[id]||['unknown_validation_failure']}));
+    const failed=[...pending.keys()].map(id=>({id,issues:feedback[id]||['unknown_validation_failure'],...(partial?{context:lastCandidates.get(id)?.context||'',prompt:lastCandidates.get(id)?.prompt||''}:{})}));
     if(partial){const out=items.filter(x=>accepted.has(x.id)).map(x=>accepted.get(x.id));out.failed=failed;return out}
     const e=new Error('QUESTION_VALIDATION_FAILED '+JSON.stringify(failed));
     e.failed=failed;throw e;
