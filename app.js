@@ -154,17 +154,19 @@ async function curriculumStatus(){
 async function buildFixedCurriculum(){
  const btn=$('buildCurriculum'),progress=$('curriculumProgress');
  if(!authUser)return;
- const counts=await curriculumStatus()||{};
- const total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);
- if(total===6000){
-   progress.textContent='완료 · 초1~고3 핵심 어휘 6,000개가 고정 DB에 준비됐어요.';
-   btn.textContent='어휘 DB 완료';
-   btn.disabled=true;
+ const counts=await curriculumStatus();
+ if(!counts){
+   progress.textContent='어휘 목록을 확인할 수 없어요. 연결을 확인해 주세요.';
+   btn.textContent='다시 확인';btn.disabled=false;
    return;
  }
- progress.textContent='현재 고정 어휘 '+total.toLocaleString()+' / 6,000개 · 관리자 점검이 필요해요.';
- btn.textContent='어휘 DB 확인';
- btn.disabled=false;
+ const total=Object.values(counts).reduce((a,b)=>a+Number(b||0),0);
+ const ready=total>=5000&&total<=7000;
+ progress.textContent=ready
+   ?'2차 선별 완료 · 학습용 어휘 '+total.toLocaleString()+'개 · 단계는 권장 수준입니다.'
+   :'현재 사용 가능 어휘 '+total.toLocaleString()+'개 · 목록을 점검해 주세요.';
+ btn.textContent=ready?'어휘 DB 확인 완료':'다시 확인';
+ btn.disabled=ready;
 }
 function scorePriority(w){
  const s=wordState(w.w); let p=s.wrong*5+(5-s.streak)*2+(s.seen?2:0);
@@ -336,8 +338,10 @@ async function resendConfirm(){const email=$('email').value.trim();if(!email)ret
 function setMsg(m,e=false){$('authMsg').textContent=m;$('authMsg').className='authmsg'+(e?' error':'')}
 async function applyAuth(sessionObj){
  authUser=sessionObj?.user||null;$('authGate').classList.toggle('hidden',!!authUser);
- if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(async()=>{await ensureCatalog(child().difficulty,'daily');const st=await curriculumStatus();if(st&&$('curriculumProgress')){const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0);$('curriculumProgress').textContent=n>=6000?'완료 · 초1~고3 고정 어휘 6,000개':'현재 고정 어휘 '+n.toLocaleString()+' / 6,000개';
- if(n>=6000&&$('buildCurriculum')){$('buildCurriculum').textContent='어휘 DB 완료';$('buildCurriculum').disabled=true;}}},700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));renderAll();$('cloudPill').textContent='로컬 모드'}} 
+ if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(async()=>{await ensureCatalog(child().difficulty,'daily');const st=await curriculumStatus();if(st&&$('curriculumProgress')){const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0);
+ const ready=n>=5000&&n<=7000;
+ $('curriculumProgress').textContent=ready?'2차 선별 완료 · 사용 가능 '+n.toLocaleString()+'개 · 학년은 권장 단계':'사용 가능 '+n.toLocaleString()+'개 · 점검 필요';
+ if($('buildCurriculum')){$('buildCurriculum').textContent=ready?'어휘 DB 확인 완료':'다시 확인';$('buildCurriculum').disabled=ready;}}},700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));renderAll();$('cloudPill').textContent='로컬 모드'}} 
 }
 function startVoice(){
  const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return alert('이 브라우저에서는 음성입력을 지원하지 않아요. Chrome/Edge에서 사용해 주세요.');
