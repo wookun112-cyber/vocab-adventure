@@ -225,11 +225,13 @@ function chooseReview(n=15){
 }
 function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={}){
  let days=1;
+ const alreadyReviewedToday=st.lastReviewAt===today();
  if(revealed||credit<.5){
    st.reviewStage=0;days=1;
  }else if(hintUsed||credit<1){
    st.reviewStage=Math.min(st.reviewStage||0,1);days=1;
  }else if(independent){
+   if(alreadyReviewedToday)return;
    const intervals=[1,3,7,14,30];
    const stage=Math.max(0,Math.min(intervals.length-1,Number(st.reviewStage)||0));
    days=intervals[stage];
@@ -458,7 +460,7 @@ function renderQuestion(){
  $('options').innerHTML='';
  $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
  $('answer').placeholder=q.type==='subjective_dialogue'?'대화에 어울리는 어휘를 써 보세요.':'빈칸에 들어갈 어휘를 써 보세요.';
- $('hint').classList.remove('hidden'); $('hint').textContent='힌트';
+ $('hint').classList.remove('hidden'); $('hint').disabled=false; $('hint').textContent='힌트';
  if(q.opts?.length)q.opts.forEach((o,i)=>{
    const b=document.createElement('button');b.className='option';b.textContent=o.t;
    b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};
@@ -502,7 +504,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  session.results.push(rec);
  if(q.signature){
    const c=child();c.recentProblems=Array.isArray(c.recentProblems)?c.recentProblems:[];
-   c.recentProblems.push(q.signature);c.recentProblems=c.recentProblems.slice(-60);
+   const optionKey=q.opts?.length?'|'+q.opts.map(o=>o.t).join('§'):'';c.recentProblems.push(q.signature+optionKey);c.recentProblems=c.recentProblems.slice(-60);
  }
  const recent=session.results.slice(-6),bad=recent.filter(x=>x.credit<.75).length;
  if(session.mode==='level'){
@@ -672,7 +674,7 @@ document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{state.sele
 document.querySelectorAll('[data-report-profile]').forEach(b=>b.onclick=()=>{reportProfile=b.dataset.reportProfile;renderReport()});
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
 $('startDaily').onclick=()=>buildSession('daily');$('startReview').onclick=()=>buildSession('review');$('levelTest').onclick=()=>buildSession('level');
-$('submit').onclick=()=>gradeCurrent(false);$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('mic').onclick=startVoice;
+$('submit').onclick=()=>gradeCurrent(false);$('hint').onclick=showHint;$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('introNext').onclick=nextIntro;$('mic').onclick=startVoice;
 $('signIn').onclick=login;$('signUp').onclick=signup;$('resendConfirm').onclick=resendConfirm;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
 $('signOut').onclick=()=>sb.auth.signOut();$('syncNow').onclick=()=>cloudSave(false);if($('buildCurriculum'))$('buildCurriculum').onclick=buildFixedCurriculum;
 let authSettled=false;
