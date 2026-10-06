@@ -6,7 +6,7 @@ const TARGETS={1:600,2:600,3:700,4:700,5:700,6:700,7:700,8:650,9:650};
 const BAND_NAMES={1:'초1~2',2:'초3~4',3:'초5~6',4:'중1',5:'중2',6:'중3',7:'고1',8:'고2',9:'고3'};
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
 
-function makeGenerationPrompt(band,count,existingBand){
+function makeGenerationPrompt(band,count,existingBand,existingAll){
   return [
     '한국 학생용 어휘 학습 DB의 빈자리를 채울 새 핵심 어휘를 만드세요.',
     '대상 단계: '+band+' ('+BAND_NAMES[band]+')',
@@ -17,8 +17,8 @@ function makeGenerationPrompt(band,count,existingBand){
     '국어·사회·과학·수학논리·감정관계·생활 영역을 균형 있게 섞으세요.',
     'definition은 학생 눈높이의 정확한 한 문장 뜻풀이, example은 뜻이 드러나는 자연스러운 한 문장 예문입니다.',
     'confusion은 실제 헷갈리는 단어가 있을 때만, contrast는 그 차이이며 없으면 빈 문자열입니다.',
-    '아래 기존 단어는 절대로 다시 쓰지 마세요.',
-    existingBand.join(', '),
+    '아래 기존 단어는 절대로 다시 쓰지 마세요. 단계가 달라도 중복 금지입니다.',
+    existingAll.join(', '),
     '정확히 '+count+'개를 반환하세요.'
   ].join('\n');
 }
@@ -69,7 +69,7 @@ function chooseBand(status){
 async function generateAndInsert(band,count,existingSet){
   const ask=Math.min(50,Math.max(count,Math.ceil(count*1.35)));
   const existingBand=await rpc('tmp_repair_band_words_20261006',{p_token:T,p_band:band});
-  const result=await askModel(makeGenerationPrompt(band,ask,existingBand),makeGenerationSchema(ask));
+  const result=await askModel(makeGenerationPrompt(band,ask,existingBand,[...existingSet]),makeGenerationSchema(ask));
   const payload=[];
   for(const x of result.words||[]){
     const w=String(x.word||'').trim();
