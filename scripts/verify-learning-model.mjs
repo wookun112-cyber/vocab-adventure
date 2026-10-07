@@ -111,3 +111,8 @@ assert.equal(continued.node('startDaily').disabled,false);
 assert.equal(continued.node('startDaily').textContent,'계속 학습하기');
 assert.equal(continued.gradeCalls,0);assert.deepEqual(continued.alerts.filter(x=>!x.startsWith('오늘 학습 완료')),[]);
 console.log('Continued learning verified: completed-day start stays enabled, all 20 review transitions work, no extra new words or false delayed-recall credit, and completing another lesson still allows study.');
+const selection=fixture();
+selection.run("WORDS=[{w:'생활 정보 격차',band:2},{w:'생활정보격차',band:2},{w:'격차',band:2},{w:'탄소 중립',band:2}];child().words={'생활 정보 격차':{seen:2},'격차':{seen:2},'탄소 중립':{seen:1}}");
+assert.equal(selection.run('chooseNew(20).some(w=>!isLearningTarget(w.w))'),false);
+assert.equal(selection.run('chooseReview(20).some(w=>!isLearningTarget(w.w))'),false);
+assert.equal(selection.run('child().words["생활 정보 격차"].seen'),2);

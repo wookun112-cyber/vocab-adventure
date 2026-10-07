@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,summarizeEvidence} from './lib/learning-model.js';
+import {LEARNING_MODEL,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,summarizeEvidence,isLearningTarget} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -725,12 +725,12 @@ function scorePriority(w){
 }
 function chooseNew(n=5){
  const target=child().difficulty;
- return WORDS.filter(w=>!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt)
+ return WORDS.filter(w=>isLearningTarget(w.w)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt)
    .map(w=>({w,score:Math.abs((w.band||3)-target)*5+(w.source==='fixed'?-3:2)+Math.random()*4}))
    .sort((a,b)=>a.score-b.score).slice(0,n).map(x=>x.w);
 }
 function chooseReview(n=15){
- const seen=WORDS.filter(w=>child().words[w.w]?.seen||child().words[w.w]?.introducedAt);
+ const seen=WORDS.filter(w=>isLearningTarget(w.w)&&(child().words[w.w]?.seen||child().words[w.w]?.introducedAt));
  const due=seen.filter(w=>isDue(wordState(w.w).nextReviewAt)).sort((a,b)=>scorePriority(b)-scorePriority(a));
  const active=seen.filter(w=>{
    const st=wordState(w.w);
@@ -1006,7 +1006,7 @@ async function getPreparation(mode='daily',retry=false){
  const profile=state.selected,account=authUser?.id,key=preparationKey(mode,profile,account);
  if(!account)throw new Error('로그인이 필요합니다.');
  const snapshot=preparationSnapshot(profile),existing=preparations.get(key);
- if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy==='daily-3-20-25-flex')&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
+ if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&existing.plans.every(p=>isLearningTarget(p.w?.w))&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy==='daily-3-20-25-flex')&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
  if(preparationLoads.has(key))return preparationLoads.get(key);
  if(existing)existing.cancel();
  const loading=(async()=>{
@@ -1022,7 +1022,7 @@ async function getPreparation(mode='daily',retry=false){
        remote=await serverLesson(profile);
      }
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
-     if(remote?.payload?.snapshot===snapshot&&remote.payload.engine===PREPARATION_ENGINE&&remote.payload.plans?.length===20&&remote.status!=='failed'){
+     if(remote?.payload?.snapshot===snapshot&&remote.payload.engine===PREPARATION_ENGINE&&remote.payload.plans?.length===20&&remote.payload.plans.every(p=>isLearningTarget(p.w?.w))&&remote.status!=='failed'){
        const data=remote.payload;
        for(const plan of data.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
        rebuildCatalog();
@@ -1035,7 +1035,7 @@ async function getPreparation(mode='daily',retry=false){
      throw new Error('저장된 맞춤 문제를 확인하지 못했어요. 학습 기록은 유지됩니다. 다시 눌러 주세요.');
    }
    let meta;
-   const restored=saved?.engine===PREPARATION_ENGINE&&saved.account===account&&saved.profile===profile&&saved.snapshot===snapshot&&Date.now()-saved.created<PREPARATION_TTL&&saved.mode===mode&&saved.plans?.length===20;
+   const restored=saved?.engine===PREPARATION_ENGINE&&saved.account===account&&saved.profile===profile&&saved.snapshot===snapshot&&Date.now()-saved.created<PREPARATION_TTL&&saved.mode===mode&&saved.plans?.length===20&&saved.plans.every(p=>isLearningTarget(p.w?.w));
    if(restored){
      meta={...saved,key};
      for(const plan of saved.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
@@ -1044,7 +1044,7 @@ async function getPreparation(mode='daily',retry=false){
      await withDeadline(ensureCatalog(state.users[profile].difficulty,mode==='level'?'diagnostic':'daily'),20000,'어휘를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
      let newWords=[],reviewWords=[];
-     if(mode==='level')reviewWords=WORDS.filter(w=>!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt).sort(()=>Math.random()-.5).slice(0,30);
+     if(mode==='level')reviewWords=WORDS.filter(w=>isLearningTarget(w.w)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt).sort(()=>Math.random()-.5).slice(0,30);
      else if(mode==='review')reviewWords=chooseReview(20);
      else{const budget=studyBudget(child());newWords=chooseNew(budget.newCount);reviewWords=chooseReview(20-newWords.length)}
      const baseWords=[...newWords,...reviewWords];

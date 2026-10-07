@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {makePreparedPlan,learnerSnapshot,passageKeys} from '../lib/prepared-plan.js';
 import {prepare} from '../api/prepare-worker.js';
+import {CONTEXT_ONLY_EXPRESSIONS,isLearningTarget} from '../lib/learning-model.js';
 const learner={difficulty:2,levelTestCompleted:false,words:{},recentProblems:[]};
 const before=JSON.stringify(learner);
 const curriculum=Array.from({length:30},(_,i)=>({word:'어휘'+i,definition:'상황의 뜻을 나타내는 말',band:2,domain:'국어',example:''}));
@@ -99,3 +100,21 @@ assert.equal(repaired.ready.length,20);
 assert.equal(recoveryIds.length,12);assert.ok(recoveryIds.every(id=>Number(id)>=8));
 assert.equal(repaired.snapshot,learnerSnapshot(interruptedLearner));
 console.log('Recovery worker verified: original plans and eight accepted questions retained across changed progress; only twelve missing IDs generated.');
+
+for(const phrase of CONTEXT_ONLY_EXPRESSIONS){
+ assert.equal(isLearningTarget(phrase),false);assert.equal(isLearningTarget(phrase.replaceAll(' ','')),false);
+}
+for(const w of ['격차','정보','기준','시행착오','역지사지','탄소 중립','먹이 사슬','발이 넓다'])assert.equal(isLearningTarget(w),true);
+const rejectedCatalog={'생활 정보 격차':{w:'생활 정보 격차',d:'설명형 표현',band:7,source:'fixed'}};
+const rejectedLearner={...learner,difficulty:7,words:{'생활 정보 격차':{seen:10,introducedAt:'2026-09-01'}}};
+const rejectedCurriculum=[...curriculum,...CONTEXT_ONLY_EXPRESSIONS.map(word=>({word,definition:'설명형 표현',band:7,domain:'생활'}))];
+const curated=makePreparedPlan(rejectedLearner,rejectedCatalog,rejectedCurriculum,'family','guest');
+assert.ok(curated.plans.every(p=>isLearningTarget(p.w.w)));
+assert.ok(curated.newWords.every(isLearningTarget));assert.equal(rejectedLearner.words['생활 정보 격차'].seen,10);
+const stale=JSON.parse(JSON.stringify(ready));stale.plans[0].w.w='생활 정보 격차';
+const replaced=await prepare({...job,payload:stale},'key',generate,store);
+assert.ok(replaced.plans.every(p=>isLearningTarget(p.w.w)));
+const oldPaused=JSON.parse(JSON.stringify(interrupted));oldPaused.plans[0].w.w='생활 정보 격차';
+const preserved=await prepare({...job,learner:interruptedLearner,payload:oldPaused},'key',async items=>items.map(answer),store);
+assert.equal(JSON.stringify(preserved.plans),JSON.stringify(oldPaused.plans));
+console.log('Core vocabulary verified: descriptive phrases and spacing variants excluded from new/review targets, independent concepts and idioms retained, stale unused packets replaced, interrupted lessons and records preserved.');
