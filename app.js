@@ -123,15 +123,24 @@ function rewardCompletion(){
  const game=exploration(child()),day=game.days[today()]||(game.days[today()]={keys:[],bonus:false});
  if(day.bonus)return 0;day.bonus=true;game.xp+=40;return 40;
 }
-const VIRTUAL_NAMES=['별빛대장','용감한참새','책먹는공룡','우주고양이','초록번개','달토끼','구름기사','문장마법사','호기심곰','바람여우','반짝연필','숲속탐정','젤리전사','파도펭귄','불꽃소년','꿈꾸는별','햇살강아지','나무부엉이','꼬마로봇','은빛늑대','새싹요정','민트구름','복숭아곰','파란혜성','작은용','도토리친구','느긋한코알라','콩알병아리','무지개토끼','첫걸음탐험가'];
-const VIRTUAL_DIFFICULTIES=[9,8.7,8.5,8.2,8,7.8,7.5,7.2,7,6.8,6.5,6.2,6,5.8,5.5,5.2,5,4.8,4.5,4.2,4,3.8,3.5,3.2,3,2.8,2.5,2.2,2,1.2];
+const BASE_RIVAL_NAMES=['별빛대장','용감한참새','책먹는공룡','우주고양이','초록번개','달토끼','구름기사','문장마법사','호기심곰','바람여우','반짝연필','숲속탐정','젤리전사','파도펭귄','불꽃소년','꿈꾸는별','햇살강아지','나무부엉이','꼬마로봇','은빛늑대','새싹요정','민트구름','복숭아곰','파란혜성','작은용','도토리친구','느긋한코알라','콩알병아리','무지개토끼','첫걸음탐험가'];
+const RIVAL_PREFIXES=['푸른','노을','반짝','새벽','봄빛','달빛','초록','은하','바다','햇살'];
+const RIVAL_FRIENDS=['고래','여우','토끼','사자','판다','호랑이','다람쥐','강아지','수달','부엉이'];
+const VIRTUAL_NAMES=[...new Set([...BASE_RIVAL_NAMES,...RIVAL_PREFIXES.flatMap(prefix=>RIVAL_FRIENDS.map(friend=>prefix+friend))])].slice(0,98);
+// 72 lower-stage, 20 middle-stage and 6 upper-stage peers, fixed across visits.
+const VIRTUAL_DIFFICULTIES=[9,8.5,8,7.5,7,6.5,
+ ...Array.from({length:20},(_,i)=>Math.round((6.2-i*2.5/19)*10)/10),
+ ...Array.from({length:71},(_,i)=>Math.round((3.4-i*2.3/70)*10)/10),1];
 const rankingDifficulty=value=>Math.round(clamp(Number.isFinite(Number(value))?Number(value):2,1,9)*10)/10;
 const rankCaption=row=>(row.tied?'공동 ':'')+row.rank+'위';
 function explorationRanking(c=child(),profile=state.selected){
- exploration(c,profile);
- const friends=VIRTUAL_NAMES.map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,difficulty:VIRTUAL_DIFFICULTIES[i],virtual:true}));
- const me={id:profile,name:c.name,characterId:c.characterId,difficulty:rankingDifficulty(c.difficulty),virtual:false};
- const rows=[...friends,me].sort((a,b)=>b.difficulty-a.difficulty||Number(a.virtual)-Number(b.virtual)||a.id.localeCompare(b.id));
+ const familyIds=['ayoung','inseong',...(profile==='guest'?['guest']:[])];
+ const family=familyIds.map(id=>{
+  const learner=id===profile?c:state.users[id];exploration(learner,id);
+  return {id,name:learner.name,characterId:learner.characterId,difficulty:rankingDifficulty(learner.difficulty),virtual:false,family:true,isMe:id===profile};
+ });
+ const friends=VIRTUAL_NAMES.slice(0,100-family.length).map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,difficulty:VIRTUAL_DIFFICULTIES[i],virtual:true,family:false,isMe:false}));
+ const rows=[...friends,...family].sort((a,b)=>b.difficulty-a.difficulty||Number(a.virtual)-Number(b.virtual)||a.id.localeCompare(b.id));
  let rank=0;
  return rows.map((x,i)=>{if(!i||x.difficulty!==rows[i-1].difficulty)rank=i+1;return {...x,rank,tied:rows.some((r,j)=>j!==i&&r.difficulty===x.difficulty)}});
 }
@@ -142,23 +151,25 @@ function selectCharacter(id){
 }
 function renderExploration(){
  if($('characterStatus'))$('characterStatus').textContent='';
- const c=child(),rows=explorationRanking(),me=rows.find(x=>!x.virtual),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
+ const c=child(),rows=explorationRanking(),me=rows.find(x=>x.isMe),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
  for(const id of ['ayoung','inseong','guest']){
   const u=state.users[id];exploration(u,id);
   for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId);
  }
  if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId);
  if($('explorerName'))$('explorerName').textContent=c.name+' · '+bandLabel(me.difficulty)+' 단계';
- if($('explorerRank'))$('explorerRank').textContent='현재 '+rankCaption(me)+' / 31명';
+ if($('explorerRank'))$('explorerRank').textContent='현재 '+rankCaption(me)+' / '+rows.length+'명';
  if($('rankDifficultyLabel'))$('rankDifficultyLabel').textContent='현재 난이도 '+me.difficulty.toFixed(1)+' · 초1~고3 권장 학습 단계';
- const target=ahead?ahead.name+'의 난이도 '+ahead.difficulty.toFixed(1)+'에 도전해요! 문맥을 이해하며 한 단계씩 올라가요.':'최상위 등급이에요! 새로운 문맥에서도 이해를 이어가요.';
+ const nextRank=ahead?1+rows.filter(x=>!x.isMe&&x.difficulty>ahead.difficulty).length:me.rank;
+ const target=ahead?'난이도 '+ahead.difficulty.toFixed(1)+'에 도달하면 '+(me.rank-nextRank)+'계단 올라갈 수 있어요! '+ahead.name+'에게 도전해요.':'최상위 등급이에요! 새로운 문맥에서도 이해를 이어가요.';
  if($('rankTarget'))$('rankTarget').textContent=target;
  if($('characterTitle'))$('characterTitle').textContent=c.name+'의 캐릭터';
  if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
- const card=x=>`<div class="podium-avatar">${characterSvg(x.characterId)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${rankCaption(x)}</span><strong>${escapeHtml(x.name)}</strong><b>${bandLabel(x.difficulty)}</b><small>난이도 ${x.difficulty.toFixed(1)}</small>${x.virtual?'':'<small>나</small>'}`;
+ const card=x=>`<div class="podium-avatar">${characterSvg(x.characterId)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${rankCaption(x)}</span><strong>${escapeHtml(x.name)}</strong><b>${bandLabel(x.difficulty)}</b><small>난이도 ${x.difficulty.toFixed(1)}</small>${x.isMe?'<small>나</small>':x.family?'<small>가족</small>':''}`;
  if($('rankPodium'))$('rankPodium').innerHTML=[rows[1],rows[0],rows[2]].map(x=>`<div class="podium place-${x.rank}">${card(x)}</div>`).join('');
+ if($('rankFamilyOverview'))$('rankFamilyOverview').innerHTML=rows.filter(x=>['ayoung','inseong'].includes(x.id)).sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<div class="rank-family-card${x.isMe?' selected':''}"><div class="rank-avatar">${characterSvg(x.characterId)}</div><div><strong>${escapeHtml(x.name)}</strong><b>${rankCaption(x)}</b><small>${bandLabel(x.difficulty)} · 난이도 ${x.difficulty.toFixed(1)}</small></div></div>`).join('');
  if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>난이도 ${me.difficulty.toFixed(1)}</small></span>`;
- if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.virtual?'':' rank-me'}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small>${x.virtual?'':'내 프로필 · '}현재 학습 등급</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
+ if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.family?' rank-family':''}${x.isMe?' rank-me':''}" data-rank-profile="${x.id}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small>${x.isMe?'나 · ':x.family?'가족 · ':''}현재 학습 등급</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
 }
 
 const freshChild=name=>({
