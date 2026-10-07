@@ -192,11 +192,18 @@ async function resumeLesson(saved){
  for(let i=0;i<saved.results.length;i++)if(!ready.has(i))throw new Error('채점된 문제의 저장 정보를 확인하지 못했어요.');
  for(const plan of saved.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
  rebuildCatalog();
+const needsRecovery=saved.mode==='daily'&&Array.from({length:20},(_,i)=>i).some(i=>!ready.has(i));
+ let remote=null;
+ if(needsRecovery){
+  remote=await serverLesson(profile);
+  if(remote?.payload?.resumeId!==saved.id)throw new Error('남은 문제를 서버에서 준비 중이에요. 채점 기록은 유지됩니다. 잠시 뒤 다시 눌러 주세요.');
+ }
  let p;
- if(session?.lessonId===saved.id&&session.account===account&&session.profile===profile&&!session.preparation.cancelled)p=session.preparation;
+ if(!needsRecovery&&session?.lessonId===saved.id&&session.account===account&&session.profile===profile&&!session.preparation.cancelled)p=session.preparation;
  else{
   if(session?.preparation)session.preparation.cancel();
-  p=createPreparation({key:preparationKey(saved.mode,profile,account),account,profile,mode:saved.mode,snapshot:preparationSnapshot(profile),created:saved.created,difficulty:saved.difficulty,newWords:saved.newWords,baseWords:saved.baseWords,plans:saved.plans,adopted:true},saved.ready);
+  const meta={key:preparationKey(saved.mode,profile,account),account,profile,mode:saved.mode,snapshot:preparationSnapshot(profile),created:saved.created,difficulty:saved.difficulty,newWords:saved.newWords,baseWords:saved.baseWords,plans:saved.plans,adopted:true};
+  p=needsRecovery?createServerPreparation({...meta,serverId:remote.id},remote.payload.ready||saved.ready):createPreparation(meta,saved.ready);
  }
  // The lesson was consumed on its first start. Resuming must never consume it
  // again or ask the server for a replacement lesson.
@@ -205,7 +212,7 @@ async function resumeLesson(saved){
  current=saved.nextIndex;introIndex=0;hintLevel=0;$('next').disabled=false;
  if(current>=session.target){finishSession();return}
  prepareExtensions(session);
- await withDeadline(p.waitFor(current,true),QUESTION_WAIT_MS,'이어서 풀 문제를 준비 중이에요. 잠시 뒤 다시 눌러 주세요.');
+ await withDeadline(needsRecovery?Promise.all(Array.from({length:20},(_,i)=>p.waitFor(i,true))):p.waitFor(current,true),QUESTION_WAIT_MS,'이어서 풀 문제를 서버에서 준비 중이에요. 채점 기록은 유지됩니다. 잠시 뒤 다시 눌러 주세요.');
  if(state.selected!==profile||authUser?.id!==account||session.preparation!==p)return;
  show('learn');renderQuestion(saved.hintLevel||0);
 }
@@ -486,7 +493,7 @@ function createPreparation(meta,saved=[]){
    if(p.adopted&&!p.cancelled&&session?.preparation===p&&checkpointSession()){localSave();cloudSave()}
    if(!p.adopted&&!p.cancelled&&p.mode==='daily'&&authUser?.id===p.account&&state.selected===p.profile&&!preparingSession&&(!session||current>=session.target)){
      const failed=p.jobs.find(j=>j.indices.includes(0))?.error;
-     $('cloudPill').textContent=failed?'문제 준비 지연 · 시작 버튼으로 재시도':p.queue.length>=20?'학습 준비 완료':p.queue.length?'학습 시작 가능 · 다음 문제 준비 중':'학습 문제 미리 준비 중';
+     $('cloudPill').textContent=failed?'문제 준비 지연 · 시작 버튼으로 재시도':p.queue.length>=20?'학습 준비 완료':p.queue.length?'전체 문제 준비 중':'학습 문제 미리 준비 중';
    }
  };
  p.append=(plans)=>{
@@ -560,9 +567,6 @@ function createServerPreparation(meta,saved){
    if(p.cancelled)return;
    if(remote?.id!==p.serverId)throw new Error('학습 기록이 바뀌어 준비된 문제를 다시 확인해야 해요.');
    if(remote.status==='failed'){
-    // Explicitly running lessons can recover missing questions after bounded
-    // server retries, while keeping every validated question already saved.
-    if(p.adopted){for(const job of p.jobs)job.error=null;p.pump=ordinaryPump;ordinaryPump();return}
     throw new Error('문제 준비가 지연됐어요. 잠시 뒤 다시 눌러 주세요.');
    }
    for(const [i,q] of remote.payload?.ready||[]){
@@ -606,8 +610,8 @@ async function getPreparation(mode='daily'){
      }
      // Pending, failed or outdated server work must not start duplicate browser generation.
      if(remote)throw new Error(remote.status==='failed'?'문제 검수가 지연됐어요. 준비된 문제는 보관되어 있습니다. 잠시 뒤 다시 눌러 주세요.':'서버에서 맞춤 문제를 준비 중이에요. 앱을 닫아도 준비는 계속됩니다. 잠시 뒤 다시 눌러 주세요.');
-     // A consumed server lesson cannot be replayed from local storage.
-     if(saved?.serverId)saved=null;
+     // Missing storage responses must never fall back to live daily generation.
+     throw new Error('저장된 맞춤 문제를 확인하지 못했어요. 학습 기록은 유지됩니다. 다시 눌러 주세요.');
    }
    let meta;
    const restored=saved?.engine===PREPARATION_ENGINE&&saved.account===account&&saved.profile===profile&&saved.snapshot===snapshot&&Date.now()-saved.created<PREPARATION_TTL&&saved.mode===mode&&saved.plans?.length===20;
@@ -662,7 +666,7 @@ async function buildSession(mode='daily'){
    // The background queue keeps preparing after this bounded UI wait ends.
    const p=await withDeadline((async()=>{
      const prepared=await getPreparation(mode);
-     if(prepared.serverId){
+     if(prepared.serverId||mode==='daily'){
        // Start a cloud lesson only when every base question is saved, so moving
        // through the lesson never waits for generation or a background retry.
        await Promise.all(prepared.plans.slice(0,20).map((_,i)=>prepared.waitFor(i,true)));

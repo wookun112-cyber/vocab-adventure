@@ -24,7 +24,7 @@ function fixture(seed,account='family',shared=storage,server=false){
    globalThis.answerFor=plan=>({w:plan.w,type:plan.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'탐험'+plan.id+'에서 새로운 기록을 찾아 자세히 살폈어요. 탐험'+plan.id+'의 기록이 생각을 뒷받침하는 ＿＿＿＿가 되었어요.',opts:[],signature:'시나리오'+plan.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
    fetchValidatedQuestions=(plans,recent,known,profile)=>new Promise((resolve,reject)=>requests.push({plans,recent,known,profile,resolve:()=>resolve(plans.map(answerFor)),reject}));
  `);
- if(!server)run('serverLesson=async()=>null');
+ if(!server)run("const actualGetPreparation=getPreparation,actualBuildSession=buildSession;getPreparation=mode=>actualGetPreparation(mode==='level'?'level':'review');buildSession=mode=>actualBuildSession(mode==='level'?'level':'review')");
  return {run,nodes,node,alerts,ctx};
 }
 const f=fixture();
@@ -82,7 +82,7 @@ c.run('warmDailyQuestions()');await flush();
 c.run('requests.slice().forEach(r=>r.resolve())');await flush();
 c.run('requests.slice(4).forEach(r=>r.resolve())');await flush();
 assert.equal(c.run('preparations.values().next().value.queue.length'),20);
-const key=c.run("preparationKey('daily')");
+const key=c.run("preparationKey('review')");
 assert.ok(cacheStorage.has(key));
 const restart=fixture(original,'family',cacheStorage);
 restart.run("ensureCatalog=async()=>{throw Error('cached lesson must not wait for curriculum')}");
@@ -95,7 +95,7 @@ assert.equal(restart.run('requests.length'),0,'all 19 ready transitions are loca
 assert.equal(cacheStorage.has(key),false);
 console.log('Persistent preparation verified: cached start and 19 next-button transitions make zero generation requests; cache is consumed once.');
 // Different accounts, different profiles, changed progress and expired data must not reuse it.
-const saved=c.run('JSON.stringify({engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,snapshot:preparationSnapshot(state.selected),mode:"daily",difficulty:2,newWords:[word.w],baseWords:[word],plans:preparations.values().next().value.plans,ready:[...preparations.values().next().value.ready]})');
+const saved=c.run('JSON.stringify({engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,snapshot:preparationSnapshot(state.selected),mode:"review",difficulty:2,newWords:[word.w],baseWords:[word],plans:preparations.values().next().value.plans,ready:[...preparations.values().next().value.ready]})');
 for(const kind of ['account','profile','progress','expired','unverified']){
  const bank=new Map([[key,saved]]),t=fixture(original,kind==='account'?'other':'family',bank);
  if(kind==='profile')t.run("state.selected='inseong'");

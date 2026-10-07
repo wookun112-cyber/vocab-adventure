@@ -27,7 +27,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
    rpc:async(name,args)=>{
     if(name==='consume_prepared_lesson'){calls.consumes++;return {data:true,error:null}}
     if(name!=='get_prepared_lesson')throw Error('Unexpected RPC '+name);
-    calls.reads++;return {data:run('makeRemoteLesson()'),error:null};
+    calls.reads++;return {data:run('typeof recoveryRemote==="undefined"?makeRemoteLesson():recoveryRemote'),error:null};
    }
   })
  });
@@ -159,3 +159,26 @@ for(const mode of ['review','level']){
  assert.equal(restore.calls.consumes,0);assert.equal(restore.calls.generation,0);
 }
 console.log('Modes verified: review and level-check lessons resume with their mode and adaptive ability intact.');
+
+// The reported failure: first question graded, only eight questions saved,
+// consumed old server lesson. Recover the original remaining questions in the cloud.
+const broken=fixture();await broken.run('buildSession()');
+broken.run("applyResult(session.queue[0],'○','좋아요.','',{credit:1});checkpointSession()");
+const fullLesson=JSON.parse(broken.run('JSON.stringify(child().activeLesson)'));
+broken.run('session.preparation.ready=new Map([...session.preparation.ready].filter(([i])=>i===0||i>=13));session.preparation.queue.splice(1);checkpointSession();localSave()');
+await broken.run('cloudSave()');
+assert.equal(broken.run('child().activeLesson.ready.length'),8);
+const repair=fixture(broken.local,broken.cloud);await repair.run('cloudLoad()');
+repair.run(`globalThis.recoveryRemote=${JSON.stringify({id:'recovery-job',status:'ready',payload:{...fullLesson,resumeId:fullLesson.id}})}`);
+await repair.run('buildSession()');
+assert.equal(repair.run('current'),1);assert.equal(repair.node('counter').textContent,'2번째 문제');
+assert.equal(repair.run('session.results.length'),1);assert.equal(repair.run('session.queue.length'),20);
+assert.equal(repair.run('session.queue[0].signature'),fullLesson.ready[0][1].signature);
+assert.equal(repair.run('Object.values(child().words).reduce((n,w)=>n+w.seen,0)'),1);
+assert.equal(repair.calls.consumes,0);assert.equal(repair.calls.generation,0);
+repair.run('session.preparation.cancel()');
+// A missing stored lesson cannot silently start browser generation again.
+const missing=fixture();missing.run("sb.rpc=async()=>({data:null,error:null});ensureCatalog=async()=>{throw Error('No daily live generation fallback')}");
+await missing.run('buildSession()');
+assert.equal(missing.run('session'),null);assert.equal(missing.calls.generation,0);assert.equal(missing.node('startDaily').disabled,false);
+console.log('Reported failure regression verified: eight-question partial lesson repaired from the cloud, first result kept, resumes at question two without re-consumption or live generation; missing stored lessons cannot fall back.');

@@ -77,3 +77,17 @@ for(const word of withheld.newWords){
  }
 }
 console.log('Server preparation verified: personalized 20-question plans, 50:50 mix, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
+
+// Recovery preserves original plans and accepted peers even after an answer
+// changes the learner snapshot. It must not create an unrelated new lesson.
+const interruptedLearner={...learner,difficulty:3.2,activeLesson:{id:'paused-lesson'},words:{'근거':{seen:1,correct:1,wrong:0,streak:1}}};
+const interrupted={...ready,resumeId:'paused-lesson',ready:ready.ready.slice(0,8),snapshot:'before-answer'};
+const frozenPlans=JSON.stringify(interrupted.plans),firstEight=JSON.stringify(interrupted.ready);
+let recoveryIds=[];
+const repaired=await prepare({...job,learner:interruptedLearner,payload:interrupted},'key',async items=>{recoveryIds.push(...items.map(i=>i.id));return items.map(answer)},store);
+assert.equal(JSON.stringify(repaired.plans),frozenPlans);
+assert.equal(JSON.stringify(repaired.ready.slice(0,8)),firstEight);
+assert.equal(repaired.ready.length,20);
+assert.equal(recoveryIds.length,12);assert.ok(recoveryIds.every(id=>Number(id)>=8));
+assert.equal(repaired.snapshot,learnerSnapshot(interruptedLearner));
+console.log('Recovery worker verified: original plans and eight accepted questions retained across changed progress; only twelve missing IDs generated.');
