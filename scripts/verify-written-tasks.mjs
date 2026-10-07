@@ -24,6 +24,9 @@ run(`globalThis.item={id:'1',type:'subjective_recall',word:'밀물',definition:$
  globalThis.flags={id:'1',valid:true,sufficientClues:true,oneClearAnswer:true,samePartOfSpeechChoices:true,naturalKorean:true,coherentSituation:true,ageAppropriate:true,factualAccuracy:true,readerLevelFit:true,noBackgroundBurden:true,vocabularyFocus:true,noAnswerLeak:true,naturalAlternativesConsidered:true,notTooSimilarToRecent:true,learningCardAccurate:true,levelDemandFit:true,issues:[],acceptedAnswers:sample.acceptedAnswers};
  globalThis.prompts=[];ask=async(prompt,schema,name)=>{prompts.push(prompt);return name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]}};`);
 const validated=await run('buildValidated([item],[])');assert.equal(validated.length,1);assert.equal(validated[0].context,run('sample.context'));
+run(`sample={...sample,prompt:'바닷물이 해안 쪽으로 들어와 물의 높이가 높아지는 현상을 가리키는 말은 무엇인가요? 물 자체가 아니라 물이 들어와 높이가 높아지는 현상입니다.',context:''}`);
+const moved=await run('buildValidated([item],[])');assert.ok(moved[0].context.includes('높이가 높아지는 현상'));assert.ok(moved[0].prompt.includes('설명을 읽고'));assert.ok(!moved[0].context.includes('무엇인가요'));assert.ok(!moved[0].context.includes('밀물'));
+run(`sample={...sample,prompt:'설명에 해당하는 단어를 써 보세요.',context:'바닷물이 해안 쪽으로 들어옵니다. 이때 바닷물의 높이가 높아져 갯벌이 물에 잠깁니다.'};prompts=prompts.slice(0,2)`);
 assert.equal(run('prompts.length'),2);assert.ok(run('prompts[0].includes("subjective_recall")'));assert.ok(run('prompts[1].includes("뜻 회상은 허용")'));
 assert.ok(run('deterministic({...sample,context:"바닷물이 해안으로 들어오는 ＿＿＿＿ 현상이에요."},item).includes("recall_question_has_blank")'));
 assert.ok(run('deterministic({...sample,context:"밀물은 해안으로 물이 들어오는 현상입니다."},item).includes("target_leaked_before_answer")'));

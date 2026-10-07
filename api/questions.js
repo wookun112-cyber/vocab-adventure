@@ -84,6 +84,12 @@ function completeContext(context,word){
 function blankParticle(context){return String(context||'').match(/＿＿＿＿(이라고|이라는|이라|라고|라는|라|으로|로|이|가|은|는|을|를|과|와)(?=\s|[,.!?“”"'():;]|$)/)?.[1]||''}
 function normalizeCandidate(q,item){
   q={...q,answerForm:String(q.answerForm||item.word).trim()};
+  // Some generators place the entire meaning clue in prompt. Preserve that
+  // content and review it in the correct field instead of treating it as empty.
+  if(item.type==='subjective_recall'&&!String(q.context||'').trim()&&String(q.prompt||'').length>=40){
+    const description=String(q.prompt).replace(/(?:이|이런|해당)\s*(?:말|단어|어휘)(?:은|는|이|가)\s*(?:무엇인가요|무엇일까요|뭔가요)\s*[?？]/g,'').replace(/(?:말|단어|어휘)(?:은|는|이|가)\s*(?:무엇인가요|무엇일까요|뭔가요)\s*[?？]/g,'말입니다.').trim();
+    if(description.length>=30){q.context=description;q.prompt='설명을 읽고, 이 뜻에 해당하는 단어를 써 보세요.'}
+  }
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)){
     let c=String(q.context||'').replace(/\\n/g,'\n');
     c=c.replace(/＿{2,}|_{3,}|□{2,}|○{2,}|\[\s*빈칸\s*\]|\(\s*빈칸\s*\)|<\s*빈칸\s*>/g,'＿＿＿＿');
@@ -297,7 +303,7 @@ function generationPrompt(items,recent,feedback={}){
     'mc_relation: 목표어를 보여주고 이 말과 의미상 잘 연결되는 상황, 상위 범주, 반대 상황, 자연스러운 결합 중 한 가지를 5개의 보기에서 고르게 합니다. 질문 하나이며 정답은 하나입니다.',
     'mc_structure: 목표어와 structureNote의 구성 단서를 제시하고 구성 요소가 전체 뜻에 어떻게 기여하는지 하나의 질문으로 묻습니다. 보기 5개, 정답 하나입니다.',
     'mc_reading: 목표어를 보여주고 처음 보는 자연스러운 짧은 글 3~4문장을 읽게 합니다. 글에서 목표어의 뜻이나 쓰임을 이해했는지 하나의 질문과 5개 보기로 확인합니다. 빈칸은 없습니다.',
-    'subjective_recall: 목표어 철자는 숨기고 definition의 핵심 뜻과 유사어와 구별되는 특징을 1~3문장으로 쉽게 설명합니다. 구체적인 예가 필요하면 짧게 덧붙이되 설명에 불필요한 상식을 넣지 않습니다. prompt는 설명에 해당하는 단어를 쓰라는 질문 하나입니다. context와 prompt에 빈칸을 만들지 않습니다. answerForm은 목표어 기본형, options는 빈 배열입니다. acceptedAnswers에는 목표어와 의미가 완전히 같은 자연스러운 어휘만 넣습니다. 상위어·관련어를 완전 정답으로 넣지 않습니다.',
+    'subjective_recall: 목표어 철자는 숨기고 definition의 핵심 뜻과 유사어와 구별되는 특징을 1~3문장으로 쉽게 설명합니다. 구체적인 예가 필요하면 짧게 덧붙이되 설명에 불필요한 상식을 넣지 않습니다. 핵심 뜻 설명은 반드시 context에 넣고, prompt에는 설명에 해당하는 단어를 쓰라는 질문 하나만 넣습니다. context를 빈 문자열로 두지 않습니다. context와 prompt에 빈칸을 만들지 않습니다. answerForm은 목표어 기본형, options는 빈 배열입니다. acceptedAnswers에는 목표어와 의미가 완전히 같은 자연스러운 어휘만 넣습니다. 상위어·관련어를 완전 정답으로 넣지 않습니다.',
     'subjective_use: 목표어를 보여주고 실제로 있을 법한 상황 단서를 간단히 준 뒤 이 어휘를 사용한 자신의 문장 하나를 쓰도록 요청합니다. 정답 문장이나 복사할 예문은 지문에 제시하지 않습니다. context는 빈칸 없이 1~2문장, options와 acceptedAnswers는 빈 배열입니다. 힌트는 생각할 상황과 말할 목적을 제안하되 완성 문장을 주지 않습니다.',
     'subjective_dialogue: 2~4개의 짧은 대화 흐름에 answerForm을 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꿉니다.',
     '',
