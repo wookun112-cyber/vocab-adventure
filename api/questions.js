@@ -85,7 +85,7 @@ function blankParticle(context){return String(context||'').match(/＿＿＿＿(�
 function normalizeCandidate(q,item){
   q={...q,answerForm:String(q.answerForm||item.word).trim()};
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)){
-    let c=String(q.context||'');
+    let c=String(q.context||'').replace(/\\n/g,'\n');
     c=c.replace(/＿{2,}|_{3,}|□{2,}|○{2,}|\[\s*빈칸\s*\]|\(\s*빈칸\s*\)|<\s*빈칸\s*>/g,'＿＿＿＿');
     if(blankCount(c)===0&&c.includes(q.answerForm))c=c.replace(q.answerForm,'＿＿＿＿');
     const particle=blankParticle(c);
@@ -240,6 +240,7 @@ function generationPrompt(items,recent,feedback={}){
     '- 가족, 학교, 친구, 동물, 놀이, 자연, 과학, 탐험 등 배경을 다양하게 바꿉니다.',
     '- contextSeed는 배경 후보입니다. 지식 이야기와 어울리면 연결하고, 생활 배경보다 유익한 지식 소재를 우선하되 목표어의 자연스러움을 지키세요. 목표어의 실제 의미와 맞지 않으면 의미를 억지로 확장하지 말고, 이전 지문과 겹치지 않는 다른 생활 장면으로 조정하세요. 같은 목표어의 다른 문제와 사건이 겹치지 않도록 하세요. 배경 문구를 복사하지 마세요.',
     '- previousContexts는 같은 어휘의 이전 실제 지문/보기입니다. 기존 문장, 사건, 핵심 행동과 결과를 재사용하지 마세요. 이름·장소·사물만 바꾸는 재작성도 금지합니다. 같은 배치에서 같은 어휘가 반복되면 각각 다른 사건과 문장 구조를 사용하세요.',
+    '- 중복 때문에 다시 만드는 문제는 실패 지문의 배경뿐 아니라 인물의 목적·행동·질문 방향과 문장 구조를 새로 설계하세요. 수학·문법 어휘는 동일한 개념을 유지하되 설명 방법이나 해결할 과제를 바꾸세요. 이전 실패 피드백이 유형 규칙과 충돌하면 이 규칙과 실제 type을 따르세요.',
     '- 사전 example을 지문으로 복사하지 마세요. 목표어가 그 상황에서 실제로 쓰이는 자연스러운 표현인지 먼저 확인하세요. 목표어가 조사·서술어와 자연스럽게 호응하도록 완성 문장을 읽어 보고 작성하세요.',
     '- 한 장면 안에서 인물, 시간, 행동, 이유, 결과가 일관되게 이어져야 합니다. 이유 없는 행동, 갑자기 등장하는 사건, 앞 문장과 무관한 결론은 금지합니다.',
     '- 정답을 억지로 넣기 위해 같은 설명을 반복하거나 \"이것은 X이다\"라는 정의 문장을 덧붙이지 마세요. 단서가 사건 속에서 드러나는 간결하고 완결된 문장으로 씁니다.',
@@ -279,7 +280,7 @@ function generationPrompt(items,recent,feedback={}){
   ].join('\n');
 }
 async function generate(items,recent,feedback){
-  const out=await ask(generationPrompt(items,recent,feedback),questionSchema(items),'validated_vocab_questions',15000);
+  const out=await ask(generationPrompt(items,recent,feedback),questionSchema(items),'validated_vocab_questions',15000,Object.keys(feedback||{}).length?'medium':'low');
   return out.questions||[];
 }
 async function aiVerify(items,questions,recent){
@@ -300,6 +301,7 @@ async function aiVerify(items,questions,recent){
     'coherentSituation은 인물·시간·행동·이유·결과의 앞뒤 연결과 목표어를 넣은 완성 문장의 조사·서술어 호응을 검사합니다. 어색한 번역투, 불필요한 반복, 갑작스러운 결론, 일상적으로 성립하지 않는 상황, 설명문을 옮긴 가짜 대화는 통과시키지 마세요.',
     '문법 판정은 실제 조사·활용·의미 결합의 오류를 근거로 하세요. 다른 표현을 더 선호한다는 이유만으로 자연스러운 문장을 오류 처리하지 마세요. 명사에 하다를 붙인 정상 표현인 문제 풀이를 하다, 문제 풀이를 하니 답을 찾았다, 문제 풀이를 보다는 그 결합 자체가 문법 오류가 아닙니다. 그 문장의 실제 맥락에 맞는지를 별도로 판단하세요.',
     '중복은 목표어별 previousContexts의 실제 문장과 구체적인 사건 전개를 우선 대조하세요. 최근 서명과 과목·배경·문제 유형만 같은 것은 중복 근거가 아닙니다. 서로 다른 수학 대화나 과학 실험이라는 이유만으로 notTooSimilarToRecent=false로 하지 마세요. 문장 재사용 또는 인물의 행동·문제 상황·전개가 실제로 지나치게 같은 경우는 계속 탈락시키세요.',
+    '목표어의 핵심 개념은 복습에서도 같아야 합니다. 등비중항 문제들이 두 양수 사이의 수를 다루거나 절대 온도 문제들이 켈빈을 다루는 것은 개념의 필수 요소이며 그 자체는 중복이 아닙니다. 동일 개념을 다른 문장 구조·정보 제시 방식·풀이 목적이나 질문 방향으로 다루면 허용하세요. 기존 문장을 그대로 복사하거나 전체 문장 틀에서 이름·숫자만 교체한 경우는 탈락입니다.',
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
