@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {updateLearningLevels,SESSION_LEVEL_POLICY,recordLearningEvidence,reconcileLevelBackfill} from '../lib/learning-model.js';
 const day='2026-10-07';
-const rows=(score,count=20,band=2)=>Array.from({length:count},(_,i)=>({word:'협력',type:i%2?'subjective_context':'mc_usage',band,credit:score/100,practiceOnly:true,hintUsed:false,revealed:false}));
+const rows=(score,count=20,band=2)=>Array.from({length:count},(_,i)=>({word:['협력','배려','성실','친절','예의'][i%5],type:i%2?'subjective_context':'mc_usage',band,credit:score/100,practiceOnly:true,hintUsed:false,revealed:false}));
 const learner=()=>({difficulty:2,leagueLevel:2,words:{협력:{seen:12}},learningEvidence:[]});
 for(const [score,delta] of [[100,.2],[90,.2],[89,.1],[80,.1],[79,0],[60,0],[59,-.1],[40,-.1],[39,-.2],[0,-.2]]){
  const l=learner(),before=JSON.stringify({words:l.words,evidence:l.learningEvidence});
@@ -51,4 +51,22 @@ const extended=reconcileLevelBackfill(backfilled,stale);
 assert.equal(extended.difficulty,2.8,'an unsynchronized completion follows the retroactive grade once');
 assert.equal(extended.levelAdjustmentHistory.length,2);
 assert.equal(reconcileLevelBackfill(backfilled,extended).difficulty,2.8,'restart cannot reapply the backfill');
+
+const narrow=learner();updateLearningLevels(narrow,rows(100).map(r=>({...r,word:'협력'})),day,{lessonId:'one-word'});
+assert.equal(narrow.difficulty,2,'twenty repetitions of one word cannot establish a broader ability change');
+assert.equal(narrow.lastLevelAdjustment.uniqueWords,1);
+const choiceOnly=learner();updateLearningLevels(choiceOnly,rows(100).map(r=>({...r,type:'mc_usage'})),day,{lessonId:'choice-only'});
+assert.equal(choiceOnly.difficulty,2,'recognition alone cannot raise a grade without productive evidence');
+assert.equal(choiceOnly.lastLevelAdjustment.productiveWords,0);
+const skew=learner();const uneven=[...Array.from({length:18},()=>({word:'협력',band:2,type:'subjective_use',credit:1})),{word:'배려',band:2,type:'subjective_use',credit:1},{word:'성실',band:2,type:'subjective_use',credit:0}];
+updateLearningLevels(skew,uneven,day,{lessonId:'uneven'});
+assert.equal(skew.lastLevelAdjustment.score,67,'many repeated successes cannot drown out another word failure');
+assert.equal(skew.difficulty,2);
+const assistedFirst=learner();const attempts=rows(100);attempts[0]={...attempts[0],credit:0};attempts.push({...attempts[0],credit:1});
+updateLearningLevels(assistedFirst,attempts,day,{lessonId:'feedback-repeat'});
+assert.equal(assistedFirst.lastLevelAdjustment.score,90,'the first same-word same-type attempt remains the evaluation evidence');
+const legacyLocal=learner();legacyLocal.levelAdjustmentHistory=[{policy:'session-performance-12.11',lessonId:'legacy-local',date:day,change:.1}];
+assert.equal(reconcileLevelBackfill(backfilled,legacyLocal).difficulty,2.7,'legacy unsynchronized completion is retained with new policy');
+
 console.log('Session levels verified: every same-day completion can rise, hold or fall; both difficulty and rank update; partial hints, shorter sessions and target bands respected; completion replay blocked across restarts; no fabricated mastery or lost records.');
+

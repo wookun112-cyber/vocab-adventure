@@ -7,11 +7,11 @@ import {bankCompatible} from '../lib/question-bank.js';
 for(const word of ['구매력','예약','색','의견'])assert.ok(sentenceWritingTask(word).prompt.includes('’을 넣어'));
 for(const word of ['관찰자','사과'])assert.ok(sentenceWritingTask(word).prompt.includes('’를 넣어'));
 const audit=JSON.parse(fs.readFileSync(new URL('../database/vocabulary-difficulty-audit.json',import.meta.url)));
-assert.equal(audit.entries.length,2754);assert.equal(audit.entries.filter(x=>x.referenceGrade).length,2105);assert.equal(audit.entries.filter(x=>x.band!==x.previousBand).length,480);
+assert.equal(audit.entries.length,2754);assert.equal(audit.entries.filter(x=>x.referenceGrade).length,2105);assert.equal(audit.entries.filter(x=>x.band!==x.previousBand).length,501);
 for(const x of audit.entries)assert.equal(vocabularyBand({w:x.word,band:x.previousBand}),x.band);
 const observation={w:'관찰자',d:'관찰하는 사람',band:7,cat:'국어'},prediction={w:'예측하다',d:'앞으로의 일을 미리 판단하다',band:6,cat:'국어'},tough={w:'간주하다',d:'그와 같다고 여기다',band:7,cat:'국어'};
 assert.equal(vocabularyBand(observation),3);assert.equal(vocabularyBand(prediction),3);
-assert.equal(vocabularyBand({w:'재고하다',band:9}),9,'reconsider is not warehouse stock merely because spellings share a stem');
+assert.equal(vocabularyBand({w:'재고하다',band:9}),7,'reconsider is not warehouse stock merely because spellings share a stem');
 assert.equal(vocabularyBand({w:'재고',band:4}),5);
 const learner={difficulty:7.4,words:{관찰자:{seen:2},간주하다:{seen:1}}};const original=JSON.stringify(learner);
 assert.deepEqual(selectLevelReviews([observation,tough],learner).map(w=>w.w),['간주하다']);
@@ -37,4 +37,5 @@ for(const mutation of ['flags.nearMeaningDistractors=2','flags.nearMeaningDistra
 }
 run(`item={...item,type:'subjective_use'};sample={...sample,type:'subjective_use',prompt:'관찰자의 역할을 설명하세요.',context:'진행자는 배가 도착하는지 지켜보고 있다.',showTarget:true,options:[],hints:['진행자 역할을 쓰세요.','지켜보고 있었다.']};`);
 const use=await run('buildValidated([item],[],{maxAttempts:1,partial:true})');assert.equal(use.length,1);assert.equal(use[0].context,'');assert.ok(use[0].prompt.includes('간주하다'));assert.ok(!use[0].hints.join('').includes('진행자'));
-console.log('Difficulty audit verified: 2,754 entries inventoried, 2,105 reference matches, 480 calibrated bands; cached high-band easy words cannot enter selection or raise grades; homographs retained by meaning; both reported sentence scenes removed without mutating saves; advanced MC rejects fewer than 3 nearby distractors or a missing semantic discriminator.');
+console.log('Difficulty audit verified: 2,754 entries inventoried, 2,105 reference matches, 501 calibrated bands; cached high-band easy words cannot enter selection or raise grades; homographs retained by meaning; both reported sentence scenes removed without mutating saves; advanced MC rejects fewer than 3 nearby distractors or a missing semantic discriminator.');
+

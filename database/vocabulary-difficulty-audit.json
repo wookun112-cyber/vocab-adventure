@@ -1,5 +1,5 @@
 {
-  "policy": "vocabulary-calibration-12.13",
+  "policy": "vocabulary-calibration-12.14",
   "source": {
     "organization": "국립국어원",
     "title": "2023년 국어 기초 어휘 선정 및 어휘 등급화 연구",
@@ -19423,10 +19423,11 @@
     {
       "word": "독립성",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "독재",
@@ -19657,10 +19658,11 @@
     {
       "word": "불확정",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "비극",
@@ -20025,10 +20027,11 @@
     {
       "word": "연계성",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "연대",
@@ -20049,10 +20052,11 @@
     {
       "word": "연속성",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "연역",
@@ -20073,10 +20077,11 @@
     {
       "word": "용례",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "위험도",
@@ -20429,10 +20434,11 @@
     {
       "word": "주도성",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "주민세",
@@ -20479,10 +20485,11 @@
     {
       "word": "책무성",
       "previousBand": 7,
-      "band": 7,
+      "band": 6,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": true
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "철회권",
@@ -20655,10 +20662,11 @@
     {
       "word": "할부",
       "previousBand": 7,
-      "band": 7,
+      "band": 5,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "함축성",
@@ -20787,10 +20795,11 @@
     {
       "word": "경향성",
       "previousBand": 8,
-      "band": 8,
+      "band": 5,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "공시성",
@@ -21526,10 +21535,11 @@
     {
       "word": "재현",
       "previousBand": 8,
-      "band": 8,
+      "band": 6,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "적응도",
@@ -21542,10 +21552,11 @@
     {
       "word": "전형",
       "previousBand": 8,
-      "band": 8,
+      "band": 6,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "점층법",
@@ -21598,10 +21609,11 @@
     {
       "word": "정밀도",
       "previousBand": 8,
-      "band": 8,
+      "band": 6,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "정보재",
@@ -21663,10 +21675,11 @@
     {
       "word": "책무",
       "previousBand": 8,
-      "band": 8,
+      "band": 6,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "초점화",
@@ -21775,10 +21788,11 @@
     {
       "word": "학술적",
       "previousBand": 8,
-      "band": 8,
+      "band": 6,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "형태론",
@@ -21855,10 +21869,11 @@
     {
       "word": "논증력",
       "previousBand": 9,
-      "band": 9,
+      "band": 6,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "다성성",
@@ -21887,10 +21902,11 @@
     {
       "word": "명문화하다",
       "previousBand": 9,
-      "band": 9,
+      "band": 7,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "문체론",
@@ -21903,10 +21919,11 @@
     {
       "word": "반추하다",
       "previousBand": 9,
-      "band": 9,
+      "band": 7,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "불가역성",
@@ -22040,18 +22057,20 @@
     {
       "word": "임계점",
       "previousBand": 9,
-      "band": 9,
+      "band": 7,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "재고하다",
       "previousBand": 9,
-      "band": 9,
+      "band": 7,
       "referenceGrade": 5,
       "match": "unique-grade",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "정규화",
@@ -22072,10 +22091,11 @@
     {
       "word": "책임성",
       "previousBand": 9,
-      "band": 9,
+      "band": 6,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "한계생산",
@@ -22096,10 +22116,11 @@
     {
       "word": "환언",
       "previousBand": 9,
-      "band": 9,
+      "band": 7,
       "referenceGrade": null,
       "match": "unmatched",
-      "appReview": false
+      "appReview": true,
+      "followupReason": "일상적·일반적 뜻을 기준으로 어휘군 간 단계 격차를 완화. 접미사·전문적으로 들리는 형태만으로 고난도를 부여하지 않음."
     },
     {
       "word": "환유",
@@ -22109,5 +22130,10 @@
       "match": "unmatched",
       "appReview": false
     }
-  ]
+  ],
+  "followupReview": {
+    "date": "2026-10-07",
+    "count": 21,
+    "basis": "현재 등록된 뜻의 추상성·독립적인 사용 범위와 기본 어휘군의 상대 난도를 사람이 재검토한 앱 추정치. 국립국어원 공식 등급이나 실증적 문항 난도는 아님."
+  }
 }
