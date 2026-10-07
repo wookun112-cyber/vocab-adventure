@@ -50,13 +50,13 @@ function extractText(data){
   for(const item of data?.output||[])for(const c of item?.content||[])if(typeof c?.text==='string')out.push(c.text);
   return out.join('\n');
 }
-async function ask(prompt,schema,name,max=9000){
+async function ask(prompt,schema,name,max=9000,effort='low'){
   const model=process.env.OPENAI_MODEL||'gpt-6-luna';
   const r=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
     signal:AbortSignal.timeout(60000),body:JSON.stringify({
-      model,reasoning:{effort:'low'},max_output_tokens:max,input:prompt,
+      model,reasoning:{effort},max_output_tokens:max,input:prompt,
       text:{format:{type:'json_schema',name,strict:true,schema}}
     })
   });
@@ -285,7 +285,8 @@ async function generate(items,recent,feedback){
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
-    'factualAccuracy는 후보 지문의 역사·과학 사실이 knowledgeSeed와 일치하고 알려진 사실을 왜곡하지 않는지 검사합니다. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
+    '유형 규칙표: subjective_context와 subjective_dialogue는 목표어를 숨긴 빈칸 하나를 채우는 과제입니다. 빈칸이 있다는 이유로 반려하지 마세요. subjective_use만 목표어를 보여주고 자신의 완성 문장 하나를 만드는 과제입니다. 이 세 유형을 혼동하지 마세요.',
+    'factualAccuracy는 실제 사실의 정확성을 검사합니다. knowledgeSeed는 선택용 소재입니다. 지문이 다른 분야를 다뤄도 실제 내용이 정확하면 true이며, seed와 주제가 다르거나 null이라는 이유만으로 반려하지 마세요. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
     'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조로 검사합니다. lengthGuide는 권장 길이이며 최소 글자 수가 아닙니다. 짧아도 완결된 상황과 충분한 단서가 있으면 통과하고 maxCharacters 초과는 탈락입니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
@@ -308,7 +309,7 @@ async function aiVerify(items,questions,recent){
     '빠진 자연스러운 대체 답안이나 잘못된 허용 답안은 이 검수 단계에서 수정하세요. naturalAlternativesConsidered와 valid는 반환하는 최종 허용 답안 기준입니다. 객관식의 acceptedAnswers는 빈 배열입니다.',
     '주관식에서 다른 자연스러운 표현이 가능하다는 사실만으로 valid=false로 하지 마세요. 그 표현을 최종 acceptedAnswers에 포함했다면 그 문제는 해결된 것입니다. 상황과 정답 문장 자체의 자연스러움은 계속 엄격히 검사하세요.',
     '허용 답안 목록만 수정할 수 있습니다. 문맥, 보기, 힌트 등 문제 자체의 결함은 수정한 것으로 간주하지 말고 valid=false와 구체적인 issues로 반환하세요.',
-    '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
+    '중요한 실제 결함은 valid=false입니다. 다만 주관식 대체 답안을 검수자가 추가해 해결했으면 그 사유로 valid=false를 유지하지 마세요. 힌트가 뜻 단서를 준다는 이유만으로 noAnswerLeak=false로 하지 마세요. 제출 전 issues와 각 boolean이 같은 판단인지 확인하세요. issues에서 true여야 한다고 설명한 항목에 false를 반환하지 마세요.',
     '목표/정의/유형: '+JSON.stringify(passageTargets(items).map(({usedPassageKeys,...item})=>item)),
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions.map(q=>{
@@ -316,7 +317,7 @@ async function aiVerify(items,questions,recent){
       return {...q,completedContext:SHOWN_TYPES.includes(q.type)?(q.options||[]).find(o=>o.correct)?.text||'':completeContext(q.context,q.answerForm||item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>completeContext(q.context,o.text)):[]};
     }))
   ].join('\n');
-  const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);
+  const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000,'medium');
   return out.reviews||[];
 }
 export async function buildValidated(items,recent,{maxAttempts=3,partial=false,initialFeedback={}}={}){
