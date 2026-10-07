@@ -7,7 +7,7 @@ const curriculum=Array.from({length:30},(_,i)=>({word:'어휘'+i,definition:'상
 const job={id:'test',lease:'lease',account:'family',profile:'inseong',learner,curriculum,catalog:{}};
 const plan=makePreparedPlan(learner,{},curriculum,'family','inseong');
 assert.equal(plan.plans.length,20);
-assert.equal(plan.target,16);assert.equal(plan.newWords.length,2);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
+assert.equal(plan.target,20);assert.equal(plan.newWords.length,3);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
 assert.ok(new Set(plan.plans.map(p=>p.type)).size>=5);
 assert.equal(plan.snapshot,learnerSnapshot(learner));
 assert.equal(JSON.stringify(learner),before);
@@ -39,6 +39,14 @@ assert.equal(calls,5);
 assert.equal(JSON.stringify(learner),before);
 assert.equal(checkpoints.at(-1).p_payload.ready.length,20);
 assert.ok(checkpoints.every(c=>!c.p_failed));
+// Repair rejected IDs inside the same run instead of waiting another cron cycle.
+let rejectedOnce=false,repairIds=[];
+const immediate=await prepare(job,'key',async items=>{
+ repairIds.push(items.map(x=>x.id));
+ if(items.some(x=>x.id==='2')&&!rejectedOnce){rejectedOnce=true;const out=items.filter(x=>x.id!=='2').map(answer);out.failed=[{id:'2',issues:['coherentSituation']}];return out}
+ return items.map(answer);
+},store);
+assert.equal(immediate.ready.length,20);assert.ok(repairIds.some(ids=>ids.length===1&&ids[0]==='2'));
 // Ready output resumes without any AI call; partial output generates only missing indices.
 calls=0;
 await prepare({...job,payload:ready},'key',generate,store);
@@ -76,7 +84,7 @@ for(const word of withheld.newWords){
   for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key));seen.add(key)}
  }
 }
-console.log('Server preparation verified: personalized 20-question packets, 16-activity learning targets, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
+console.log('Server preparation verified: personalized 20-question packets, 20-activity learning targets, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
 
 // Recovery preserves original plans and accepted peers even after an answer
 // changes the learner snapshot. It must not create an unrelated new lesson.

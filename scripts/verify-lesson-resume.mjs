@@ -26,7 +26,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
    }}),
    rpc:async(name,args)=>{
     if(name==='consume_prepared_lesson'){calls.consumes++;return {data:true,error:null}}
-    if(name!=='get_prepared_lesson')throw Error('Unexpected RPC '+name);
+    if(!['get_prepared_lesson','ensure_prepared_lesson'].includes(name))throw Error('Unexpected RPC '+name);
     calls.reads++;return {data:run('typeof recoveryRemote==="undefined"?makeRemoteLesson():recoveryRemote'),error:null};
    }
   })

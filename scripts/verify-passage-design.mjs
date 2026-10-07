@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {generationItems} from '../lib/prepared-plan.js';
-const backend=vm.createContext({console,process,Map,Set});
+const backend=vm.createContext({console,process,Map,Set,AbortSignal});
 const api=fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8')
  .replace(/^import[^\n]+\n/gm,'').replace('export async function buildValidated','async function buildValidated')
  .replace('export default async function handler','async function handler');
@@ -15,6 +15,7 @@ assert.equal(run('passageProfile({readerLevel:2}).unfamiliarTerms'),1);
 assert.equal(run('knowledgeSeed({word:"업적",id:"history"}).id'),'sejong');
 assert.equal(run('knowledgeSeed({word:"위성",id:"space"}).id'),'moon');
 assert.equal(run('knowledgeSeed({word:"공전",id:"earth"}).id'),'earth-orbit');
+assert.equal(run('knowledgeSeed({word:"소인수분해",domain:"수학·논리"})'),null,'unrelated astronomy facts must not be forced into mathematics');
 assert.ok(run('KNOWLEDGE_SEEDS.every(x=>x.facts.length&&x.url.startsWith("https://"))'));
 const topics=run('new Set(Array.from({length:20},(_,i)=>knowledgeSeed({id:String(i),word:"관찰"}).id)).size');assert.ok(topics>=7,'a lesson has a varied pool of informative subjects');
 const target=generationItems([{id:'q',w:{w:'근거',d:'주장의 바탕',band:6,cat:'국어'},type:'mc_context'}],{difficulty:1.7,words:{}})[0];assert.equal(target.readerLevel,1.7);

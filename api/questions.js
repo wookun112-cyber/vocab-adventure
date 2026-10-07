@@ -30,6 +30,7 @@ function passageProfile(item){
   unfamiliarTerms:tier===0?1:2};
 }
 function knowledgeSeed(item){
+ if(item.domain==='수학·논리'||/재판|소송|상속|계약|기압골|사동|피동|소인수|합동|공식/.test(item.word||''))return null;
  const text=String(item.contextSeed||'')+'|'+String(item.word||'');
  const direct=/세종|훈민정음|한글|업적|창제/.test(text)?'sejong':/위성|달빛|달의/.test(text)?'moon':/태양|공전|지구/.test(text)?'earth-orbit':/식물|광합성/.test(text)?'plants':/증발|응결|순환/.test(text)?'water-cycle':null;
  if(direct)return KNOWLEDGE_SEEDS.find(x=>x.id===direct);
@@ -54,7 +55,7 @@ async function ask(prompt,schema,name,max=9000){
   const r=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({
+    signal:AbortSignal.timeout(60000),body:JSON.stringify({
       model,reasoning:{effort:'low'},max_output_tokens:max,input:prompt,
       text:{format:{type:'json_schema',name,strict:true,schema}}
     })
@@ -160,7 +161,7 @@ function deterministic(q,item){
     if(item.type==='mc_usage'&&hasCompare((q.options||[]).map(x=>x.text).join(' ')))issues.push('usage_choices_compare_words');
   }else{
     if((q.options||[]).length)issues.push('subjective_has_choices');
-    const full=(q.acceptedAnswers||[]).some(x=>(norm(x.text)===norm(item.word)||norm(x.text)===norm(q.answerForm||item.word))&&Number(x.credit)===1);
+    const full=(q.acceptedAnswers||[]).some(x=>norm(x.text)===norm(q.answerForm||item.word)&&Number(x.credit)===1);
     if(item.type==='subjective_use'&&(q.acceptedAnswers||[]).length)issues.push('sentence_use_has_fixed_answers');
     if(item.type!=='subjective_use'&&!full)issues.push('target_missing_from_accepted_answers');
   }
@@ -229,7 +230,7 @@ function generationPrompt(items,recent,feedback={}){
     '공통 규칙:',
     '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 빈칸과 사전 정의를 외워 서술시키는 문제는 금지합니다. 의미 연결 문제도 목표는 한 단어이며 비교 단어 각각에 별도 답을 요구하지 않습니다.',
     '- 지문은 학년이 아니라 readingDesign의 현재 어휘력 수준에 맞춥니다. 문장 수·길이·문장 구조의 안내를 따르고 maxCharacters를 넘기지 마세요. subjective_use는 1~2문장, 대화는 2~4발화, mc_usage는 각 보기를 짧게 쓰는 유형 규칙이 우선합니다.',
-    '- 지문은 재미있고 유익한 작은 발견 이야기로 씁니다. knowledgeSeed의 확인된 역사·과학 사실 중 목표어와 자연스럽게 연결되는 사실 하나를 골라, 박물관 탐방·우주 탐험·관찰 기록·작은 궁금증처럼 흥미로운 도입과 발견이 이어지도록 쓰세요.',
+    '- 지문은 재미있고 유익한 작은 발견 이야기로 씁니다. knowledgeSeed는 선택 가능한 소재이지 필수가 아닙니다. 목표어와 직접 연결될 때만 제공된 사실을 사용하세요. 연결이 없거나 null이면 목표어의 실제 분야에서 자연스러운 생활·수학·문법·관찰 이야기를 쓰세요. 우주 사실과 수학 계산을 억지로 연결하지 마세요.',
     '- 세종의 한글 창제, 지구의 태양 주변 공전, 지구의 자연 위성인 달처럼 사실을 배우는 지문을 우선합니다. 목표어와 어울리지 않는다면 유익한 생활 장면을 선택하세요. 정보만 나열하거나 목표어를 억지로 끼워 넣지 마세요.',
     '- 핵심 역사·과학 사실은 knowledgeSeed에 제공된 사실을 바탕으로 쓰세요. 실제 인물의 말·업적·날짜·실험 결과를 지어내지 마세요. 가상의 아이가 탐구하는 장면은 가능하지만 실제 인물에게 가상의 말을 붙이지 마세요. 지구의 공전과 자전, 자연 위성과 인공위성을 혼동하지 마세요. 계절 변화의 주원인을 태양까지의 거리라고 쓰지 마세요.',
     '- 목표어 외 낯선 개념은 readingDesign.unfamiliarTerms 이내로 제한하고 같은 문장에서 쉬운 말로 풉니다. 처음 들어 보는 역사·과학 지식이라도 지문 자체만 읽으면 답할 수 있게 필요한 정보를 모두 넣으세요. 역사 연도나 과학 상식을 외워야만 맞히는 문제는 금지합니다.',
@@ -251,7 +252,7 @@ function generationPrompt(items,recent,feedback={}){
     '- mc_context 보기 5개는 목표어와 같은 품사의 관련 어휘로 만듭니다. 모든 보기가 문법적으로 빈칸에 들어갈 수 있어야 하고 의미 단서로만 정답이 갈려야 합니다.',
     '- mc_usage는 길이와 문장 형태가 비슷한 자연스러운 상황 5개로 만듭니다. 정답 상황 하나만 목표 어휘의 핵심 의미와 정확히 맞고, 나머지는 관련은 있지만 핵심 행동·의도·결과가 달라야 합니다.',
     '- 오답은 관련성은 있으나 핵심 단서와 맞지 않게 만듭니다. 억지 오답·명백한 품사 불일치 금지입니다.',
-    '- 빈칸 주관식 acceptedAnswers에는 목표어 자체와 문맥에 자연스러운 answerForm을 credit 1로 넣고, 다른 표현도 문맥상 완전히 자연스러우면 credit 1, 일부만 맞으면 credit 0.5로 넣습니다. 유의어라는 이유만으로 넣지 않습니다.',
+    '- 빈칸 주관식 acceptedAnswers에는 빈칸에 실제로 들어가는 answerForm을 credit 1로 넣습니다. 목표어 기본형이 빈칸에 문법적으로 맞지 않으면 넣지 마세요. 다른 표현도 문맥상 완전히 자연스러우면 credit 1, 일부만 맞으면 credit 0.5로 넣습니다. 유의어라는 이유만으로 넣지 않습니다.',
     '- supportLevel이 1 이상이면 문장을 더 짧고 쉽게 쓰고, 2~3이면 핵심 단서를 더 분명하게 제시합니다.',
     '- successStreak가 3 이상이면 같은 뜻을 학교 밖, 자연, 탐험, 과학 등 덜 익숙한 새 상황에도 적용하도록 배경을 바꿉니다.',
     '- firstLearning=true인 첫 객관식 문제는 특히 쉬운 상황과 분명한 단서를 사용합니다.',
@@ -285,7 +286,7 @@ async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
     'factualAccuracy는 후보 지문의 역사·과학 사실이 knowledgeSeed와 일치하고 알려진 사실을 왜곡하지 않는지 검사합니다. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
-    'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조·길이 기준으로 검사합니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
+    'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조로 검사합니다. lengthGuide는 권장 길이이며 최소 글자 수가 아닙니다. 짧아도 완결된 상황과 충분한 단서가 있으면 통과하고 maxCharacters 초과는 탈락입니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     'completedContext는 목표 정답을 넣은 실제 완성 문장입니다. 이 문장은 문법과 의미가 모두 자연스러워야 합니다. 목표어를 넣었을 때 조사·활용·서술어가 틀리면 naturalKorean=false입니다.',
@@ -303,7 +304,7 @@ async function aiVerify(items,questions,recent){
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
     '힌트의 뜻 풀이가 사전 정의와 비슷하다는 이유만으로 noAnswerLeak=false로 하지 마세요. 목표어 철자나 정답 번호/고유 보기 문구를 직접 제시하는 것만 힌트 노출 오류입니다. 힌트 사용은 이후 독립 회상으로 채점되지 않습니다.',
     '힌트는 학습자가 요청한 뒤에만 나타나는 단계적 도움입니다. 현재 상황의 의미 단서를 가리키거나 의미 범위를 좁히는 것은 허용합니다. 목표어 자체, 정답 번호, 정답 보기의 고유 문구를 그대로 알려주는 경우는 노출입니다. 피드백과 허용 답안은 답변 이후 정보이므로 노출 판단에서 반드시 제외하세요.',
-    '빈칸 주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 목표어와 자연스러운 answerForm은 credit 1이고, 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 문맥의 자연스러운 활용형을 유지하세요.',
+    '빈칸 주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 빈칸에 자연스럽게 들어가는 answerForm은 credit 1입니다. 문맥에 맞지 않는 목표어 기본형은 제외하세요. 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 문맥의 자연스러운 활용형을 유지하세요.',
     '빠진 자연스러운 대체 답안이나 잘못된 허용 답안은 이 검수 단계에서 수정하세요. naturalAlternativesConsidered와 valid는 반환하는 최종 허용 답안 기준입니다. 객관식의 acceptedAnswers는 빈 배열입니다.',
     '주관식에서 다른 자연스러운 표현이 가능하다는 사실만으로 valid=false로 하지 마세요. 그 표현을 최종 acceptedAnswers에 포함했다면 그 문제는 해결된 것입니다. 상황과 정답 문장 자체의 자연스러움은 계속 엄격히 검사하세요.',
     '허용 답안 목록만 수정할 수 있습니다. 문맥, 보기, 힌트 등 문제 자체의 결함은 수정한 것으로 간주하지 말고 valid=false와 구체적인 issues로 반환하세요.',

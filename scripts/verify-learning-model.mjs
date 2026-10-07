@@ -6,18 +6,18 @@ import {makePreparedPlan,browserQuestion} from '../lib/prepared-plan.js';
 const day='2026-10-07',word={w:'협력',d:'같은 일을 위해 힘을 합침',band:2,source:'fixed',cat:'국어'};
 assert.equal(learningDay(new Date('2026-10-06T15:00:00Z')),day);
 assert.equal(daysBetween('2026-09-30',day),7);
-assert.equal(studyBudget({words:{}},day).newCount,2);
-assert.equal(studyBudget({words:{a:{introducedAt:day},b:{introducedAt:day}}},day).newCount,0);
-assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:10},(_,i)=>[i,{seen:1,introducedAt:'2026-10-03',nextReviewAt:'2026-10-20'}]))},day).newCount,0);
-assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:12},(_,i)=>[i,{seen:1,nextReviewAt:day}]))},day).newCount,0);
-assert.equal(studyBudget({words:{},learningEvidence:Array.from({length:4},()=>({kind:'recall',firstAttempt:true,lagDays:1,date:day,success:false}))},day).newCount,0);
+assert.equal(studyBudget({words:{}},day).newCount,3);
+assert.equal(studyBudget({words:{a:{introducedAt:day},b:{introducedAt:day},c:{introducedAt:day}}},day).newCount,0);
+assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:10},(_,i)=>[i,{seen:1,introducedAt:'2026-10-03',nextReviewAt:'2026-10-20'}]))},day).newCount,3);
+assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:12},(_,i)=>[i,{seen:1,nextReviewAt:day}]))},day).newCount,3);
+assert.equal(studyBudget({words:{},learningEvidence:Array.from({length:4},()=>({kind:'recall',firstAttempt:true,lagDays:1,date:day,success:false}))},day).newCount,3);
 const reviews=Array.from({length:8},(_,i)=>({...word,w:'복습'+i})),fresh=[{...word,w:'재사용'},word];
 const plans=buildLearningPlan(fresh,reviews,20,'daily');
 assert.equal(plans.length,20);assert.equal(plans.slice(0,6).every(p=>p.stage==='check'&&p.type.startsWith('subjective_')),true);
-assert.equal(plans.filter(p=>p.needsCard).length,2);assert.equal(plans.slice(0,16).filter(p=>p.type==='subjective_use').length,2);
+assert.equal(plans.filter(p=>p.needsCard).length,2);assert.equal(plans.slice(0,20).filter(p=>p.type==='subjective_use').length,2);
 assert.ok(plans.findIndex(p=>p.stage==='recall'&&p.w.w==='재사용')>=9,'three intervening activities after teaching');
 const emptyPlan=buildLearningPlan(fresh,[],20,'daily');
-assert.equal(emptyPlan.slice(0,16).filter(p=>p.type==='subjective_use').length,2);
+assert.equal(emptyPlan.slice(0,20).filter(p=>p.type==='subjective_use').length,2);
 let learner={difficulty:2,words:{},learningEvidence:[]},st={lastExposureAt:'2026-09-30',recallStage:3};
 const good={credit:1,targetRecall:true,contextSuccess:true,practiceOnly:false,hintUsed:false,revealed:false};
 let evidence=recordLearningEvidence(learner,st,{w:word,type:'mc_context',showTarget:false},good,day);
@@ -40,12 +40,13 @@ updateLearningLevels(learner,[],day);assert.equal(learner.difficulty,2);assert.e
 learner.learningEvidence=Array.from({length:12},(_,i)=>({kind:'recall',date:['2026-10-05','2026-10-06',day][i%3],word:'어휘'+i,success:true,lagDays:7,firstAttempt:true,band:2}));
 updateLearningLevels(learner,[],day);assert.equal(learner.leagueLevel,2.2);updateLearningLevels(learner,[],day);assert.equal(learner.leagueLevel,2.2,'no repeat daily promotions');
 assert.equal(summarizeEvidence(learner).retention7.attempts,12);
-assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:8},(_,i)=>[i,{seen:1,introducedAt:'2026-10-03',nextReviewAt:'2026-10-20'}]))},day).newCount,0);
-assert.deepEqual(plans.slice(14,16).map(p=>p.w.w).sort(),fresh.map(w=>w.w).sort());
+assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:8},(_,i)=>[i,{seen:1,introducedAt:'2026-10-03',nextReviewAt:'2026-10-20'}]))},day).newCount,3);
+assert.deepEqual(plans.slice(18,20).map(p=>p.w.w).sort(),fresh.map(w=>w.w).sort());
 const futureLearner={difficulty:2,levelTestCompleted:true,lastDate:learningDay(),words:{}};
 for(let i=0;i<8;i++)futureLearner.words['복습'+i]={seen:1,introducedAt:learningDay(),nextReviewAt:'2099-01-01'};
 const future=makePreparedPlan(futureLearner,{},reviews.map(w=>({word:w.w,definition:w.d,band:2,domain:'국어'})),'family','guest');
 assert.ok(future.plannedFor>learningDay());assert.equal(future.plans.some(p=>p.w.w.startsWith('복습')),false,'not-due words must not reset retention intervals');
+assert.deepEqual([studyBudget({words:{}},day).minutes,studyBudget({words:{}},day).maxMinutes],[20,25]);
 console.log('Learning rules verified: Seoul dates, daily/weekly/overdue/performance budgets, spaced new-word plan, recognition/use separated from recall, 7/30-day checks, independent mastery, multi-day bounded league changes.');
 // Full client flow: new server packet, teaching screen, cursor checkpoint, resume,
 // exact-form fast grading, semantic sentence grading, early completion, old lesson support.
@@ -62,19 +63,20 @@ function fixture(saved=null){
  if(saved)run('state=mergeState('+JSON.stringify(saved)+')');else run('state.users.guest=Object.assign(freshChild("게스트"),'+JSON.stringify(seed)+')');
  return {run,node,local,alerts,get gradeCalls(){return gradeCalls}};
 }
-const f=fixture();await f.run('buildSession()');if(!f.run('session'))throw Error(f.alerts.join(' | '));assert.equal(f.run('session.target'),16);assert.equal(f.run('session.introDone'),false);
+const f=fixture();await f.run('buildSession()');if(!f.run('session'))throw Error(f.alerts.join(' | '));assert.equal(f.run('session.target'),20);assert.equal(f.run('session.introDone'),false);
 for(let i=0;i<6;i++){f.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1,targetRecall:true,contextSuccess:true,independent:true})");await f.run('nextQuestion()')}
 assert.equal(f.node('introCounter').textContent,'1번째 새 단어');assert.equal(f.run('current'),6);
 f.run('nextIntro()');assert.equal(f.run('session.introCursor'),1);
 const saved=JSON.parse(f.run('JSON.stringify(state)'));
 const reopened=fixture(saved);await reopened.run('buildSession()');assert.equal(reopened.run('current'),6);assert.equal(reopened.run('session.introCursor'),1);assert.equal(reopened.node('introCounter').textContent,'2번째 새 단어');
-reopened.run('nextIntro()');assert.equal(reopened.run('session.introDone'),true);
+reopened.run('nextIntro()');assert.equal(reopened.node('introCounter').textContent,'3번째 새 단어');reopened.run('nextIntro()');assert.equal(reopened.run('session.introDone'),true);
+assert.equal(reopened.run('studyBudget(child()).newCount'),0,'all three teaching cards consume the daily allowance');
 const beforeLevel=reopened.run('child().difficulty');
-for(let i=6;i<14;i++){reopened.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1,targetRecall:true,contextSuccess:true,independent:true})");await reopened.run('nextQuestion()')}
+for(let i=6;i<18;i++){reopened.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1,targetRecall:true,contextSuccess:true,independent:true})");await reopened.run('nextQuestion()')}
 assert.equal(reopened.run('child().difficulty'),beforeLevel,'no per-answer level boost');
 assert.equal(reopened.run('session.queue[current].type'),'subjective_use');
 reopened.node('answer').value=reopened.run('session.queue[current].w.w');await reopened.run('gradeCurrent(false)');
 assert.equal(reopened.gradeCalls,1,'target alone still gets semantic sentence grading');assert.equal(reopened.run('session.results.at(-1).targetRecall'),false);
-reopened.run('finishSession()');assert.equal(reopened.run('child().activeLesson'),null);assert.equal(reopened.run('child().sessions[0].total'),15);assert.equal(reopened.run('child().sessions[0].model'),'12.0.0');
+reopened.run('finishSession()');assert.equal(reopened.run('child().activeLesson'),null);assert.equal(reopened.run('child().sessions[0].total'),19);assert.equal(reopened.run('child().sessions[0].model'),'12.0.0');
 assert.ok(reopened.run('Object.values(child().words).some(s=>s.retention7?.attempts||s.retention30?.attempts)'));
 console.log('New lesson verified: pre-generated packet, six prior-word probes before teaching, teaching-cursor restart, delayed recall protection, target shown in sentence-use never counted as recall, zero rolling level boosts, early completion preserving all answers.');

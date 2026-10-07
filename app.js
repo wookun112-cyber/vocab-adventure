@@ -561,7 +561,9 @@ function savedLesson(profile=state.selected){
 function renderResumeButton(){
  if(preparingSession)return;
  const saved=savedLesson();
- $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+(saved.nextIndex+1)+'번째 문제'):'오늘의 학습 시작';
+ const done=!saved&&child().lastDate===today(),p=preparations.get(preparationKey('daily'));
+ $('startDaily').disabled=done;
+ $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+(saved.nextIndex+1)+'번째 문제'):done?'오늘 학습 완료 · 내일 이어가요':p&&!p.cancelled&&p.ready.size<20?'문제 준비 중 · '+p.ready.size+'/20개':'오늘의 학습 시작';
 }
 function storeLearnerCheckpoint(profile){
  if(!authUser)return;
@@ -832,7 +834,7 @@ let preparingSession=false;
 const QUESTION_WAIT_MS=15000;
 function withDeadline(task,milliseconds,message){
  let timer;
- return Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(message)),milliseconds)})]).finally(()=>clearTimeout(timer));
+ return Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(message instanceof Error?message:new Error(message)),milliseconds)})]).finally(()=>clearTimeout(timer));
 }
 async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[],profile=state.selected){
  const {data}=await withDeadline(sb.auth.getSession(),10000,'로그인 상태 확인이 지연됐어요. 다시 눌러 주세요.'); const token=data.session?.access_token;
@@ -910,6 +912,7 @@ function createPreparation(meta,saved=[]){
    if(!p.adopted&&!p.cancelled&&p.mode==='daily'&&authUser?.id===p.account&&state.selected===p.profile&&!preparingSession&&(!session||current>=session.target)){
      const failed=p.jobs.find(j=>j.indices.includes(0))?.error;
      $('cloudPill').textContent=failed?'문제 준비 지연 · 시작 버튼으로 재시도':p.queue.length>=20?'학습 준비 완료':p.queue.length?'전체 문제 준비 중':'학습 문제 미리 준비 중';
+     renderResumeButton();
    }
  };
  p.append=(plans)=>{
@@ -964,9 +967,10 @@ function createPreparation(meta,saved=[]){
  p.cancel=()=>{p.cancelled=true;p.notify()};
  return p;
 }
-async function serverLesson(profile,activeId=null){
+async function serverLesson(profile,activeId=null,retry=false){
  if(!['ayoung','inseong','guest'].includes(profile))return null;
- const {data,error}=await withDeadline(sb.rpc('get_prepared_lesson',{p_profile:profile,p_active_id:activeId}),10000,'저장된 문제를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
+ const name=activeId?'get_prepared_lesson':'ensure_prepared_lesson',args=activeId?{p_profile:profile,p_active_id:activeId}:{p_profile:profile,p_snapshot:preparationSnapshot(profile),p_retry:retry};
+ const {data,error}=await withDeadline(sb.rpc(name,args),10000,'저장된 문제를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
  if(error)throw new Error('저장된 학습 문제를 확인하지 못했어요. 다시 눌러 주세요.');
  return data;
 }
@@ -998,18 +1002,19 @@ function createServerPreparation(meta,saved){
  const cancel=p.cancel;p.cancel=()=>{clearTimeout(timer);cancel()};
  return p;
 }
-async function getPreparation(mode='daily'){
+async function getPreparation(mode='daily',retry=false){
  const profile=state.selected,account=authUser?.id,key=preparationKey(mode,profile,account);
  if(!account)throw new Error('로그인이 필요합니다.');
  const snapshot=preparationSnapshot(profile),existing=preparations.get(key);
- if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&Date.now()-existing.created<PREPARATION_TTL){existing.pump();return existing}
+ if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&Date.now()-existing.created<PREPARATION_TTL&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
  if(preparationLoads.has(key))return preparationLoads.get(key);
  if(existing)existing.cancel();
  const loading=(async()=>{
    let saved=null;
    try{saved=JSON.parse(localStorage.getItem(key)||'null')}catch{}
    if(mode==='daily'&&['ayoung','inseong','guest'].includes(profile)){
-     let remote=await serverLesson(profile),tries=0;
+     if(cloudSaveTask)await withDeadline(cloudSaveTask,10000,'학습 기록 저장이 늦어졌어요. 잠시 뒤 다시 눌러 주세요.');
+     let remote=await serverLesson(profile,null,retry),tries=0;
      while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries++<4){
        $('cloudPill').textContent='맞춤 학습 문제를 서버에서 미리 준비 중';
        await new Promise(resolve=>setTimeout(resolve,2000));
@@ -1025,7 +1030,7 @@ async function getPreparation(mode='daily'){
        preparations.set(key,p);p.pump();return p;
      }
      // Pending, failed or outdated server work must not start duplicate browser generation.
-     if(remote)throw new Error(remote.status==='failed'?'문제 검수가 지연됐어요. 준비된 문제는 보관되어 있습니다. 잠시 뒤 다시 눌러 주세요.':'서버에서 맞춤 문제를 준비 중이에요. 앱을 닫아도 준비는 계속됩니다. 잠시 뒤 다시 눌러 주세요.');
+     if(remote)throw Object.assign(new Error(remote.status==='failed'?'문제 검수가 지연됐어요. 시작 버튼을 누르면 준비된 문제를 보관하고 나머지만 재시도해요.':'서버에서 맞춤 문제를 준비 중이에요. 준비 상태를 자동으로 다시 확인해요.'),{preparationPending:remote.status!=='failed'});
      // Missing storage responses must never fall back to live daily generation.
      throw new Error('저장된 맞춤 문제를 확인하지 못했어요. 학습 기록은 유지됩니다. 다시 눌러 주세요.');
    }
@@ -1044,7 +1049,7 @@ async function getPreparation(mode='daily'){
      else{const budget=studyBudget(child());newWords=chooseNew(budget.newCount);reviewWords=chooseReview(20-newWords.length)}
      const baseWords=[...newWords,...reviewWords];
      if(!baseWords.length)throw new Error(mode==='review'?'아직 복습할 기록이 충분하지 않아요. 오늘의 학습을 먼저 진행해 주세요.':'출제할 어휘를 준비하지 못했습니다.');
-     meta={key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,model:LEARNING_MODEL,target:mode==='level'?20:16,introAt:mode==='daily'?Math.min(6,reviewWords.length):0,plans:assignScenarios(buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w)))};
+     meta={key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,model:LEARNING_MODEL,target:20,introAt:mode==='daily'?Math.min(6,reviewWords.length):0,plans:assignScenarios(buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w)))};
    }
    const p=createPreparation(meta,restored?saved.ready||[]:[]);
    preparations.set(key,p);p.pump();return p;
@@ -1052,9 +1057,15 @@ async function getPreparation(mode='daily'){
  preparationLoads.set(key,loading);
  try{return await loading}finally{preparationLoads.delete(key)}
 }
+let preparationRetryTimer=null;
 function warmDailyQuestions(){
  if(!authUser||preparingSession||savedLesson()||(session&&current<session.target))return;
- getPreparation('daily').catch(()=>{});
+ const profile=state.selected,account=authUser.id;
+ getPreparation('daily').catch(error=>{
+  if(account!==authUser?.id||profile!==state.selected)return;
+  $('cloudPill').textContent=error.preparationPending?'학습 문제 미리 준비 중':'시작 버튼으로 문제 준비 재시도';
+  if(error.preparationPending){clearTimeout(preparationRetryTimer);preparationRetryTimer=setTimeout(()=>{if(account===authUser?.id&&profile===state.selected)warmDailyQuestions()},10000)}
+ });
 }
 function activeTime(active=session){return (active?.activeMs||0)+(active?.clockStarted?Math.max(0,Date.now()-active.clockStarted):0)}
 function pauseLearningClock(){if(session?.clockStarted){session.activeMs=activeTime(session);session.clockStarted=null}}
@@ -1083,9 +1094,10 @@ async function buildSession(mode='daily'){
  try{
    const paused=savedLesson(profile);
    if(paused){await resumeLesson(paused);return}
+   if(mode==='daily'&&child().lastDate===today()){show('home');return}
    // The background queue keeps preparing after this bounded UI wait ends.
    const p=await withDeadline((async()=>{
-     const prepared=await getPreparation(mode);
+     const prepared=await getPreparation(mode,true);
      if(prepared.model===LEARNING_MODEL&&prepared.plannedFor>today())throw new Error('오늘 예정된 학습을 마쳤어요. 다음 학습 날짜는 '+prepared.plannedFor+'입니다. 복습 버튼으로 배운 단어를 연습할 수 있어요.');
      if(prepared.serverId||mode==='daily'){
        // Start a cloud lesson only when every base question is saved, so moving
@@ -1093,7 +1105,7 @@ async function buildSession(mode='daily'){
        await Promise.all(prepared.plans.slice(0,20).map((_,i)=>prepared.waitFor(i,true)));
      }else await prepared.waitFor(0,true);
      return prepared;
-   })(),QUESTION_WAIT_MS,'맞춤 문제를 서버에서 준비 중이에요. 앱을 닫아도 준비는 계속됩니다. 잠시 뒤 다시 눌러 주세요.');
+   })(),QUESTION_WAIT_MS,Object.assign(new Error('맞춤 문제를 서버에서 준비 중이에요. 준비가 끝나면 시작 버튼이 바뀌어요.'),{preparationPending:true}));
    if(state.selected!==profile||authUser?.id!==account)return;
    if(p.serverId){
      const {data,error}=await withDeadline(sb.rpc('consume_prepared_lesson',{p_profile:profile,p_id:p.serverId}),10000,'학습 시작 확인이 지연됐어요. 기록은 유지됩니다. 다시 눌러 주세요.');
@@ -1107,7 +1119,7 @@ async function buildSession(mode='daily'){
    current=0;introIndex=0;hintLevel=0;$('next').disabled=false;
    show('learn');renderQuestion();prefetchQuestions();
  }catch(e){
-   if(state.selected===profile&&authUser?.id===account){alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));show('home')}
+   if(state.selected===profile&&authUser?.id===account){if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));show('home')}
  }finally{
    preparingSession=false;
    $(button).textContent=oldText;
@@ -1122,8 +1134,8 @@ function renderQuestion(savedHint=0){
  const q=session.queue[current];rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
  $('learnType').textContent=STAGE_LABELS[q.stage]||(session.mode==='level'?'시작 수준 확인':session.mode==='review'?'집중 복습':'오늘의 학습');
  if($('learningPath'))$('learningPath').textContent=session.model===LEARNING_MODEL?'확인 → 익히기 → 회상 → 적용 → 사용':'';
- if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · 약 15분 목표';
- if($('breakNotice')){$('breakNotice').textContent='20분 동안 학습했어요. 지금 마치거나 잠시 쉬어도 괜찮아요.';$('breakNotice').classList.toggle('hidden',activeTime()<20*60000)}
+ if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · 20~25분 목표';
+ if($('breakNotice')){$('breakNotice').textContent='25분 동안 학습했어요. 오늘은 여기서 마치거나 잠시 쉬어도 괜찮아요.';$('breakNotice').classList.toggle('hidden',activeTime()<25*60000)}
  if($('finishEarly'))$('finishEarly').classList.toggle('hidden',session.results.length<1);
  $('counter').textContent=(current+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
  $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1);
@@ -1370,9 +1382,10 @@ function finishSession(){
  session.completed=true;
  const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);
  if(session.mode!=='level'){
-   if(c.lastDate!==today()){c.learningDays++;c.lastDate=today()}
+   if((c.lastStudyDate||c.lastDate)!==today()){c.learningDays++;c.lastStudyDate=today()}
+   if(session.mode==='daily'&&total>=session.target&&session.introDone)c.lastDate=today();
    if(session.model===LEARNING_MODEL)updateLearningLevels(c,r);
-   c.sessions.unshift({date:today(),score,total,good,wrong,difficulty:c.difficulty,model:session.model,activeMinutes:Math.round(activeTime()/6000)/10,recognition:r.filter(x=>x.type.startsWith('mc_')).length,recall:r.filter(x=>x.evidence?.kind==='recall').length,use:r.filter(x=>x.evidence?.kind==='use').length});
+   c.sessions.unshift({date:today(),mode:session.mode,score,total,good,wrong,difficulty:c.difficulty,model:session.model,activeMinutes:Math.round(activeTime()/6000)/10,recognition:r.filter(x=>x.type.startsWith('mc_')).length,recall:r.filter(x=>x.evidence?.kind==='recall').length,use:r.filter(x=>x.evidence?.kind==='use').length});
    c.sessions=c.sessions.slice(0,60);
  }else{
    const weighted=r.reduce((sum,x)=>sum+((x.credit??resultCredit(x.result))*(x.band||3)),0);
@@ -1404,8 +1417,8 @@ function renderAll(){
 function renderStudySummary(){
  const c=child(),budget=studyBudget(c),saved=savedLesson(),summary=summarizeEvidence(c);
  if($('dailyTitle'))$('dailyTitle').textContent=budget.newCount?'새 단어 최대 '+budget.newCount+'개 + 맞춤 복습':'오늘은 배운 단어를 단단하게';
- if($('dailyDescription'))$('dailyDescription').textContent='약 15분 · 새 단어 하루 최대 2개, 최근 7일 최대 8개 · 복습이 밀리면 새 단어를 줄여요.';
- if($('dailyBudget'))$('dailyBudget').textContent='복습 예정 '+budget.due+'개 · 최근 7일 새 단어 '+budget.weeklyNew+'/'+budget.weeklyLimit+'개';
+ if($('dailyDescription'))$('dailyDescription').textContent='20~25분 · 하루 새 단어 3개 + 맞춤 복습 · 기본 활동 20개';
+ if($('dailyBudget'))$('dailyBudget').textContent=(c.lastDate===today()&&!saved?'오늘 학습 완료 · 내일 학습을 미리 준비해요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개';
  if($('learningEvidenceHome'))$('learningEvidenceHome').textContent='장기 확인 '+summary.mastered+'개 · '+(summary.retention7.attempts?'7일 이상 회상 '+summary.retention7.percent+'%':'7일 뒤 기억을 확인할 기록을 모으고 있어요.');
  if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';
 }
@@ -1422,7 +1435,7 @@ function renderReport(){
  $('reportBody').innerHTML=`<div class="grid4"><div class="stat"><strong>${studied.length}</strong><span>학습 단어</span></div><div class="stat"><strong>${stats.mastered}</strong><span>장기 확인 단어</span></div><div class="stat"><strong>${c.difficulty.toFixed(1)}</strong><span>출제 난이도</span></div><div class="stat"><strong>${Number(c.leagueLevel??c.difficulty).toFixed(1)}</strong><span>리그 등급</span></div></div>
  <div class="card"><div class="eyebrow">맞히는 방식과 기억을 따로 확인</div><h3>어휘 학습의 네 가지 모습</h3><div class="evidence-grid">${metric('보기로 알아보기',stats.recognition,'첫 답 기준')}${metric('다른 날 직접 회상',stats.recall,'보기·힌트 없이')}${metric('새 글 이해',stats.transfer,'처음 보는 글의 뜻과 쓰임')}${metric('내 문장에 사용',stats.use,'목표어를 보여준 사용 활동')}</div></div>
  <div class="card"><h3>시간이 지나도 기억하나요?</h3><div class="evidence-grid">${metric('7일 이상 뒤 회상',stats.retention7,'마지막 노출 후 7~29일')}${metric('30일 이상 뒤 회상',stats.retention30,'마지막 노출 후 30일 이상')}</div><p class="muted">장기 확인은 3일 이상 직접 회상, 7일 이상 뒤 성공, 내 문장 사용을 모두 확인한 단어예요. 기존 정오답·숙달 기록은 단어장에 보관하고 새 확인 기록과 구분합니다. 도움 없이 회상하기 전 뜻이나 보기를 본 단어는 지연 회상 검사에 넣지 않아요.</p></div>
- <div class="card"><h3>오늘의 적정 분량</h3><p>새 단어 최대 ${budget.newCount}개 · 복습 예정 ${budget.due}개 · 약 15분</p><p class="muted">하루 새 단어 최대 2개, 최근 7일 최대 8개로 시작합니다. 복습량과 며칠 뒤 회상 성과에 따라 줄여요. 활동 16개를 준비하며 20분부터 쉬기를 안내합니다. 반복 실행해도 하루 새 단어 한도를 늘리지 않아요.</p><small class="muted">최근 학습 시간: ${c.sessions[0]?.activeMinutes!=null?c.sessions[0].activeMinutes+'분':'개편 후 기록 대기'}</small></div>
+ <div class="card"><h3>오늘의 적정 분량</h3><p>새 단어 ${budget.newCount}개 · 복습 예정 ${budget.due}개 · 20~25분</p><p class="muted">하루 새 단어 3개와 맞춤 복습을 기본 활동 20개로 준비합니다. 목표 시간은 20~25분이며, 25분부터 마치기와 쉬기를 안내해요. 빨리 마쳐도 기다리게 하지 않으며, 반복 실행해도 하루 새 단어 한도는 3개예요.</p><small class="muted">최근 학습 시간: ${c.sessions[0]?.activeMinutes!=null?c.sessions[0].activeMinutes+'분':'개편 후 기록 대기'}</small></div>
  <div class="card"><h3>다음 우선순위</h3><div class="list">${weak.length?weak.map(w=>`<div class="item"><strong>${escapeHtml(w.w)}</strong> <small>${escapeHtml(w.d)} · 다음 복습 ${escapeHtml(c.words[w.w].nextReviewAt||'곧 확인')}</small></div>`).join(''):'<p class="muted">학습 기록이 쌓이면 개인별 복습을 안내해요.</p>'}</div></div>
  <div class="card"><h3>등급 해석</h3><p class="muted">출제 난이도는 학습을 돕는 값이고, 리그 등급은 여러 날의 회상 기록으로 조정하는 게임용 추정값이에요. 공인 어휘력 검사나 실제 학년 점수가 아닙니다. ${c.abilityEvidence?'최근 '+c.abilityEvidence.days+'일, '+c.abilityEvidence.words+'개 단어, '+c.abilityEvidence.samples+'개 지연 회상 기록을 반영했어요.':'기존 등급을 유지하며 여러 날의 회상 근거를 모으고 있어요.'}</p></div>`;
 }

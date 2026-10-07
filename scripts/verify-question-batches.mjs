@@ -39,7 +39,7 @@ assert.equal(run('catalogCalls[0]'),3);
 assert.equal(run('JSON.stringify(state.users)'),run('records'));
 console.log('Curriculum verified: cached words avoid network wait; depleted bands refill; records preserved.');
 // A comparison situation is valid; asking learners to compare two target words is not.
-const backend=vm.createContext({console,process,Map,Set});
+const backend=vm.createContext({console,process,Map,Set,AbortSignal});
 const api=fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8')
  .replace(/^import[^\n]+\n/gm,'').replace('export async function buildValidated','async function buildValidated')
  .replace('export default async function handler','async function handler');
