@@ -14,10 +14,10 @@ assert.equal(studyBudget({words:{},learningEvidence:Array.from({length:4},()=>({
 const reviews=Array.from({length:8},(_,i)=>({...word,w:'복습'+i})),fresh=[{...word,w:'재사용'},word];
 const plans=buildLearningPlan(fresh,reviews,20,'daily');
 assert.equal(plans.length,20);assert.equal(plans.slice(0,6).every(p=>p.stage==='check'&&p.type.startsWith('subjective_')),true);
-assert.equal(plans.filter(p=>p.needsCard).length,2);assert.equal(plans.slice(0,20).filter(p=>p.type==='subjective_use').length,2);
-assert.ok(plans.findIndex(p=>p.stage==='recall'&&p.w.w==='재사용')>=9,'three intervening activities after teaching');
+assert.equal(plans.filter(p=>p.needsCard).length,2);assert.equal(plans.slice(0,20).filter(p=>p.type==='subjective_use').length,4);
+assert.equal(plans[6].type,'mc_usage');assert.equal(plans[6].stage,'practice');assert.ok(plans.filter(p=>fresh.some(w=>w.w===p.w.w)).every(p=>['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'].includes(p.type)),'new words are practised with the target shown');
 const emptyPlan=buildLearningPlan(fresh,[],20,'daily');
-assert.equal(emptyPlan.slice(0,20).filter(p=>p.type==='subjective_use').length,2);
+assert.equal(emptyPlan.slice(0,20).filter(p=>p.type==='subjective_use').length,10);
 for(let k=0;k<=8;k++){
  const balanced=buildLearningPlan(fresh,reviews.slice(0,k),20,'daily');
  assert.equal(balanced.filter(p=>p.type.startsWith('mc_')).length,10,'each daily plan balances ten choices and ten written activities');
@@ -46,7 +46,8 @@ learner.learningEvidence=Array.from({length:12},(_,i)=>({kind:'recall',date:['20
 updateLearningLevels(learner,[],day);assert.equal(learner.leagueLevel,2.2);updateLearningLevels(learner,[],day);assert.equal(learner.leagueLevel,2.2,'no repeat daily promotions');
 assert.equal(summarizeEvidence(learner).retention7.attempts,12);
 assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:8},(_,i)=>[i,{seen:1,introducedAt:'2026-10-03',nextReviewAt:'2026-10-20'}]))},day).newCount,3);
-assert.deepEqual(plans.slice(18,20).map(p=>p.w.w).sort(),fresh.map(w=>w.w).sort());
+assert.ok(fresh.every(w=>plans.filter(p=>p.type==='subjective_use').some(p=>p.w.w===w.w)));
+st={introducedAt:day,lastExposureAt:day};evidence=recordLearningEvidence(learner,st,{w:word,type:'subjective_context',showTarget:false},good,day);assert.equal(evidence.unpromptedRecall,false);assert.equal(st.independentRecallDays,undefined,'same-day recall does not certify retention');
 const futureLearner={difficulty:2,levelTestCompleted:true,lastDate:learningDay(),words:{}};
 for(let i=0;i<8;i++)futureLearner.words['복습'+i]={seen:1,introducedAt:learningDay(),nextReviewAt:'2099-01-01'};
 const future=makePreparedPlan(futureLearner,{},reviews.map(w=>({word:w.w,definition:w.d,band:2,domain:'국어'})),'family','guest');

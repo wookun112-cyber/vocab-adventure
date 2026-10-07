@@ -9,7 +9,7 @@ const job={id:'test',lease:'lease',account:'family',profile:'inseong',learner,cu
 const plan=makePreparedPlan(learner,{},curriculum,'family','inseong');
 assert.equal(plan.plans.length,20);
 assert.equal(plan.target,20);assert.equal(plan.newWords.length,3);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
-assert.ok(new Set(plan.plans.map(p=>p.type)).size>=5);
+assert.ok(new Set(plan.plans.map(p=>p.type)).size>=4);
 assert.equal(plan.snapshot,learnerSnapshot(learner));
 assert.equal(JSON.stringify(learner),before);
 for(const word of plan.newWords){

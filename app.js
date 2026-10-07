@@ -1082,7 +1082,7 @@ function renderIntro(){
  $('introDefinition').textContent=card.definition||w.d;$('introExample').textContent=card.example;
  if($('introNonExample'))$('introNonExample').textContent=card.nonExample;
  if($('introStructure')){$('introStructure').textContent=card.structureNote||'';$('introStructure').classList.toggle('hidden',!card.structureNote)}
- $('introNext').textContent=active.introCursor===list.length-1?'다른 활동으로 이어가기':'다음 단어 익히기';
+ $('introNext').textContent=active.introCursor===list.length-1?'뜻과 쓰임 연습하기':'다음 단어 익히기';
  checkpointSession();localSave();cloudSave();
 }
 function nextIntro(){if(!session)return;session.introCursor++;checkpointSession();localSave();cloudSave();renderIntro()}
@@ -1144,12 +1144,12 @@ function renderQuestion(savedHint=0){
  if(session.model===LEARNING_MODEL&&!session.introDone&&current>=session.introAt){show('intro');renderIntro();return}
  const q=session.queue[current];rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
  $('learnType').textContent=STAGE_LABELS[q.stage]||(session.mode==='level'?'시작 수준 확인':session.mode==='review'?'집중 복습':'오늘의 학습');
- if($('learningPath'))$('learningPath').textContent=session.model===LEARNING_MODEL?'확인 → 익히기 → 회상 → 적용 → 사용':'';
+ if($('learningPath'))$('learningPath').textContent=session.model===LEARNING_MODEL?'지난 단어 복습 → 뜻 익히기 → 상황 이해 → 내 문장':'';
  if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · 20~25분 목표';
  if($('breakNotice')){$('breakNotice').textContent='25분 동안 학습했어요. 오늘은 여기서 마치거나 잠시 쉬어도 괜찮아요.';$('breakNotice').classList.toggle('hidden',activeTime()<25*60000)}
  if($('finishEarly'))$('finishEarly').classList.toggle('hidden',session.results.length<1);
  $('counter').textContent=(session.results.filter(isVocabularyResult).length+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
- $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1);
+ $('qTag').textContent=q.label; $('difficulty').textContent='어휘 단계 '+child().difficulty.toFixed(1);
  $('qWord').textContent=q.showTarget?q.w.w:'';
  $('qWord').classList.toggle('hidden',!q.showTarget);
  $('qText').textContent=q.q;
@@ -1182,7 +1182,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const revealed=Boolean(meta.revealed);
  const contextSuccess=meta.contextSuccess??credit>=.5;
  const targetRecall=q.showTarget||q.type==='subjective_use'?false:Boolean(meta.targetRecall);
- const practiceOnly=!!q.practiceOnly||st.lastFeedbackDate===today()||session.results.some(r=>r.word===q.w.w);
+ const practiceOnly=!!q.practiceOnly||st.introducedAt===today()||st.lastFeedbackDate===today()||session.results.some(r=>r.word===q.w.w);
  const independent=!practiceOnly&&Boolean(meta.independent??(!hintUsed&&!revealed&&credit>=1));
  if(hintUsed&&credit>=1){credit=.75;result='△'}
  st.seen++;st.last=result;st.types[q.type]=(st.types[q.type]||0)+1;
@@ -1241,7 +1241,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
- $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(rec.stars?'<br><small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(rec.stars?'<br><small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(full&&contextSuccess&&!targetRecall&&!q.showTarget?'<br><small>문맥에 맞는 답이에요. 목표 단어를 떠올렸는지는 따로 기록해요.</small>':'')+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  checkpointSession();localSave();cloudSave();
 }
@@ -1531,3 +1531,4 @@ if('serviceWorker'in navigator){
 renderAll();
 
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else if(session&&['learn','intro'].some(id=>$(id)?.classList.contains('active')))session.clockStarted=Date.now()});
+

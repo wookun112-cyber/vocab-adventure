@@ -50,3 +50,16 @@
 진행 중 학습의 원래 답안·순서·학습 기록은 보존한다. 아직 답하지 않은 제외 대상은 오답·점수·보상 없이 넘어가고, 해당 결과는 새 어휘 점수 집계에 넣지 않는다. 저장된 원시 기록을 삭제하거나 난이도를 일괄 재설정하지 않는다.
 
 독립 검수가 반복해서 개념 이름 퀴즈로 판정한 세포는 지문 소재로만 사용한다. 사용하지 않은 문제 묶음에서 해당 미검수 자리는 이미 배운 일반 어휘로 대체할 수 있다. 검수를 통과한 다른 문항과 원래 학습 기록은 유지하고 대체 문항도 생성·독립 검수를 거친다.
+
+
+## 12.6 learning sequence
+
+Daily settings remain three new meanings, twenty activities, a recommended 20–25 minutes and optional further review. These are product settings, not experimentally established optimal quantities.
+
+Up to six uncued probes of previously studied words precede teaching. Each new word then receives an easy meaning, a natural example, and a non-example. Its first activity shows the target and asks for the appropriate situation. Subsequent meaning/reading activities and at least one original sentence per new word use different events. With six review probes the packet has ten choice tasks, six recall tasks and four sentence-use tasks. When fewer review words exist, shown-word sentence use replaces missing recall tasks. New words have no same-day hidden-word tests.
+
+Direct recall from a later day and a new context is tracked separately from recognition and shown-word use. Same-day recall cannot add independent recall days or advance the retention schedule. Seven-day retention and original use remain necessary for confirmed mastery. Natural alternative cloze answers may show context understanding without target recall.
+
+Avoid abstract label slots such as “___의 관점에서”, which allow unrelated plausible names. Teach 분배 first; 소득 분배 is an extension in passages rather than an independently tested target. Do not globally exclude compounds or useful concepts. Passage difficulty follows estimated vocabulary ability; it is not a normed school-grade score.
+
+Evidence informing design: Coyne et al. (2007), DOI 10.2307/30035543; Coyne et al. (2009), DOI 10.1086/598840; Goossens et al. (2014), DOI 10.1016/j.jarmac.2014.05.003; Goossens et al. (2016), DOI 10.1002/acp.3245. Explicit meaning instruction and varied deeper processing support word knowledge; retrieval effects vary across classroom designs. None establishes this exact Korean app sequence or dose as optimal.

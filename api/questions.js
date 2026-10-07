@@ -143,6 +143,7 @@ function deterministic(q,item){
   if(!['mc_relation','mc_structure'].includes(item.type)&&hasCompare(q.prompt))issues.push('comparison_question');
   if(hasDefinePrompt(q.prompt))issues.push('definition_explanation_prompt');
   const hidden=!SHOWN_TYPES.includes(item.type);
+  if(hidden&&/(?:＿＿＿＿|____).*?(?:의\s*관점|라는\s*개념|에\s*대해\s*(?:생각|이야기|논의))/.test(q.context||''))issues.push('ambiguous_label_blank');
   if(hidden&&q.showTarget)issues.push('hidden_type_showTarget_true');
   if(SHOWN_TYPES.includes(item.type)&&!q.showTarget)issues.push('usage_type_showTarget_false');
   if(hidden&&(String(q.prompt).includes(item.word)||String(q.context).includes(item.word)||String(q.prompt).includes(q.answerForm||item.word)||String(q.context).includes(q.answerForm||item.word)))issues.push('target_leaked_before_answer');
@@ -273,6 +274,8 @@ function generationPrompt(items,recent,feedback={}){
     '학습 자료:',
     '- needsCard=true인 문제에는 learningCard를 작성하세요: 아이 눈높이의 짧은 definition, 목표어의 자연스러운 예문 example, 그 단어로 부르기 어려운 상황과 이유를 담은 nonExample. structureNote는 제공된 검토된 structureNote가 있는 경우에만 사용하세요. 단어를 억지로 한자나 형태소로 나누지 마세요. needsCard=false이면 네 필드 모두 빈 문자열입니다. 학습 카드는 별도 익히기 화면에서만 나오며 문제 지문과는 다른 사건을 사용합니다.',
     '- mc_structure는 제공된 structureNote의 정확한 의미만 다룹니다. 분해가 부적합한 단어는 요청되지 않습니다.',
+    '- 새 단어는 단어를 보여주는 상황 선택과 문장 사용으로 연습합니다. 이 활동은 장기 기억 검사라고 표현하지 마세요. learningCard의 뜻은 전문 용어 없이 한 문장, 예문은 익숙한 구체적 사건 하나로 쓰고, 카드와 이후 연습은 다른 상황이어야 합니다.',
+    '- 숨긴 빈칸은 실제 행동·의도·결과를 말하는 자연스러운 자리에 둡니다. ‘빈칸의 관점에서’, ‘빈칸이라는 개념’, ‘빈칸에 대해 논의했다’처럼 여러 추상 명사가 들어가는 꼬리표 문장은 금지합니다. 표적어를 넣기 위한 협동조합·조합원 등 불필요한 배경 용어를 줄이세요.',
     '유형 정의:',
     'mc_context: 2~4문장 상황에 answerForm을 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 5개 중 고르게 합니다.',
     'mc_usage: 목표 단어를 질문에 제시하고, 그 단어를 쓰기에 가장 알맞은 상황 하나를 5개의 평행한 상황 보기 중 고릅니다. 빈칸은 쓰지 않습니다.',
@@ -314,6 +317,7 @@ async function aiVerify(items,questions,recent){
     '중복은 목표어별 previousContexts의 실제 문장과 구체적인 사건 전개를 우선 대조하세요. 최근 서명과 과목·배경·문제 유형만 같은 것은 중복 근거가 아닙니다. 서로 다른 수학 대화나 과학 실험이라는 이유만으로 notTooSimilarToRecent=false로 하지 마세요. 문장 재사용 또는 인물의 행동·문제 상황·전개가 실제로 지나치게 같은 경우는 계속 탈락시키세요.',
     '목표어의 핵심 의미는 복습에서도 같아야 하지만 사건·목적·관점·문장 구조는 바꾸세요. 기존 문장을 그대로 복사하거나 이름·숫자만 교체하면 탈락입니다. 수학·과학·문법의 명칭 퀴즈는 다른 장면으로 바꾸어도 vocabularyFocus=false입니다.',
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
+    '숨긴 빈칸이 관점/개념의 이름을 요구하거나 여러 추상 명사가 두루 들어갈 수 있는 일반 꼬리표이면 sufficientClues=false입니다. 목표 의미가 구체적 행동·의도·결과와 연결되어야 합니다. 새 단어의 mc_usage는 뜻 이해 연습이며 단어를 보여주는 것이 정상입니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. mc_context의 단어 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상입니다. mc_usage는 질문에 목표어가 보이지만 상황 보기에는 목표어를 반복하지 않습니다. 목표어 이름이나 활용형이 정답 보기에만 나타나 문자 일치로 고를 수 있으면 noAnswerLeak=false, vocabularyFocus=false입니다.',
     '힌트의 뜻 풀이가 사전 정의와 비슷하다는 이유만으로 noAnswerLeak=false로 하지 마세요. 목표어 철자나 정답 번호/고유 보기 문구를 직접 제시하는 것만 힌트 노출 오류입니다. 힌트 사용은 이후 독립 회상으로 채점되지 않습니다.',
