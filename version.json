@@ -1,5 +1,5 @@
 {
-  "version": "10.10.3",
+  "version": "10.11.0",
   "channel": "production",
   "curriculum": "elementary-to-high-3",
   "accepted_range": [
@@ -58,5 +58,7 @@
   ],
   "competitor_distribution": "72_lower_20_middle_6_upper",
   "competitor_updates": "seoul_daily_bounded_rise_fall_hold",
-  "competitor_daily_change_max": 0.2
+  "competitor_daily_change_max": 0.2,
+  "character_evolution": "ten_rank_brackets_permanent_rewards_and_selectable_forms",
+  "evolution_stages": 10
 }

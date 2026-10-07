@@ -108,4 +108,37 @@ const crossDevice=fixture();crossDevice.run('state.selected="guest"');
 assert.equal(crossDevice.run(`JSON.stringify(explorationRanking(child(),state.selected,${calendarDay}).filter(x=>x.virtual).map(x=>[x.id,x.difficulty,x.dailyChange]))`),f.run(`JSON.stringify(explorationRanking(child(),state.selected,${calendarDay}).filter(x=>x.virtual).map(x=>[x.id,x.difficulty,x.dailyChange]))`),'devices share the same date-based rivals');
 f.run('renderExploration()');assert.ok(/상승|하락|변동 없음/.test(f.node('rankList').innerHTML));
 assert.ok(f.node('rankDailyUpdate').textContent.includes('매일 자정'));
-console.log('Exploration verified: twenty per-profile characters, cloud/checkpoint persistence and account isolation, unchanged paused lessons, one-time legacy XP, bounded/idempotent rewards, one hundred league profiles with both actual children, 72 lower-stage competitors, stable cross-profile standings, Seoul-day fluctuations, bounded rise/fall/hold over a year, cross-device consistency, unchanged learner checkpoints, guest capacity and meaningful rank gains, activity-independent rank, promotion/demotion, displayed-difficulty ties, selected-profile ranking and name-only profiles.');
+// Rank brackets unlock per-profile forms, preserve achievements and protect lesson records.
+for(let stage=1;stage<=10;stage++){
+ const low=101-stage*10,high=110-stage*10;
+ assert.equal(f.run(`evolutionForRank(${low})`),stage);assert.equal(f.run(`evolutionForRank(${high})`),stage);
+}
+const evolutionFamily=fixture('evolution-family');
+evolutionFamily.run("state.selected='ayoung';child().difficulty=1;child().activeLesson={id:'paused-real',nextIndex:9};child().words['근거'].seen=9;state.users.inseong.difficulty=2;");
+const pendingLesson=evolutionFamily.run('JSON.stringify(child().activeLesson)'),pendingWords=evolutionFamily.run('JSON.stringify(child().words)');
+evolutionFamily.run('renderExploration()');await evolutionFamily.run('cloudSave()');
+const firstStage=evolutionFamily.run('evolutionState(child()).unlockedStage');
+assert.equal(firstStage,1);
+evolutionFamily.run('equipEvolution(10)');assert.equal(evolutionFamily.run('evolutionState(child()).equippedStage'),1,'locked forms cannot be equipped');
+evolutionFamily.run('child().difficulty=9;renderExploration()');await evolutionFamily.run('cloudSave()');
+assert.equal(evolutionFamily.run('evolutionState(child()).unlockedStage'),10,'top-ten rank unlocks the ultimate form and skipped rewards');
+assert.equal(evolutionFamily.run('evolutionState(child()).equippedStage'),10);
+assert.equal(evolutionFamily.run('JSON.stringify(child().activeLesson)'),pendingLesson);
+assert.equal(evolutionFamily.run('JSON.stringify(child().words)'),pendingWords);
+assert.equal(evolutionFamily.run('evolutionState(state.users.inseong).unlockedStage')<10,true,'rewards remain separate between children');
+evolutionFamily.run('child().difficulty=1;renderExploration()');
+assert.equal(evolutionFamily.run('evolutionState(child()).unlockedStage'),10,'rank declines never revoke a reward');
+evolutionFamily.run("equipEvolution(3);selectCharacter('dino')");await evolutionFamily.run('cloudSave()');
+assert.equal(evolutionFamily.run('evolutionState(child()).equippedStage'),3,'older unlocked forms remain selectable after changing characters');
+const replay=fixture('evolution-family');await replay.run('cloudLoad()');
+assert.equal(replay.run('child().characterId'),'dino');assert.equal(replay.run('evolutionState(child()).unlockedStage'),10);assert.equal(replay.run('evolutionState(child()).equippedStage'),3);
+assert.equal(replay.run('JSON.stringify(child().activeLesson)'),pendingLesson,'cloud reload preserves the paused question');
+const checkpoint=JSON.parse(local.get('vocab-lesson-evolution-family-ayoung'));
+assert.equal(checkpoint.learner.characterEvolution.unlockedStage,10,'local recovery checkpoints retain the earned form');
+assert.equal((replay.node('evolutionGrid').innerHTML.match(/data-evolution=/g)||[]).length,10);
+const savedTime=replay.run('child().lessonCheckpointAt');replay.run('renderExploration()');assert.equal(replay.run('child().lessonCheckpointAt'),savedTime,'repeated rendering cannot award or checkpoint a reward twice');
+const outsider=fixture('evolution-other');await outsider.run('cloudLoad()');assert.ok(outsider.run('evolutionState(child()).unlockedStage')<10,'another account cannot import earned forms');
+for(const character of f.run('CHARACTERS.map(x=>x.id)')){
+ const forms=Array.from({length:10},(_,i)=>f.run(`characterSvg(${JSON.stringify(character)},${i+1})`));assert.equal(new Set(forms).size,10,'each of the twenty characters has ten distinct forms');
+}
+console.log('Exploration verified: twenty characters with ten visible forms, rank-bracket rewards, permanent unlocks, selectable older forms, cloud/checkpoint persistence and account isolation, unchanged paused lessons, one-time legacy XP, bounded/idempotent rewards, one hundred league profiles with both actual children, 72 lower-stage competitors, stable cross-profile standings, Seoul-day fluctuations, bounded rise/fall/hold over a year, cross-device consistency, unchanged learner checkpoints, guest capacity and meaningful rank gains, activity-independent rank, promotion/demotion, displayed-difficulty ties, selected-profile ranking and name-only profiles.');

@@ -76,8 +76,19 @@ const CHARACTERS=[
  ['unicorn','꿈빛 유니콘','#d7bce9','unicorn'],['dino','숲속 공룡','#a8cf8a','dino']
 ].map(([id,name,color,shape])=>({id,name,color,shape}));
 const DEFAULT_CHARACTERS={ayoung:'puppy',inseong:'dragon',guest:'robot'};
-function characterSvg(id){
- const a=CHARACTERS.find(x=>x.id===id)||CHARACTERS[0],c=a.color,k=a.shape;
+const EVOLUTION_FORMS=[
+ ['씨앗','#a5b4ca','첫 탐험'],['새싹','#70bc9b','초록 스카프'],['견습','#66a8d8','별 배지'],
+ ['모험가','#6f90de','탐험 망토'],['수호자','#a187da','수호 장비'],['정예','#d580af','정예 갑옷'],
+ ['영웅','#e6a16c','빛의 날개'],['별빛','#e3b85d','별빛 오라'],['전설','#d4a44b','전설 왕관'],
+ ['궁극','#9174dd','무지개 날개와 왕관']
+].map(([name,color,feature],i)=>({stage:i+1,name,color,feature,minRank:91-i*10,maxRank:100-i*10}));
+const evolutionForRank=rank=>clamp(11-Math.ceil(clamp(Number(rank)||100,1,100)/10),1,10);
+function evolutionState(c){
+ const raw=c.characterEvolution||{},unlockedStage=clamp(Math.floor(Number(raw.unlockedStage)||1),1,10);
+ return {version:1,unlockedStage,equippedStage:clamp(Math.floor(Number(raw.equippedStage)||unlockedStage),1,unlockedStage),bestRank:Number.isInteger(raw.bestRank)&&raw.bestRank>=1&&raw.bestRank<=100?raw.bestRank:null,awardedAt:Number.isFinite(Date.parse(raw.awardedAt))?raw.awardedAt:null};
+}
+function characterSvg(id,evolution=1){
+ const a=CHARACTERS.find(x=>x.id===id)||CHARACTERS[0],c=a.color,k=a.shape,stage=clamp(Math.floor(Number(evolution)||1),1,10),form=EVOLUTION_FORMS[stage-1],accent=form.color;
  let ears='';
  if(['cat','tiger'].includes(k))ears=`<path d="M24 42 20 17 43 31M56 31 80 17 76 42" fill="${c}" stroke="#39465c" stroke-width="2"/>`;
  else if(k==='dog')ears=`<ellipse cx="24" cy="46" rx="12" ry="22" fill="#bd8d66"/><ellipse cx="76" cy="46" rx="12" ry="22" fill="#bd8d66"/>`;
@@ -94,7 +105,18 @@ function characterSvg(id){
  if(k==='dino')detail='<path d="m44 32 6-10 6 10" fill="#76a465"/>';
  const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="15" fill="${c}"/>`:k==='slime'?`<path d="M17 68Q18 24 50 28q31 0 33 40Q50 90 17 68" fill="${c}"/>`:`<ellipse cx="50" cy="55" rx="29" ry="29" fill="${c}"/>`;
  const mouth=['chick','owl','penguin'].includes(k)?'<path d="m43 60 7 8 7-8" fill="#efaa54"/>':'<path d="M42 64q8 9 16 0" stroke="#39465c" stroke-width="2.5" fill="none" stroke-linecap="round"/>';
- return `<svg viewBox="0 0 100 100" role="img" aria-label="${a.name}" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="${c}" opacity=".2"/>${ears}${face}${detail}<circle cx="36" cy="49" r="4" fill="#25344d"/><circle cx="64" cy="49" r="4" fill="#25344d"/><circle cx="35" cy="48" r="1.3" fill="white"/><circle cx="63" cy="48" r="1.3" fill="white"/><ellipse cx="30" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/><ellipse cx="70" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/>${mouth}<path d="m80 78 2-5 2 5 5 2-5 2-2 5-2-5-5-2" fill="#e4b956"/></svg>`;
+ const star=(x,y,size,color)=>`<path d="M${x} ${y-size}l${size*.3} ${size*.7} ${size*.7} ${size*.3}-${size*.7} ${size*.3}-${size*.3} ${size*.7}-${size*.3}-${size*.7}-${size*.7}-${size*.3} ${size*.7}-${size*.3}Z" fill="${color}"/>`;
+ let back='',front='';
+ if(stage>=2)front+=`<path d="M27 74q23 10 46 0l-4 10q-19 7-38 0Z" fill="${accent}"/><path d="m59 81 9 15 6-13" fill="${accent}"/>`;
+ if(stage>=3)front+=`<circle cx="38" cy="81" r="6" fill="#fff8dc"/>${star(38,81,4,accent)}`;
+ if(stage>=4)back+=`<path d="M28 60 11 96q39-9 78 0L72 60Z" fill="${accent}" opacity=".75"/><path d="m25 72-7 17m57-17 7 17" stroke="#fff" stroke-width="2" opacity=".55"/>`;
+ if(stage>=5)front+=`<path d="m24 70 10 4-4 14-10-6m56-12-10 4 4 14 10-6" fill="${accent}" stroke="#fff8d8" stroke-width="1.5"/><path d="m46 78 4-5 4 5-4 7Z" fill="#fff5cb"/>`;
+ if(stage>=6)front+=`<path d="M31 83q19 9 38 0l-5 12H36Z" fill="${accent}" stroke="#fff3d7" stroke-width="2"/><path d="m41 86 9 6 9-6" fill="none" stroke="#fff" stroke-width="2"/>`;
+ if(stage>=7)back+=`<path d="M27 62Q10 42 3 31q-2 23 13 35Q4 64 3 53q-5 23 24 22m46-13q17-20 24-31 2 23-13 35 12-2 13-13 5 23-24 22" fill="${stage===10?'#bcabe9':'#f6da91'}" stroke="${accent}" stroke-width="1.5"/>`;
+ if(stage>=8)back+=`<circle cx="50" cy="49" r="47" fill="none" stroke="${accent}" stroke-width="3" opacity=".6"/>${star(12,18,5,'#edc468')}${star(91,18,4,'#edc468')}${star(8,85,4,accent)}`;
+ if(stage>=9)front+=`<path d="m36 24-3-14 11 6 6-12 7 12 10-6-3 14Z" fill="#f0ca67" stroke="#c69c48" stroke-width="1.5"/><path d="M37 25h26" stroke="#a787ca" stroke-width="3"/>${star(50,19,3,'#fff6c6')}`;
+ if(stage>=10){back+=`<circle cx="50" cy="49" r="51" fill="none" stroke="#a29be6" stroke-width="2" stroke-dasharray="3 5"/>${star(18,7,4,'#b49be5')}${star(86,5,4,'#85c9d3')}`;front+=`<path d="M35 95q15 9 30 0" stroke="#a187db" stroke-width="4" fill="none"/>${star(50,90,6,'#f8dd88')}${star(86,82,6,'#9cbddd')}`;}
+ return `<svg viewBox="-5 -7 110 110" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="${c}" opacity=".2"/>${back}${ears}${face}${detail}<circle cx="36" cy="49" r="4" fill="#25344d"/><circle cx="64" cy="49" r="4" fill="#25344d"/><circle cx="35" cy="48" r="1.3" fill="white"/><circle cx="63" cy="48" r="1.3" fill="white"/><ellipse cx="30" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/><ellipse cx="70" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/>${mouth}${front}<path d="m80 78 2-5 2 5 5 2-5 2-2 5-2-5-5-2" fill="#e4b956"/></svg>`;
 }
 function exploration(c,profile=state.selected){
  if(!CHARACTERS.some(a=>a.id===c.characterId))c.characterId=DEFAULT_CHARACTERS[profile]||'puppy';
@@ -159,6 +181,27 @@ function explorationRanking(c=child(),profile=state.selected,day=leagueDay()){
  let rank=0;
  return rows.map((x,i)=>{if(!i||x.difficulty!==rows[i-1].difficulty)rank=i+1;return {...x,rank,tied:rows.some((r,j)=>j!==i&&r.difficulty===x.difficulty)}});
 }
+function awardRankEvolutions(rows){
+ if(!authUser)return [];
+ const upgrades=[];let changed=false;
+ for(const row of rows.filter(x=>x.family)){
+  const c=state.users[row.id],previous=evolutionState(c),stage=Math.max(previous.unlockedStage,evolutionForRank(row.rank)),bestRank=Math.min(previous.bestRank||100,row.rank);
+  if(!c.characterEvolution||c.characterEvolution.version!==1||stage>previous.unlockedStage||bestRank!==previous.bestRank){
+   const improved=stage>previous.unlockedStage;
+   c.characterEvolution={...previous,unlockedStage:stage,equippedStage:improved?stage:previous.equippedStage,bestRank,awardedAt:improved||!previous.awardedAt?new Date().toISOString():previous.awardedAt};
+   storeLearnerCheckpoint(row.id);changed=true;
+   if(improved)upgrades.push({profile:row.id,stage,rank:row.rank});
+  }
+ }
+ if(changed){localSave();cloudSave().catch(()=>{})}
+ return upgrades;
+}
+function equipEvolution(stage){
+ const c=child(),owned=evolutionState(c),next=Number(stage);
+ if(!authUser||!Number.isInteger(next)||next<1||next>owned.unlockedStage)return;
+ c.characterEvolution={...owned,equippedStage:next};storeLearnerCheckpoint(state.selected);localSave();cloudSave().catch(()=>{});renderExploration();
+ if($('characterStatus'))$('characterStatus').textContent='진화 '+next+'단계 '+EVOLUTION_FORMS[next-1].name+' 적용 완료';
+}
 function refreshDailyLeague(){if(renderedLeagueDate!==leagueDate())renderExploration()}
 const leagueRefreshDelay=(now=Date.now())=>Math.max(1000,(leagueDay(new Date(now))+1)*LEAGUE_DAY_MS-9*3600000-now+50);
 function scheduleDailyLeague(){setTimeout(()=>{refreshDailyLeague();scheduleDailyLeague()},leagueRefreshDelay())}
@@ -171,11 +214,13 @@ function renderExploration(){
  if($('characterStatus'))$('characterStatus').textContent='';
  const date=new Date();renderedLeagueDate=leagueDate(date);
  const c=child(),rows=explorationRanking(c,state.selected,leagueDay(date)),me=rows.find(x=>x.isMe),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
+ awardRankEvolutions(rows);const owned=evolutionState(c),awardedToday=owned.awardedAt&&leagueDate(new Date(owned.awardedAt))===renderedLeagueDate;
+ const rowSvg=x=>characterSvg(x.characterId,x.virtual?evolutionForRank(x.rank):evolutionState(state.users[x.id]).equippedStage);
  for(const id of ['ayoung','inseong','guest']){
   const u=state.users[id];exploration(u,id);
-  for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId);
+  for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId,evolutionState(u).equippedStage);
  }
- if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId);
+ if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId,owned.equippedStage);
  if($('explorerName'))$('explorerName').textContent=c.name+' · '+bandLabel(me.difficulty)+' 단계';
  if($('explorerRank'))$('explorerRank').textContent='현재 '+rankCaption(me)+' / '+rows.length+'명';
  if($('rankDifficultyLabel'))$('rankDifficultyLabel').textContent='현재 난이도 '+me.difficulty.toFixed(1)+' · 초1~고3 권장 학습 단계';
@@ -184,12 +229,16 @@ function renderExploration(){
  if($('rankDailyUpdate'))$('rankDailyUpdate').textContent=renderedLeagueDate.replaceAll('-','.')+' · 매일 자정에 새 등급 반영';
  if($('rankTarget'))$('rankTarget').textContent=target;
  if($('characterTitle'))$('characterTitle').textContent=c.name+'의 캐릭터';
- if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
- const card=x=>`<div class="podium-avatar">${characterSvg(x.characterId)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${rankCaption(x)}</span><strong>${escapeHtml(x.name)}</strong><b>${bandLabel(x.difficulty)}</b><small>난이도 ${x.difficulty.toFixed(1)}</small>${x.isMe?'<small>나</small>':x.family?'<small>가족</small>':''}`;
+ if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id,owned.equippedStage)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
+ if($('evolutionSummary'))$('evolutionSummary').textContent='진화 '+owned.equippedStage+'단계 · '+EVOLUTION_FORMS[owned.equippedStage-1].name;
+ if($('evolutionGoal'))$('evolutionGoal').textContent=owned.unlockedStage===10?'10단계 보상을 모두 획득했어요!':(100-owned.unlockedStage*10)+'위 안에 들면 다음 진화형을 받아요.';
+ if($('evolutionNotice')){$('evolutionNotice').textContent=awardedToday?'✨ 최고 '+owned.bestRank+'위 · 진화 '+owned.unlockedStage+'단계 '+EVOLUTION_FORMS[owned.unlockedStage-1].name+' 획득':'';$('evolutionNotice').classList.toggle('hidden',!awardedToday)}
+ if($('evolutionGrid'))$('evolutionGrid').innerHTML=EVOLUTION_FORMS.map(form=>{const unlocked=form.stage<=owned.unlockedStage;return `<button type="button" class="evolution-form${unlocked?' unlocked':' locked'}${form.stage===owned.equippedStage?' equipped':''}" data-evolution="${form.stage}" ${unlocked?'':'disabled'} aria-pressed="${form.stage===owned.equippedStage}">${characterSvg(c.characterId,form.stage)}<span class="evolution-range">${form.minRank}~${form.maxRank}위</span><strong>${form.stage}단계 · ${form.name}</strong><small>${form.feature}</small><b>${form.stage===owned.equippedStage?'사용 중':unlocked?'적용하기':'🔒 순위 보상'}</b></button>`}).join('');
+ const card=x=>`<div class="podium-avatar">${rowSvg(x)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${rankCaption(x)}</span><strong>${escapeHtml(x.name)}</strong><b>${bandLabel(x.difficulty)}</b><small>난이도 ${x.difficulty.toFixed(1)}</small><small>진화 ${x.virtual?evolutionForRank(x.rank):evolutionState(state.users[x.id]).equippedStage}단계</small>${x.isMe?'<small>나</small>':x.family?'<small>가족</small>':''}`;
  if($('rankPodium'))$('rankPodium').innerHTML=[rows[1],rows[0],rows[2]].map(x=>`<div class="podium place-${x.rank}">${card(x)}</div>`).join('');
- if($('rankFamilyOverview'))$('rankFamilyOverview').innerHTML=rows.filter(x=>['ayoung','inseong'].includes(x.id)).sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<div class="rank-family-card${x.isMe?' selected':''}"><div class="rank-avatar">${characterSvg(x.characterId)}</div><div><strong>${escapeHtml(x.name)}</strong><b>${rankCaption(x)}</b><small>${bandLabel(x.difficulty)} · 난이도 ${x.difficulty.toFixed(1)}</small></div></div>`).join('');
- if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>난이도 ${me.difficulty.toFixed(1)}</small></span>`;
- if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.family?' rank-family':''}${x.isMe?' rank-me':''}" data-rank-profile="${x.id}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small class="${x.virtual?'rank-change '+(x.dailyChange>0?'up':x.dailyChange<0?'down':'steady'):''}">${x.virtual?dailyChangeLabel(x.dailyChange):(x.isMe?'나 · ':'가족 · ')+'현재 학습 등급'}</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
+ if($('rankFamilyOverview'))$('rankFamilyOverview').innerHTML=rows.filter(x=>['ayoung','inseong'].includes(x.id)).sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<div class="rank-family-card${x.isMe?' selected':''}"><div class="rank-avatar">${rowSvg(x)}</div><div><strong>${escapeHtml(x.name)}</strong><b>${rankCaption(x)}</b><small>${bandLabel(x.difficulty)} · 난이도 ${x.difficulty.toFixed(1)}</small></div></div>`).join('');
+ if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId,owned.equippedStage)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>난이도 ${me.difficulty.toFixed(1)}</small></span>`;
+ if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.family?' rank-family':''}${x.isMe?' rank-me':''}" data-rank-profile="${x.id}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${rowSvg(x)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small class="${x.virtual?'rank-change '+(x.dailyChange>0?'up':x.dailyChange<0?'down':'steady'):''}">${x.virtual?dailyChangeLabel(x.dailyChange):(x.isMe?'나 · ':'가족 · ')+'현재 학습 등급'}</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
 }
 
 const freshChild=name=>({
@@ -1133,6 +1182,7 @@ function startVoice(){
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installHint').textContent='지금 바로 앱으로 설치할 수 있어요.'});
 scheduleDailyLeague();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshDailyLeague()});
+$('evolutionGrid')?.addEventListener('click',e=>{const b=e.target.closest('[data-evolution]');if(b&&!b.disabled)equipEvolution(b.dataset.evolution)});
 $('characterGrid')?.addEventListener('click',e=>{const button=e.target.closest('[data-character]');if(button)selectCharacter(button.dataset.character)});
 $('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null}else alert('브라우저 메뉴에서 “앱 설치” 또는 “홈 화면에 추가”를 눌러주세요.')};
 document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{checkpointSession();if(session?.preparation)session.preparation.cancel();session=null;state.selected=b.dataset.profile;localSave();cloudSave();renderAll();show('home');warmDailyQuestions()});
