@@ -207,3 +207,19 @@ legacyRestart.run("showHint();$('answer').value='밀물'");await legacyRestart.r
 assert.equal(legacyRestart.run('session.results.at(-1).type'),'subjective_recall');assert.equal(legacyRestart.run('session.results.at(-1).targetRecall'),true);assert.equal(legacyRestart.run('session.results.at(-1).hintUsed'),true);
 assert.equal(legacyRestart.calls.generation,0);assert.equal(legacyRestart.calls.consumes,0);
 console.log('Written migration verified in the actual app: ninth-answer restart presents clear tide meaning clues at question ten, keeps all prior answers and stored question order, grades the new recall task with hint accounting, and needs zero AI generation.');
+
+const phraseLesson=fixture();await phraseLesson.run('buildSession()');
+phraseLesson.run(`globalThis.phraseQ={...session.queue[9],w:{w:'상징적 장치',d:'상징을 이용한 표현 장치',band:3,cat:'국어',source:'fixed'}};
+ session.queue[9]=phraseQ;session.preparation.ready.set(9,phraseQ);session.preparation.plans[9]={...session.preparation.plans[9],w:phraseQ.w};child().words[phraseQ.w.w]=Object.assign(freshWord(),{seen:4,correct:2,wrong:2});wordState(phraseQ.w.w);`);
+for(let i=0;i<9;i++){
+ phraseLesson.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1})");
+ if(i<8)await phraseLesson.run('nextQuestion()');
+}
+await phraseLesson.run('cloudSave()');
+const phraseRecords=phraseLesson.run("JSON.stringify(child().words['상징적 장치'])"),oldPhraseAnswers=phraseLesson.run('JSON.stringify(session.results)');
+const phraseRestart=fixture(phraseLesson.local,phraseLesson.cloud);await phraseRestart.run('cloudLoad()');await phraseRestart.run('buildSession()');
+assert.equal(phraseRestart.run('current'),10);assert.equal(phraseRestart.run('session.results.at(-1).excludedFromVocabulary'),true);assert.equal(phraseRestart.run('session.results.at(-1).credit'),null);
+assert.equal(phraseRestart.run('JSON.stringify(session.results.slice(0,9))'),oldPhraseAnswers);assert.equal(phraseRestart.run("JSON.stringify(child().words['상징적 장치'])"),phraseRecords);
+assert.equal(phraseRestart.run('session.results.at(-1).stars'),0);assert.equal(phraseRestart.run('session.results.at(-1).xp'),0);assert.equal(phraseRestart.calls.generation,0);
+assert.ok(!phraseRestart.node('wordList').innerHTML.includes('상징적 장치'));
+console.log('Excluded-phrase restart verified: an old symbolic-device question is skipped without a wrong answer, points, rewards or regeneration; prior answers/order and raw word history remain, and the phrase is absent from the learning wordbook.');

@@ -37,7 +37,7 @@
 
 ‘생활 정보 격차’, ‘생활 정보의 판단 기준’처럼 구성 단어의 뜻을 조합해 이해할 수 있는 설명형 표현은 독립된 목표 어휘로 반복 출제하지 않는다. ‘격차’, ‘기준’, ‘검증’ 같은 핵심 단어를 여러 지문에 적용한다. 이러한 긴 표현은 지문 소재로 사용할 수 있다.
 
-이번 선별은 확인한 40개 표현의 명시적 제외 목록을 사용한다. 띄어쓰기만으로 합성어 전체를 제외하지 않는다. ‘시행착오’, ‘먹이 사슬’, ‘탄소 중립’ 같은 독립 개념과 관용 표현은 유지한다. 제외된 항목의 기존 학습 기록과 진행 중 학습은 보존하며, 새 단어·복습·레벨 확인 및 서버의 다음 문제 준비부터 적용한다.
+12.4.1에서는 40개 표현을 명시적으로 제외했다. 12.12.1부터는 전체 목록 감사와 공통 구절 차단 규칙으로 확대한다. ‘시행착오’, ‘먹이 사슬’, ‘탄소 중립’ 같은 독립 개념과 관용 표현은 유지한다. 제외된 항목의 기존 학습 기록과 진행 중 학습은 보존하며, 새 단어·복습·레벨 확인 및 서버의 다음 문제 준비부터 적용한다.
 
 ## 12.5 어휘 중심 재구성
 
@@ -63,3 +63,7 @@ Direct recall from a later day and a new context is tracked separately from reco
 Avoid abstract label slots such as “___의 관점에서”, which allow unrelated plausible names. Teach 분배 first; 소득 분배 is an extension in passages rather than an independently tested target. Do not globally exclude compounds or useful concepts. Passage difficulty follows estimated vocabulary ability; it is not a normed school-grade score.
 
 Evidence informing design: Coyne et al. (2007), DOI 10.2307/30035543; Coyne et al. (2009), DOI 10.1086/598840; Goossens et al. (2014), DOI 10.1016/j.jarmac.2014.05.003; Goossens et al. (2016), DOI 10.1002/acp.3245. Explicit meaning instruction and varied deeper processing support word knowledge; retrieval effects vary across classroom designs. None establishes this exact Korean app sequence or dose as optimal.
+
+## 12.12.1 설명형 표현 전체 제외
+
+현재 사용 가능 목록의 1,511개 구절을 지문용으로 전환했다. 띄어쓰기와 붙여쓰기 형태를 모두 제외한다. 새 여러 단어 목표는 명시적으로 검토한 독립 개념·관용 표현만 허용한다. 시행착오 같은 독립 어휘는 유지한다. 단어 생성 API, 새 단어 선정, 복습, 수준 확인, 문제은행과 문제 검수에서 같은 기준을 사용한다. 기존 미완료 학습은 제외 문항을 오답·점수·보상 없이 건너뛰며 기존 답안과 진행 순서를 보존한다. 단어장·학습 단어 수·리포트도 동일한 독립 어휘 기준으로 표시한다. 저장된 이전 기록은 삭제하지 않는다.

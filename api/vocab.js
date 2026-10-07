@@ -1,3 +1,4 @@
+import {isLearningTarget} from '../lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 
@@ -55,6 +56,8 @@ export default async function handler(req,res){
       +'- 실제 학교 지문과 설명문을 이해하는 데 도움이 되는 고빈도 어휘를 우선합니다.\n'
       +'- 지나치게 전문적인 전공용어, 고유명사, 유행어, 외래어 나열은 피합니다.\n'
       +'- 같은 뜻의 단어만 반복하지 않습니다.\n'
+      +'- 상징적 장치, 상징적 의미, 서술 관점, 감정 표현처럼 구성 단어를 알면 뜻이 조합되는 설명형 구절을 목표 어휘로 만들지 않습니다. 붙여 써서 합성어처럼 보이게 해도 금지입니다. 상징, 서술, 관점, 표현 등 독립 단어를 해당 난이도에 맞게 선택합니다.\n'
+      +'- 여러 단어로 된 목표는 별도 뜻을 배워야 하는 검토된 관용 표현이나 독립 개념만 허용합니다. 사전 어휘를 임의로 길게 조합해 난이도를 높이지 않습니다.\n'
       +'- 아래 제외 단어는 절대로 다시 내지 않습니다.\n'
       +'- definition은 사전 문장을 그대로 베끼지 말고 아이가 문맥에서 이해할 수 있게 간결히 설명합니다.\n'
       +'- example은 자연스러운 한 문장 예시입니다.\n'
@@ -112,7 +115,7 @@ export default async function handler(req,res){
     const words=[];
     for(const x of parsed.words||[]){
       const w=String(x.word||'').trim();
-      if(!w||seen.has(w)) continue;
+      if(!w||seen.has(w)||!isLearningTarget(w,String(x.domain||'국어'),Number(x.band)||band)) continue;
       seen.add(w);
       words.push({
         w,
