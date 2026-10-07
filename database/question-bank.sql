@@ -80,7 +80,7 @@ CREATE OR REPLACE FUNCTION vocab_private.ensure_reserves(p_user uuid, p_profile 
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO ''
-AS $function$
+AS $function$;
 declare l jsonb; s jsonb; i integer;
 begin
  select state into s from public.app_state where user_id=p_user;l:=s#>array['users',p_profile];
@@ -98,7 +98,7 @@ begin
    where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or payload->>'selectionPolicy' is distinct from 'target-band-12.9' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
  perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
-end $function$
+end $function$;
 
 
 create or replace function vocab_private.claim_reserve(p_id uuid,p_key uuid) returns jsonb language plpgsql security definer set search_path='' as $$
@@ -132,7 +132,7 @@ CREATE OR REPLACE FUNCTION vocab_private.reserve_usable(p_payload jsonb, l jsonb
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO ''
-AS $function$
+AS $function$;
 declare r jsonb; q jsonb; st jsonb; h jsonb; used text[];
 begin
  if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or p_payload->>'selectionPolicy' is distinct from 'target-band-12.9' or jsonb_array_length(coalesce(p_payload->'ready','[]'))<>20 or jsonb_array_length(coalesce(p_payload->'plans','[]'))<>20
@@ -153,7 +153,7 @@ begin
   end loop;
  end loop;
  return true;
-end $function$
+end $function$;
 
 
 create or replace function vocab_private.promote_reserve(p_user uuid,p_profile text) returns jsonb language plpgsql security definer set search_path='' as $$

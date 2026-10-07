@@ -3,7 +3,7 @@ CREATE OR REPLACE FUNCTION vocab_private.ensure_prepared_lesson(p_profile text, 
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO ''
-AS $function$
+AS $function$;
 declare j vocab_private.preparations; active jsonb; result jsonb; day text;
 begin
  if auth.uid() is null or p_profile not in ('ayoung','inseong','guest') then return null; end if;
@@ -34,7 +34,7 @@ begin
  perform vocab_private.kick_preparation(j.id);
  select * into j from vocab_private.preparations where user_id=auth.uid() and profile=p_profile;
  return jsonb_build_object('id',j.id,'status',case when j.attempts>=8 and jsonb_array_length(coalesce(j.payload->'ready','[]'))<20 then 'failed' else j.status end,'payload',j.payload);
-end $function$
+end $function$;
 
 
 CREATE OR REPLACE FUNCTION vocab_private.ensure_reserves(p_user uuid, p_profile text)
@@ -42,7 +42,7 @@ CREATE OR REPLACE FUNCTION vocab_private.ensure_reserves(p_user uuid, p_profile 
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO ''
-AS $function$
+AS $function$;
 declare l jsonb; s jsonb; i integer;
 begin
  select state into s from public.app_state where user_id=p_user;l:=s#>array['users',p_profile];
@@ -60,7 +60,7 @@ begin
    where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or payload->>'selectionPolicy' is distinct from 'target-band-12.9' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
  perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
-end $function$
+end $function$;
 
 
 CREATE OR REPLACE FUNCTION vocab_private.reserve_usable(p_payload jsonb, l jsonb)
@@ -68,7 +68,7 @@ CREATE OR REPLACE FUNCTION vocab_private.reserve_usable(p_payload jsonb, l jsonb
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO ''
-AS $function$
+AS $function$;
 declare r jsonb; q jsonb; st jsonb; h jsonb; used text[];
 begin
  if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or p_payload->>'selectionPolicy' is distinct from 'target-band-12.9' or jsonb_array_length(coalesce(p_payload->'ready','[]'))<>20 or jsonb_array_length(coalesce(p_payload->'plans','[]'))<>20
@@ -89,7 +89,7 @@ begin
   end loop;
  end loop;
  return true;
-end $function$
+end $function$;
 
 -- Reset only unused preparations; keep every active lesson and all results.
 do $$
