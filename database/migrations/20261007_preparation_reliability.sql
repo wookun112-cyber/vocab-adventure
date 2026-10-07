@@ -34,6 +34,9 @@ begin
  if p_retry and j.attempts>=8 and j.status not in ('ready','consumed') then
   update vocab_private.preparations set status='pending',attempts=0,lease=null,next_attempt=now(),updated_at=now() where id=j.id;
  end if;
+ if p_retry and j.status='pending' and j.attempts<8 then
+  update vocab_private.preparations set next_attempt=now() where id=j.id;
+ end if;
  perform vocab_private.kick_preparation(j.id);
  select * into j from vocab_private.preparations where user_id=auth.uid() and profile=p_profile;
  return jsonb_build_object('id',j.id,'status',case when j.attempts>=8 and jsonb_array_length(coalesce(j.payload->'ready','[]'))<20 then 'failed' else j.status end,'payload',j.payload);
