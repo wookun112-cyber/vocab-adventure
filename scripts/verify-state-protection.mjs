@@ -60,4 +60,15 @@ const recovery=corrupt.run('cloudLoad()');await tick();corrupt.reads[0].resolve(
 assert.equal(corrupt.run("child().words['근거'].seen"),9,'newer empty checkpoint cannot erase recovered cloud progress');
 assert.equal(corrupt.run('child().difficulty'),7.4);
 assert.ok(corrupt.writes.every(r=>r.state.users.ayoung.words['근거'].seen===9));
+const retro=fixture(),retroState=clone(remote);
+retroState.users.ayoung.difficulty=1.8;retroState.users.ayoung.leagueLevel=1.8;
+retroState.users.ayoung.gradeBackfill={id:'today-backfill',date:'2026-10-07'};
+retroState.users.ayoung.levelAdjustmentHistory=[];
+const staleLearner=clone(retroState.users.ayoung);staleLearner.difficulty=1.2;staleLearner.leagueLevel=1.2;delete staleLearner.gradeBackfill;
+staleLearner.words['근거'].seen=10;
+retro.local.set('vocab-lesson-family-ayoung',JSON.stringify({account:'family',profile:'ayoung',savedAt:Date.now()+60000,learner:staleLearner}));
+const retroLoad=retro.run("applyAuth({user:{id:'family'}})");await tick();retro.reads[0].resolve({data:{state:retroState},error:null});await retroLoad;
+assert.equal(retro.run('child().difficulty'),1.8,'a newer device checkpoint cannot undo today’s retroactive grade');
+assert.equal(retro.run("child().words['근거'].seen"),10,'local unsynchronized answers survive grade reconciliation');
+assert.equal(retro.run('child().gradeBackfill.id'),'today-backfill');
 console.log('State protection verified: no saves or reward checkpoints before hydration, single initial load, no refresh reload, failed reads locked, owned caches, stale-account responses discarded, empty local checkpoints rejected.');

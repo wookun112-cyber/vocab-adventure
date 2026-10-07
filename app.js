@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -604,7 +604,7 @@ function mergeLearnerCheckpoints(){
   let saved;try{saved=JSON.parse(localStorage.getItem(learnerCheckpointKey(profile))||'null')}catch{continue}
   const c=state.users[profile];
   if(saved?.account!==authUser?.id||saved.profile!==profile||!saved.learner||!preservesLearning(c,saved.learner)||!(saved.savedAt>(c.lessonCheckpointAt||0)||hasMoreLearning(c,saved.learner)))continue;
-  state.users[profile]=saved.learner;
+  state.users[profile]=reconcileLevelBackfill(c,saved.learner);
   state.catalog={...state.catalog,...(saved.catalog||{})};changed=true;
  }
  if(changed)state=mergeState(state);

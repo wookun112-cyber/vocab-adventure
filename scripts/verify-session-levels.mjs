@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {updateLearningLevels,SESSION_LEVEL_POLICY,recordLearningEvidence} from '../lib/learning-model.js';
+import {updateLearningLevels,SESSION_LEVEL_POLICY,recordLearningEvidence,reconcileLevelBackfill} from '../lib/learning-model.js';
 const day='2026-10-07';
 const rows=(score,count=20,band=2)=>Array.from({length:count},(_,i)=>({word:'협력',type:i%2?'subjective_context':'mc_usage',band,credit:score/100,practiceOnly:true,hintUsed:false,revealed:false}));
 const learner=()=>({difficulty:2,leagueLevel:2,words:{협력:{seen:12}},learningEvidence:[]});
@@ -41,4 +41,14 @@ updateLearningLevels(oldState,rows(100),day,{lessonId:'migrated'});assert.equal(
 const st={lastExposureAt:day};const practice=rows(100)[0];
 recordLearningEvidence(oldState,st,{w:{w:'협력',band:2},type:'subjective_context',showTarget:false},{...practice,targetRecall:true},day);
 assert.equal(st.independentRecallDays,undefined,'same-day practice still cannot certify long-term retention');
+const backfilled={...learner(),difficulty:2.6,leagueLevel:2.6,gradeBackfill:{id:'backfill',date:day},lastLevelAdjustment:{policy:SESSION_LEVEL_POLICY,lessonId:'retro',date:day,from:2.4,to:2.6,change:.2},levelAdjustmentHistory:[{policy:SESSION_LEVEL_POLICY,lessonId:'retro',date:day,from:2.4,to:2.6,change:.2}]};
+const stale=learner();stale.words.협력.seen=13;
+const merged=reconcileLevelBackfill(backfilled,stale);
+assert.equal(merged.difficulty,2.6);assert.equal(merged.leagueLevel,2.6);assert.equal(merged.words.협력.seen,13,'newer local learning remains recoverable without losing the backfill');
+assert.equal(merged.gradeBackfill.id,'backfill');
+updateLearningLevels(stale,rows(100),day,{lessonId:'local-completion'});
+const extended=reconcileLevelBackfill(backfilled,stale);
+assert.equal(extended.difficulty,2.8,'an unsynchronized completion follows the retroactive grade once');
+assert.equal(extended.levelAdjustmentHistory.length,2);
+assert.equal(reconcileLevelBackfill(backfilled,extended).difficulty,2.8,'restart cannot reapply the backfill');
 console.log('Session levels verified: every same-day completion can rise, hold or fall; both difficulty and rank update; partial hints, shorter sessions and target bands respected; completion replay blocked across restarts; no fabricated mastery or lost records.');
