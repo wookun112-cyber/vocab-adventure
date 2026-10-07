@@ -1,4 +1,4 @@
--- Private, owner-scoped, independently validated questions and two review buffers.
+-- Private, owner-scoped, independently validated questions and one review buffer.
 create table if not exists vocab_private.question_bank (
  user_id uuid not null references auth.users(id) on delete cascade,
  fingerprint text not null, word text not null, task_type text not null,
@@ -13,7 +13,7 @@ revoke all on vocab_private.question_bank from public,anon,authenticated;
 
 create table if not exists vocab_private.lesson_reserves (
  user_id uuid not null references auth.users(id) on delete cascade, profile text not null check(profile in ('ayoung','inseong','guest')),
- slot integer not null check(slot in (1,2)), id uuid not null default gen_random_uuid(),
+ slot integer not null check(slot=1), id uuid not null default gen_random_uuid(),
  capability uuid not null default gen_random_uuid(), lease uuid,
  status text not null default 'pending' check(status in ('pending','working','ready','consumed')),
  payload jsonb, attempts integer not null default 0, next_attempt timestamptz not null default now(), updated_at timestamptz not null default now(),
@@ -66,16 +66,26 @@ create or replace function vocab_private.reserved_questions(p_user uuid,p_profil
  ) packs cross join lateral jsonb_array_elements(coalesce(packs.data->'ready','[]')) r;
 $$;
 
+create or replace function vocab_private.kick_reserve(p_id uuid) returns void language plpgsql security definer set search_path='' as $$
+declare j vocab_private.lesson_reserves;
+begin
+ select * into j from vocab_private.lesson_reserves where id=p_id for update;
+ if not found or j.status not in ('pending','working') or j.attempts>=8 or j.next_attempt>now() then return;end if;
+ perform net.http_post(url:='https://vocab-adventure-neon.vercel.app/api/prepare-worker',headers:=jsonb_build_object('Content-Type','application/json','x-preparation-key',j.capability::text),body:=jsonb_build_object('id',j.id),timeout_milliseconds:=10000);
+ update vocab_private.lesson_reserves set next_attempt=now()+interval '6 minutes' where id=p_id;
+end $$;
+
 create or replace function vocab_private.ensure_reserves(p_user uuid,p_profile text) returns void language plpgsql security definer set search_path='' as $$
 declare l jsonb; i integer;
 begin
  select state#>array['users',p_profile] into l from public.app_state where user_id=p_user;
  if l is null or not exists(select 1 from jsonb_each(coalesce(l->'words','{}')) where coalesce((value->>'seen')::integer,0)>0 or value->>'introducedAt' is not null) then return; end if;
- for i in 1..2 loop
+ for i in 1..1 loop
   insert into vocab_private.lesson_reserves(user_id,profile,slot) values(p_user,p_profile,i) on conflict(user_id,profile,slot) do nothing;
   update vocab_private.lesson_reserves set id=gen_random_uuid(),capability=gen_random_uuid(),lease=null,status='pending',payload=null,attempts=0,next_attempt=now(),updated_at=now()
    where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-depth-12.6' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
+ perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
 end $$;
 
 create or replace function vocab_private.claim_reserve(p_id uuid,p_key uuid) returns jsonb language plpgsql security definer set search_path='' as $$
@@ -84,7 +94,6 @@ begin
  select * into j from vocab_private.lesson_reserves where id=p_id and capability=p_key for update;
  if not found or j.status in ('ready','consumed') or j.attempts>=8 or (j.status='working' and j.updated_at>now()-interval '5 minutes') then return null; end if;
  if exists(select 1 from vocab_private.lesson_reserves p where p.user_id=j.user_id and p.profile=j.profile and p.id<>j.id and p.status='working' and p.updated_at>now()-interval '5 minutes') then return null; end if;
- if j.slot=2 and exists(select 1 from vocab_private.lesson_reserves p where p.user_id=j.user_id and p.profile=j.profile and p.slot=1 and p.status in ('pending','working') and p.attempts<8) then return null; end if;
  select state into s from public.app_state where user_id=j.user_id;l:=s#>array['users',j.profile];if l is null then return null;end if;
  desired_band:=greatest(1,least(9,round(coalesce((l->>'difficulty')::numeric,2))::integer));
  select jsonb_agg(to_jsonb(w)) into words from (select * from public.curriculum_words where quality_status<>'rejected' and (word in(select key from jsonb_each(coalesce(l->'words','{}')) where coalesce((value->>'seen')::integer,0)>0 or value->>'introducedAt' is not null) or band between greatest(1,desired_band-1) and least(9,desired_band+1))) w;
@@ -175,7 +184,6 @@ begin
  for u in select user_id,profile from vocab_private.preparations loop perform vocab_private.ensure_reserves(u.user_id,u.profile);end loop;
  for j in select r.id,r.capability from vocab_private.lesson_reserves r where r.status in ('pending','working') and r.attempts<8 and r.next_attempt<=now()
   and not exists(select 1 from vocab_private.lesson_reserves other where other.user_id=r.user_id and other.profile=r.profile and other.id<>r.id and other.status='working' and other.updated_at>now()-interval '5 minutes')
-  and (r.slot=1 or not exists(select 1 from vocab_private.lesson_reserves other where other.user_id=r.user_id and other.profile=r.profile and other.slot=1 and other.status in ('pending','working') and other.attempts<8))
   order by r.slot,r.next_attempt limit 3 for update of r skip locked loop
   perform net.http_post(url:='https://vocab-adventure-neon.vercel.app/api/prepare-worker',headers:=jsonb_build_object('Content-Type','application/json','x-preparation-key',j.capability::text),body:=jsonb_build_object('id',j.id),timeout_milliseconds:=10000);
   update vocab_private.lesson_reserves set next_attempt=now()+interval '6 minutes' where id=j.id;n:=n+1;
@@ -184,6 +192,6 @@ begin
 end $$;
 
 -- Least privilege: only the two capability-checked worker entry points are public.
-revoke all on function vocab_private.question_fingerprint(jsonb),vocab_private.question_sentences(jsonb),vocab_private.cache_packet(uuid,jsonb),vocab_private.bank_candidates(uuid,numeric),vocab_private.reserved_questions(uuid,text,uuid),vocab_private.ensure_reserves(uuid,text),vocab_private.claim_reserve(uuid,uuid),vocab_private.reserve_usable(jsonb,jsonb),vocab_private.promote_reserve(uuid,text),vocab_private.refresh_reserve(uuid,text),vocab_private.dispatch_reserves() from public,anon,authenticated;
+revoke all on function vocab_private.question_fingerprint(jsonb),vocab_private.question_sentences(jsonb),vocab_private.cache_packet(uuid,jsonb),vocab_private.bank_candidates(uuid,numeric),vocab_private.reserved_questions(uuid,text,uuid),vocab_private.ensure_reserves(uuid,text),vocab_private.kick_reserve(uuid),vocab_private.claim_reserve(uuid,uuid),vocab_private.reserve_usable(jsonb,jsonb),vocab_private.promote_reserve(uuid,text),vocab_private.refresh_reserve(uuid,text),vocab_private.dispatch_reserves() from public,anon,authenticated;
 revoke all on function vocab_private.save_reserve_preparation(uuid,uuid,uuid,jsonb,boolean),public.save_reserve_preparation(uuid,uuid,uuid,jsonb,boolean) from public,anon,authenticated;
 grant execute on function vocab_private.save_reserve_preparation(uuid,uuid,uuid,jsonb,boolean),public.save_reserve_preparation(uuid,uuid,uuid,jsonb,boolean) to anon,authenticated;

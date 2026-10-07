@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {QUESTION_POLICY} from '../lib/learning-model.js';
+import {QUESTION_POLICY,isLearningTarget} from '../lib/learning-model.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 import {bankCompatible,hydrateFromBank,withReservedHistory} from '../lib/question-bank.js';
 import {prepare} from '../api/prepare-worker.js';
@@ -26,3 +26,5 @@ assert.equal(hydrateFromBank({plans:[plan],ready:[]},learner,[entry],[q]),0);
 assert.ok(passageKeys(q.ctx).some(k=>reserved.words.근거.usedPassageKeys.includes(k)));
 assert.throws(()=>makePreparedPlan({difficulty:2,words:{}},{},[],'family','guest',{reviewOnly:true}),/No studied/);
 console.log('Question bank verified: full validated packets need zero AI calls, reader levels and review quality enforced, correct option rotation, used-sentence and reserve exclusions, review-only buffers, unchanged learner records.');
+
+assert.equal(isLearningTarget('광합성 작용'),false);assert.equal(isLearningTarget('도시 문제'),false);
