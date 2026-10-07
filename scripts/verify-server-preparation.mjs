@@ -125,3 +125,5 @@ assert.equal(isLearningTarget("새로운 수학 공식","수학·논리",7),fals
 assert.equal(isLearningTarget("간섭","과학",7),true);assert.equal(isLearningTarget("새로운 전문 과학명","과학",7),false);
 
 for(const w of ['꾸미는 말','부사','주어','자외선 차단'])assert.equal(isLearningTarget(w),false);
+
+assert.equal(isLearningTarget('세포'),false);
