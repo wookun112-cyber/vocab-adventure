@@ -48,3 +48,5 @@ assert.equal(easyAdvanced.length,0);assert.ok(easyAdvanced.failed[0].issues.incl
 run('flags.levelDemandFit=true');const matchedAdvanced=await run('buildValidated([item],[],{maxAttempts:1,partial:true})');
 assert.equal(matchedAdvanced.length,1);assert.equal(matchedAdvanced[0].validation.checks.levelDemandFit,true);
 console.log('Semantic demand verified: advanced questions fail independently when they are readable but too easy; alternate answers remain independently accepted.');
+
+assert.equal(run('normalizeCandidate({...sample,answerForm:"원인",context:"수도관이 터진 ＿＿＿＿이(가) 밝혀졌어요."},item).context'),'수도관이 터진 ＿＿＿＿이 밝혀졌어요.');

@@ -14,7 +14,7 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'});
+ let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&p.w?.w!=='민사 재판')))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'});
  const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
  hydrateFromBank(payload,job.learner,job.bank||[],job.reserved||[]);
@@ -45,7 +45,19 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
      const known=[...ready];
      const items=generationItems(missing.map(([,p])=>p),generationLearner,known);
      const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40),feedback);
-     if(questions.failed?.length){payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];for(const f of questions.failed)feedback[f.id]=failureFeedback(f)}
+     if(questions.failed?.length){
+      payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];
+      for(const f of questions.failed){
+       feedback[f.id]=failureFeedback(f);
+       const plan=payload.plans.find(p=>p.id===f.id);
+       // Preserve ten written activities while replacing an overly broad blank
+       // with independently reviewed productive use. Never rewrite a paused lesson.
+       if(!recovering&&plan?.taskDemand==='advanced'&&['subjective_context','subjective_dialogue'].includes(plan.type)&&f.issues.includes('review_failed:levelDemandFit')){
+        plan.type='subjective_use';plan.stage='use';
+        feedback[f.id].push('이 문항은 이제 subjective_use입니다. 빈칸을 만들지 말고 목표어를 보여준 뒤, 새 상황의 판단·이유·조건·결과가 드러나는 문장 하나를 직접 쓰게 하세요.');
+       }
+      }
+     }
      if(obsolete)return;
      const retry=[];
      for(const [i,p] of missing){

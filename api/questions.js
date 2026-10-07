@@ -88,6 +88,7 @@ function normalizeCandidate(q,item){
     let c=String(q.context||'').replace(/\\n/g,'\n');
     c=c.replace(/＿{2,}|_{3,}|□{2,}|○{2,}|\[\s*빈칸\s*\]|\(\s*빈칸\s*\)|<\s*빈칸\s*>/g,'＿＿＿＿');
     if(blankCount(c)===0&&c.includes(q.answerForm))c=c.replace(q.answerForm,'＿＿＿＿');
+    if(q.type!=='mc_context')c=c.replace(/＿＿＿＿(이|가|은|는|을|를|과|와|으로|로)\((이|가|은|는|을|를|과|와|으로|로)\)/g,(_,p)=>'＿＿＿＿'+expectedParticle(q.answerForm,p));
     const particle=blankParticle(c);
     if(particle)c=c.replace('＿＿＿＿'+particle,'＿＿＿＿'+expectedParticle(q.answerForm,particle));
     q.context=c;

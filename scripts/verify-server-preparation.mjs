@@ -127,3 +127,21 @@ assert.equal(isLearningTarget("간섭","과학",7),true);assert.equal(isLearning
 for(const w of ['꾸미는 말','부사','주어','자외선 차단'])assert.equal(isLearningTarget(w),false);
 
 assert.equal(isLearningTarget('세포'),false);
+
+// A rejected advanced blank becomes reviewed sentence use, preserving balance.
+const advancedWords=Array.from({length:8},(_,i)=>({word:'심화어휘'+i,definition:'사건을 이해하는 데 필요한 뜻',band:7,domain:'국어'}));
+const advancedLearner={difficulty:7.4,words:Object.fromEntries(advancedWords.map(w=>[w.word,{seen:2,correct:1,wrong:1,streak:1}]))};
+const advancedJob={...job,kind:'reserve',slot:1,learner:advancedLearner,curriculum:advancedWords};
+let wideOnce=false,redesigned=false;
+const demandGenerate=async items=>{
+ if(items.some(i=>i.id==='0')&&!wideOnce){wideOnce=true;const out=items.filter(i=>i.id!=='0').map(answer);out.failed=[{id:'0',issues:['review_failed:levelDemandFit']}];return out;}
+ if(items.some(i=>i.id==='0'&&i.type==='subjective_use'))redesigned=true;
+ return items.map(answer);
+};
+const redesignedPacket=await prepare(advancedJob,'key',demandGenerate,async()=>true);
+assert.equal(redesigned,true);assert.equal(redesignedPacket.plans[0].type,'subjective_use');assert.equal(redesignedPacket.plans.filter(p=>p.type.startsWith('subjective_')).length,10);assert.equal(redesignedPacket.ready.length,20);
+const frozenPacket=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});frozenPacket.resumeId='advanced-paused';
+const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};const originalTypes=JSON.stringify(frozenPacket.plans.map(p=>p.type));wideOnce=false;redesigned=false;
+const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
+assert.equal(JSON.stringify(frozenOutput.plans.map(p=>p.type)),originalTypes);assert.equal(redesigned,false);
+console.log('Demand repair verified: overly broad advanced blanks become independently reviewed sentence-use tasks, retain ten written activities, and never rewrite interrupted lessons.');
