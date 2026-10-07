@@ -145,3 +145,13 @@ const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};con
 const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
 assert.equal(JSON.stringify(frozenOutput.plans.map(p=>p.type)),originalTypes);assert.equal(redesigned,false);
 console.log('Demand repair verified: overly broad advanced blanks become independently reviewed sentence-use tasks, retain ten written activities, and never rewrite interrupted lessons.');
+
+// A failed relation task keeps its vocabulary, ID, and objective/written balance.
+const relationPlan=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});
+const relation=relationPlan.plans.find(p=>p.type==='mc_relation');let relationFailed=false;
+const diversify=async items=>{if(!relationFailed&&items.some(i=>i.id===relation.id)){relationFailed=true;const out=items.filter(i=>i.id!==relation.id).map(answer);out.failed=[{id:relation.id,issues:['review_failed:levelDemandFit']}];return out;}return items.map(answer)};
+const diversified=await prepare({...advancedJob,payload:relationPlan},'key',diversify,async()=>true);
+assert.equal(diversified.plans.find(p=>p.id===relation.id).w.w,relation.w.w);
+assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,10);assert.equal(diversified.ready.length,20);
+assert.ok(['mc_usage','mc_reading'].includes(diversified.plans.find(p=>p.id===relation.id).type));
+console.log('Advanced variation verified: weak relation tasks retain target vocabulary, IDs, twenty activities and objective/written balance after independent re-generation.');

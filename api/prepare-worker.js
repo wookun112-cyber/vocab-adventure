@@ -56,6 +56,9 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
        if(!recovering&&plan?.taskDemand==='advanced'&&['subjective_context','subjective_dialogue'].includes(plan.type)&&f.issues.includes('review_failed:levelDemandFit')){
         plan.type='subjective_use';plan.stage='use';
         feedback[f.id].push('이 문항은 이제 subjective_use입니다. 빈칸을 만들지 말고 목표어를 보여준 뒤, 새 상황의 판단·이유·조건·결과가 드러나는 문장 하나를 직접 쓰게 하세요.');
+       }else if(!recovering&&plan?.taskDemand==='advanced'&&plan.type==='mc_relation'&&f.issues.includes('review_failed:levelDemandFit')){
+        plan.type=Number(plan.id)%4===0?'mc_usage':'mc_reading';plan.stage=plan.type==='mc_reading'?'transfer':'bridge';
+        feedback[f.id].push('이 문항의 새 유형은 '+plan.type+'입니다. 목표 어휘는 그대로 유지하세요. 엉뚱한 오답이나 정의 재진술 대신, 가까운 상황의 조건·의도·결과를 구별하는 보기 다섯 개를 만드세요. 정답은 반드시 하나이며 이미 사용한 사건은 피하세요.');
        }
       }
      }
