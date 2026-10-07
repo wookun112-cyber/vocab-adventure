@@ -27,7 +27,7 @@
     <button class="profile guest-profile" data-profile="guest"><div class="avatar" id="profileAvatar-guest">🧑</div><strong>게스트</strong><small id="guestLevel">테스트용 · 기록 분리</small></button>
   </div>
   <div class="card explorer-card">
-    <div class="row"><div id="explorerAvatar" class="explorer-avatar"></div><div class="explorer-details"><div class="eyebrow">나의 학습 등급</div><h2 id="explorerName"></h2><span id="explorerRank" class="tag"></span></div><button data-go="characters" class="secondary">캐릭터 선택</button></div>
+    <div class="row"><div id="explorerAvatar" class="explorer-avatar"></div><div class="explorer-details"><div class="eyebrow">나의 학습 등급</div><h2 id="explorerName"></h2><span id="explorerRank" class="tag"></span><small id="homeStars" class="home-stars"></small></div><button data-go="characters" class="secondary">진화·꾸미기</button></div>
     <div class="evolution-status"><strong id="evolutionSummary"></strong><small id="evolutionGoal"></small></div><p id="evolutionNotice" class="evolution-notice hidden" role="status" aria-live="polite"></p>
     <p id="rankDifficultyLabel" class="muted"></p>
     <p id="rankTarget" class="rank-target"></p><button data-go="ranking" class="primary wide">🏆 학습 등급 순위표</button>
@@ -85,6 +85,14 @@
 <section id="characters" class="screen">
   <div class="row between"><h2 id="characterTitle">나의 캐릭터</h2><button data-go="home" class="ghost">홈</button></div>
   <p class="muted">함께 탐험할 친구를 골라요. 캐릭터는 각 프로필에 따로 저장돼요.</p>
+  <div id="customizationShop" class="card wardrobe">
+    <div class="row between"><div><div class="eyebrow">학습으로 모으는 나만의 보상</div><h3>캐릭터 꾸미기</h3></div><div class="star-wallet" aria-label="보유 별조각">✦ <strong id="starBalance">60</strong><small>별조각</small></div></div>
+    <div class="dress-stage"><div id="dressAvatar" class="dress-avatar"></div><strong id="dressCaption"></strong><small id="cosmeticLoadout"></small></div>
+    <p class="reward-guide">활동 1개마다 <b>2 별조각</b> · 오늘의 계획을 완료하면 하루 한 번 <b>20 별조각</b><br>첫 꾸미기 선물 60개 · 같은 문제는 하루 한 번, 하루 최대 30개 활동까지 받아요.</p>
+    <div id="cosmeticTabs" class="cosmetic-tabs" aria-label="꾸미기 종류"></div><div id="cosmeticGrid" class="cosmetic-grid"></div>
+    <div id="cosmeticAction" class="cosmetic-action"></div><div id="cosmeticReset" class="cosmetic-reset"></div><p id="cosmeticStatus" class="character-status" role="status" aria-live="polite"></p>
+    <p class="wardrobe-note">구매한 꾸미기는 계속 보관해요. 캐릭터와 진화형을 바꿔도 쓸 수 있어요.</p>
+  </div>
   <div class="card evolution-intro"><div class="eyebrow">10명 단위 순위 보상</div><h3>나의 캐릭터 진화</h3><p class="muted">91~100위는 1단계, 81~90위는 2단계로 올라가며, 1~10위에 들면 10단계가 열려요. 받은 진화형은 계속 보관돼요. 캐릭터를 바꿔도 사용할 수 있어요.</p><div id="evolutionGrid" class="evolution-grid"></div></div>
   <h3>함께 탐험할 캐릭터</h3><p id="characterStatus" class="character-status" role="status" aria-live="polite"></p><div id="characterGrid" class="character-grid"></div>
 </section>

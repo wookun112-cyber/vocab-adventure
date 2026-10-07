@@ -53,7 +53,7 @@ console.log('Validation regression verified: comparison vocabulary allowed; two-
 const back=code=>vm.runInContext(code,backend);
 back(`globalThis.item={id:'1',type:'subjective_context',word:'원인',answerSlot:0};
  globalThis.sample={id:'1',type:'subjective_context',prompt:'빈칸을 채우세요.',context:'비가 내렸어요. 물이 고인 원인은 많은 비였어요.',partOfSpeech:'명사',options:[],acceptedAnswers:[{text:'원인',credit:1,rationale:'목표어'}],hints:['까닭을 생각해요.','어떤 일이 생기게 한 까닭이에요.'],signature:'비 때문에 고인 물',feedbackCorrect:'비가 물이 고이게 했어요.'};
- globalThis.flags={id:'1',valid:true,sufficientClues:true,oneClearAnswer:false,samePartOfSpeechChoices:true,naturalKorean:true,coherentSituation:true,ageAppropriate:true,noBackgroundBurden:true,noAnswerLeak:true,naturalAlternativesConsidered:true,notTooSimilarToRecent:true,issues:[],acceptedAnswers:[{text:'원인',credit:1,rationale:'목표어'},{text:'이유',credit:1,rationale:'자연스러운 대체 답'}]};
+ globalThis.flags={id:'1',valid:true,sufficientClues:true,oneClearAnswer:false,samePartOfSpeechChoices:true,naturalKorean:true,coherentSituation:true,ageAppropriate:true,factualAccuracy:true,readerLevelFit:true,noBackgroundBurden:true,noAnswerLeak:true,naturalAlternativesConsidered:true,notTooSimilarToRecent:true,issues:[],acceptedAnswers:[{text:'원인',credit:1,rationale:'목표어'},{text:'이유',credit:1,rationale:'자연스러운 대체 답'}]};
  globalThis.aiCalls=[];ask=async(prompt,schema,name)=>{aiCalls.push(name);return name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]}};
 `);
 const reviewed=await back('buildValidated([item],[])');

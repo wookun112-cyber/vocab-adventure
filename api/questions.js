@@ -5,6 +5,39 @@ const TYPES=LEARNING_TYPES;
 const SHOWN_TYPES=['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'];
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
 
+// Curated factual anchors. New stories may change the narrative, never the underlying fact.
+const KNOWLEDGE_SEEDS=[
+ {id:'sejong',topic:'세종의 한글 창제',facts:['세종은 1443년에 훈민정음이라는 새 글자를 만들었다.','훈민정음은 우리말을 적을 수 있는 글자이며, 오늘날 한글이라 부른다.'],source:'국립국어원',url:'https://www.korean.go.kr/hangeul/origin/001.html'},
+ {id:'hangeul',topic:'소리를 담은 글자',facts:['한글은 누구나 쉽게 배워 편히 쓰도록 만든 글자이다.','기본 자음 글자는 발음 기관의 모양을 본떠 만들었다.'],source:'국립한글박물관',url:'https://www.hangeul.go.kr/webzine/201804/sub1_1.html'},
+ {id:'earth-orbit',topic:'태양 주변을 여행하는 지구',facts:['지구는 태양 주변을 돈다.','지구가 태양 주위를 한 바퀴 도는 데 걸리는 시간은 약 1년이다.'],source:'NASA',url:'https://science.nasa.gov/earth/facts/'},
+ {id:'moon',topic:'지구의 위성인 달',facts:['달은 지구 주변을 도는 자연 위성이다.','달은 지구의 유일한 자연 위성이다. 인공위성은 사람이 만들어 우주로 보낸다.'],source:'NASA',url:'https://science.nasa.gov/moon/facts/'},
+ {id:'day-night',topic:'낮과 밤이 바뀌는 이유',facts:['지구는 스스로 회전한다.','지구에서 태양 빛을 받는 쪽은 낮이고 반대쪽은 밤이다.'],source:'NASA',url:'https://science.nasa.gov/learn/basics-of-space-flight/chapter2-1/'},
+ {id:'seasons',topic:'계절이 바뀌는 이유',facts:['지구의 회전축은 기울어져 있다.','기울어진 지구가 태양 주위를 돌면서 지역별로 햇빛을 받는 각도와 시간이 달라져 계절이 바뀐다.'],source:'NASA',url:'https://science.nasa.gov/earth/facts/'},
+ {id:'sunlight',topic:'햇빛의 여행',facts:['태양에서 나온 빛이 지구에 도착하는 데는 약 8분이 걸린다.'],source:'NASA',url:'https://science.nasa.gov/earth/facts/'},
+ {id:'moonlight',topic:'달빛의 비밀',facts:['달은 태양처럼 스스로 빛을 만들지 않는다.','달빛은 달 표면에 닿은 태양 빛이 반사되어 보이는 빛이다.'],source:'NASA',url:'https://science.nasa.gov/moon/moonlight/'},
+ {id:'water-cycle',topic:'물방울의 여행',facts:['물은 증발하여 수증기가 될 수 있다.','수증기가 작은 물방울로 바뀌는 현상을 응결이라고 한다.','물은 땅과 바다, 공기를 오가며 순환한다.'],source:'USGS',url:'https://www.usgs.gov/water-science-school/water-cycle'},
+ {id:'plants',topic:'식물의 햇빛 식당',facts:['식물은 햇빛의 에너지를 이용하여 물과 이산화 탄소로 성장에 필요한 당을 만든다.','이 과정을 광합성이라고 한다.'],source:'미국 국립공원관리청',url:'https://www.nps.gov/teachers/classrooms/matter-in-motion.htm'}
+];
+function passageProfile(item){
+ const measured=Math.max(1,Math.min(9,Number(item.readerLevel)||Number(item.band)||2));
+ const level=Math.max(1,measured-Math.min(3,Number(item.supportLevel)||0)*.4);
+ const tier=level<=2.5?0:level<=4.5?1:level<=6.5?2:3;
+ return {vocabularyLevel:measured,scaffoldedLevel:Math.round(level*10)/10,
+  sentences:['2~3개의 짧은 문장','3~4문장','3~4문장','3~5문장'][tier],
+  lengthGuide:['약 80~160자','약 130~260자','약 180~360자','약 230~460자'][tier],
+  maxCharacters:[220,340,450,560][tier],
+  sentenceGuide:['문장마다 한 가지 정보, 쉬운 낱말과 직접적인 단서','한 가지 원인과 결과, 낯선 용어는 바로 풀어 쓰기','두 정보를 연결하되 글 안에 판단 근거 제시','자료와 관점을 연결하되 여러 개의 생소한 개념을 한꺼번에 넣지 않기'][tier],
+  unfamiliarTerms:tier===0?1:2};
+}
+function knowledgeSeed(item){
+ const text=String(item.contextSeed||'')+'|'+String(item.word||'');
+ const direct=/세종|훈민정음|한글|업적|창제/.test(text)?'sejong':/위성|달빛|달의/.test(text)?'moon':/태양|공전|지구/.test(text)?'earth-orbit':/식물|광합성/.test(text)?'plants':/증발|응결|순환/.test(text)?'water-cycle':null;
+ if(direct)return KNOWLEDGE_SEEDS.find(x=>x.id===direct);
+ let hash=2166136261;for(const ch of String(item.id)+'|'+text+'|'+(item.previousContexts||[]).length)hash=Math.imul(hash^ch.charCodeAt(0),16777619);
+ return KNOWLEDGE_SEEDS[(hash>>>0)%KNOWLEDGE_SEEDS.length];
+}
+function passageTargets(items){return items.map(item=>({...item,readingDesign:passageProfile(item),knowledgeSeed:knowledgeSeed(item)}))}
+
 async function verifyUser(auth){
   if(!auth?.startsWith('Bearer '))return false;
   const r=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:{apikey:SUPABASE_KEY,Authorization:auth}});
@@ -97,6 +130,8 @@ function passageKeys(context,options=[]){
 }
 function deterministic(q,item){
   const issues=[];
+  const reading=passageProfile(item);if(String(q.context||'').length>reading.maxCharacters)issues.push('passage_too_long_for_reader');
+  if(item.type==='mc_usage'&&(q.options||[]).some(o=>String(o.text||'').length>reading.maxCharacters/2))issues.push('choice_too_long_for_reader');
   const previous=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(p=>passageKeys(p.context,p.options||[]))]);
   if(passageKeys(q.context,(q.options||[]).map(o=>o.text)).some(k=>previous.has(k)))issues.push('previous_sentence_reused');
   if(q.type!==item.type)issues.push('requested_type_mismatch');
@@ -172,7 +207,7 @@ function verifySchema(items){
         samePartOfSpeechChoices:{type:'boolean'},
         naturalKorean:{type:'boolean'},
         coherentSituation:{type:'boolean'},
-        ageAppropriate:{type:'boolean'},
+        ageAppropriate:{type:'boolean'},factualAccuracy:{type:'boolean'},readerLevelFit:{type:'boolean'},
         noBackgroundBurden:{type:'boolean'},
         noAnswerLeak:{type:'boolean'},
         naturalAlternativesConsidered:{type:'boolean'},
@@ -182,7 +217,7 @@ function verifySchema(items){
         },required:['text','credit','rationale'],additionalProperties:false}},
         issues:{type:'array',items:{type:'string'}}
       },
-      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
+      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
       additionalProperties:false
     }}},required:['reviews'],additionalProperties:false
   };
@@ -193,11 +228,16 @@ function generationPrompt(items,recent,feedback={}){
     '',
     '공통 규칙:',
     '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 빈칸과 사전 정의를 외워 서술시키는 문제는 금지합니다. 의미 연결 문제도 목표는 한 단어이며 비교 단어 각각에 별도 답을 요구하지 않습니다.',
-    '- 지문은 쉬운 2~4문장으로 쓰고 누가 무엇을 했는지, 왜 그런지, 결과가 무엇인지 중 필요한 단서를 넣습니다.',
+    '- 지문은 학년이 아니라 readingDesign의 현재 어휘력 수준에 맞춥니다. 문장 수·길이·문장 구조의 안내를 따르고 maxCharacters를 넘기지 마세요. subjective_use는 1~2문장, 대화는 2~4발화, mc_usage는 각 보기를 짧게 쓰는 유형 규칙이 우선합니다.',
+    '- 지문은 재미있고 유익한 작은 발견 이야기로 씁니다. knowledgeSeed의 확인된 역사·과학 사실 중 목표어와 자연스럽게 연결되는 사실 하나를 골라, 박물관 탐방·우주 탐험·관찰 기록·작은 궁금증처럼 흥미로운 도입과 발견이 이어지도록 쓰세요.',
+    '- 세종의 한글 창제, 지구의 태양 주변 공전, 지구의 자연 위성인 달처럼 사실을 배우는 지문을 우선합니다. 목표어와 어울리지 않는다면 유익한 생활 장면을 선택하세요. 정보만 나열하거나 목표어를 억지로 끼워 넣지 마세요.',
+    '- 핵심 역사·과학 사실은 knowledgeSeed에 제공된 사실을 바탕으로 쓰세요. 실제 인물의 말·업적·날짜·실험 결과를 지어내지 마세요. 가상의 아이가 탐구하는 장면은 가능하지만 실제 인물에게 가상의 말을 붙이지 마세요. 지구의 공전과 자전, 자연 위성과 인공위성을 혼동하지 마세요. 계절 변화의 주원인을 태양까지의 거리라고 쓰지 마세요.',
+    '- 목표어 외 낯선 개념은 readingDesign.unfamiliarTerms 이내로 제한하고 같은 문장에서 쉬운 말로 풉니다. 처음 들어 보는 역사·과학 지식이라도 지문 자체만 읽으면 답할 수 있게 필요한 정보를 모두 넣으세요. 역사 연도나 과학 상식을 외워야만 맞히는 문제는 금지합니다.',
+    '- 같은 어휘를 복습할 때는 다른 소재·질문·사건 전개로 새 지문을 씁니다. 과학 사실이 같아도 같은 설명 문장을 복사하거나 인물 이름만 바꾸면 안 됩니다.',
     '- 단순히 길게 늘리지 말고 정답 판단에 필요한 의미 있는 단서를 2개 이상 제공합니다.',
     '- 목표 어휘 외 표현은 해당 학습 단계보다 쉽게 씁니다. 어려운 배경지식·복잡한 추론이 핵심이 되면 안 됩니다.',
     '- 가족, 학교, 친구, 동물, 놀이, 자연, 과학, 탐험 등 배경을 다양하게 바꿉니다.',
-    '- contextSeed는 우선 사용할 배경입니다. 목표어의 실제 의미와 맞지 않으면 의미를 억지로 확장하지 말고, 이전 지문과 겹치지 않는 다른 생활 장면으로 조정하세요. 같은 목표어의 다른 문제와 사건이 겹치지 않도록 하세요. 배경 문구를 복사하지 마세요.',
+    '- contextSeed는 배경 후보입니다. 지식 이야기와 어울리면 연결하고, 생활 배경보다 유익한 지식 소재를 우선하되 목표어의 자연스러움을 지키세요. 목표어의 실제 의미와 맞지 않으면 의미를 억지로 확장하지 말고, 이전 지문과 겹치지 않는 다른 생활 장면으로 조정하세요. 같은 목표어의 다른 문제와 사건이 겹치지 않도록 하세요. 배경 문구를 복사하지 마세요.',
     '- previousContexts는 같은 어휘의 이전 실제 지문/보기입니다. 기존 문장, 사건, 핵심 행동과 결과를 재사용하지 마세요. 이름·장소·사물만 바꾸는 재작성도 금지합니다. 같은 배치에서 같은 어휘가 반복되면 각각 다른 사건과 문장 구조를 사용하세요.',
     '- 사전 example을 지문으로 복사하지 마세요. 목표어가 그 상황에서 실제로 쓰이는 자연스러운 표현인지 먼저 확인하세요. 목표어가 조사·서술어와 자연스럽게 호응하도록 완성 문장을 읽어 보고 작성하세요.',
     '- 한 장면 안에서 인물, 시간, 행동, 이유, 결과가 일관되게 이어져야 합니다. 이유 없는 행동, 갑자기 등장하는 사건, 앞 문장과 무관한 결론은 금지합니다.',
@@ -234,7 +274,7 @@ function generationPrompt(items,recent,feedback={}){
     '',
     '최근 문제 서명(비슷한 상황/구조 피하기): '+JSON.stringify(recent||[]),
     '이전 생성 실패 사유가 있으면 반드시 고치기: '+JSON.stringify(feedback||{}),
-    '생성 대상 JSON: '+JSON.stringify(items.map(({usedPassageKeys,...item})=>item))
+    '생성 대상 JSON: '+JSON.stringify(passageTargets(items).map(({usedPassageKeys,...item})=>item))
   ].join('\n');
 }
 async function generate(items,recent,feedback){
@@ -244,6 +284,8 @@ async function generate(items,recent,feedback){
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
+    'factualAccuracy는 후보 지문의 역사·과학 사실이 knowledgeSeed와 일치하고 알려진 사실을 왜곡하지 않는지 검사합니다. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
+    'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조·길이 기준으로 검사합니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     'completedContext는 목표 정답을 넣은 실제 완성 문장입니다. 이 문장은 문법과 의미가 모두 자연스러워야 합니다. 목표어를 넣었을 때 조사·활용·서술어가 틀리면 naturalKorean=false입니다.',
@@ -266,7 +308,7 @@ async function aiVerify(items,questions,recent){
     '주관식에서 다른 자연스러운 표현이 가능하다는 사실만으로 valid=false로 하지 마세요. 그 표현을 최종 acceptedAnswers에 포함했다면 그 문제는 해결된 것입니다. 상황과 정답 문장 자체의 자연스러움은 계속 엄격히 검사하세요.',
     '허용 답안 목록만 수정할 수 있습니다. 문맥, 보기, 힌트 등 문제 자체의 결함은 수정한 것으로 간주하지 말고 valid=false와 구체적인 issues로 반환하세요.',
     '하나라도 중요한 문제가 있으면 valid=false입니다. 억지로 통과시키지 마세요.',
-    '목표/정의/유형: '+JSON.stringify(items.map(({usedPassageKeys,...item})=>item)),
+    '목표/정의/유형: '+JSON.stringify(passageTargets(items).map(({usedPassageKeys,...item})=>item)),
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions.map(q=>{
       const item=items.find(x=>x.id===q.id);
@@ -313,17 +355,17 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
       const objective=item.type.startsWith('mc_');
       const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&
         (!objective||rv.oneClearAnswer)&&(!objective||rv.samePartOfSpeechChoices)&&
-        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
+        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.factualAccuracy&&rv.readerLevelFit&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
         (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent&&(!item.needsCard||rv.learningCardAccurate);
       if(pass){
         q.validation={deterministic:true,aiVerified:true,checks:{
           sufficientClues:rv.sufficientClues,oneClearAnswer:rv.oneClearAnswer,samePartOfSpeechChoices:rv.samePartOfSpeechChoices,
-          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,noBackgroundBurden:rv.noBackgroundBurden,
+          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,factualAccuracy:rv.factualAccuracy,readerLevelFit:rv.readerLevelFit,noBackgroundBurden:rv.noBackgroundBurden,
           noAnswerLeak:rv.noAnswerLeak,naturalAlternativesConsidered:rv.naturalAlternativesConsidered,notTooSimilarToRecent:rv.notTooSimilarToRecent,learningCardAccurate:rv.learningCardAccurate
         }};
         accepted.set(item.id,q);pending.delete(item.id);delete feedback[item.id];
       }else{
-        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','noBackgroundBurden','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
+        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
         feedback[item.id]=[...new Set([...d,...aiIssues,...(!rv?['verification_missing']:requiredChecks.filter(key=>!rv[key]).map(key=>'review_failed:'+key))])];
       }
     }
@@ -346,7 +388,7 @@ export default async function handler(req,res){
     const items=raw.map((x,i)=>({
       id:String(x.id??i),type:TYPES.includes(x.type)?x.type:'mc_context',
       word:String(x.word||'').trim(),definition:String(x.definition||'').trim(),
-      band:Math.max(1,Math.min(9,Number(x.band)||3)),
+      band:Math.max(1,Math.min(9,Number(x.band)||3)),readerLevel:Math.max(1,Math.min(9,Number(x.readerLevel)||Number(x.band)||2)),
       domain:DOMAINS.includes(x.domain)?x.domain:'국어',
       example:String(x.example||'').trim(),
       contextSeed:String(x.contextSeed||'').slice(0,180),

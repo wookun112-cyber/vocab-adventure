@@ -78,10 +78,10 @@ const CHARACTERS=[
 ].map(([id,name,color,shape])=>({id,name,color,shape}));
 const DEFAULT_CHARACTERS={ayoung:'puppy',inseong:'dragon',guest:'robot'};
 const EVOLUTION_FORMS=[
- ['씨앗','#a5b4ca','작은 반짝임'],['새싹','#70bc9b','빛나는 스카프'],['견습','#66a8d8','보석 별 배지'],
- ['모험가','#6f90de','금빛 테두리 망토'],['수호자','#a187da','보석 수호 장비'],['정예','#d580af','빛나는 보석 갑옷'],
- ['영웅','#e6a16c','겹겹이 펼친 빛의 날개'],['별빛','#e3b85d','별자리와 이중 오라'],['전설','#d4a44b','보석 왕관과 황금 날개'],
- ['궁극','#9174dd','무지개 날개·왕관·은하 오라']
+ ['씨앗','#a5b4ca','잠든 아기 · 큰 얼굴과 포근한 이불'],['새싹','#70bc9b','통통한 새싹 · 앉은 몸과 짧은 발'],['견습','#66a8d8','직립 견습 · 두 발로 선 탐험가'],
+ ['모험가','#6f90de','달리는 모험가 · 펄럭이는 망토'],['수호자','#a187da','넓은 수호자 · 커다란 방패와 어깨'],['정예','#d580af','긴 체형의 정예 · 투구와 전신 갑옷'],
+ ['영웅','#e6a16c','날개 달린 영웅 · 네 발의 비행수'],['별빛','#e3b85d','떠오른 별빛 · 영혼 꼬리와 마법 구슬'],['전설','#d4a44b','왕실의 전설 · 웅장한 몸과 왕관'],
+ ['궁극','#9174dd','은하의 궁극 · 네 날개와 빛의 핵']
 ].map(([name,color,feature],i)=>({stage:i+1,name,color,feature,minRank:91-i*10,maxRank:100-i*10}));
 const evolutionForRank=rank=>clamp(11-Math.ceil(clamp(Number(rank)||100,1,100)/10),1,10);
 function evolutionState(c){
@@ -89,55 +89,120 @@ function evolutionState(c){
  return {version:1,unlockedStage,equippedStage:clamp(Math.floor(Number(raw.equippedStage)||unlockedStage),1,unlockedStage),bestRank:Number.isInteger(raw.bestRank)&&raw.bestRank>=1&&raw.bestRank<=100?raw.bestRank:null,awardedAt:Number.isFinite(Date.parse(raw.awardedAt))?raw.awardedAt:null};
 }
 let characterSvgSequence=0;
-function characterSvg(id,evolution=1){
- const a=CHARACTERS.find(x=>x.id===id)||CHARACTERS[0],c=a.color,k=a.shape,stage=clamp(Math.floor(Number(evolution)||1),1,10),form=EVOLUTION_FORMS[stage-1],accent=form.color;
- const uid='evo-'+(++characterSvgSequence),power=['horn','dino','robot','lion','tiger'].includes(k)||a.id==='wolf';
+function characterSvg(id,evolution=1,look={}){
+ const a=CHARACTERS.find(x=>x.id===id)||CHARACTERS[0],c=a.color,k=a.shape,stage=clamp(Math.floor(Number(evolution)||1),1,10),form=EVOLUTION_FORMS[stage-1];
+ const uid='evo-'+(++characterSvgSequence),power=['horn','dino','robot','lion','tiger'].includes(k)||a.id==='wolf',bird=['owl','penguin','chick'].includes(k);
  const tint=(hex,amount)=>'#'+hex.slice(1).match(/../g).map(v=>{const n=parseInt(v,16);return Math.round(amount>=0?n+(255-n)*amount:n*(1+amount)).toString(16).padStart(2,'0')}).join('');
- const paint=name=>`url(#${uid}-${name})`;
- const defs=`<defs><radialGradient id="${uid}-skin" cx="35%" cy="25%" r="80%"><stop stop-color="${tint(c,.55)}"/><stop offset=".6" stop-color="${c}"/><stop offset="1" stop-color="${tint(c,-.18)}"/></radialGradient><linearGradient id="${uid}-metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${tint(accent,.65)}"/><stop offset=".38" stop-color="${accent}"/><stop offset=".62" stop-color="${tint(accent,.35)}"/><stop offset="1" stop-color="${tint(accent,-.32)}"/></linearGradient><linearGradient id="${uid}-gold" x1="0" y1="0" x2=".4" y2="1"><stop stop-color="#fff9d2"/><stop offset=".4" stop-color="#ffe495"/><stop offset=".7" stop-color="#eab74a"/><stop offset="1" stop-color="#bd7d27"/></linearGradient><linearGradient id="${uid}-wing" x1="0" y1="0" x2="1" y2="1">${(stage===10?['#a6ebf2','#b8b6ff','#f7b7dd','#fff1a7']:['#fffde9',tint(accent,.58),accent]).map((color,i,arr)=>`<stop offset="${i/(arr.length-1)}" stop-color="${color}"/>`).join('')}</linearGradient><radialGradient id="${uid}-aura"><stop offset=".35" stop-color="${tint(accent,.3)}" stop-opacity="0"/><stop offset=".75" stop-color="${accent}" stop-opacity="${stage>=8?.2:.1}"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient><linearGradient id="${uid}-gem" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7ffff"/><stop offset=".4" stop-color="${stage>=9?'#8be7df':tint(accent,.48)}"/><stop offset="1" stop-color="${stage>=9?'#3b9cc2':tint(accent,-.25)}"/></linearGradient></defs>`;
+ const accent=({rose:'#eb86b3',ocean:'#518dd1',forest:'#479e83',royal:'#8670d2'})[look.outfit]||form.color,paint=name=>`url(#${uid}-${name})`,outline=tint(c,-.3);
+ const defs=`<defs><radialGradient id="${uid}-skin" cx="32%" cy="22%" r="85%"><stop stop-color="${tint(c,.62)}"/><stop offset=".6" stop-color="${c}"/><stop offset="1" stop-color="${tint(c,-.18)}"/></radialGradient><linearGradient id="${uid}-metal" x2=".8" y2="1"><stop stop-color="${tint(accent,.55)}"/><stop offset=".45" stop-color="${accent}"/><stop offset="1" stop-color="${tint(accent,-.3)}"/></linearGradient><linearGradient id="${uid}-gold" x2=".3" y2="1"><stop stop-color="#fff3b4"/><stop offset=".5" stop-color="#f3cf72"/><stop offset="1" stop-color="#b98036"/></linearGradient><linearGradient id="${uid}-wing" x2="1" y2="1">${(stage===10?['#9be8f1','#baa9ef','#f3aad0','#ffe99a']:['#fff5d0',tint(accent,.4),accent]).map((color,i,arr)=>`<stop offset="${i/(arr.length-1)}" stop-color="${color}"/>`).join('')}</linearGradient><radialGradient id="${uid}-aura"><stop offset=".2" stop-color="${accent}" stop-opacity=".02"/><stop offset=".7" stop-color="${accent}" stop-opacity=".3"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient></defs>`;
+ const star=(x,y,r,color='#f3cf72')=>`<path d="M${x} ${y-r}l${r*.3} ${r*.7} ${r*.7} ${r*.3}-${r*.7} ${r*.3}-${r*.3} ${r*.7}-${r*.3}-${r*.7}-${r*.7}-${r*.3} ${r*.7}-${r*.3}Z" fill="${color}"/>`;
+ const orb=(x,y,r)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${paint('wing')}" stroke="#ffedb5" stroke-width="2"/>${star(x,y,r*.6,'#fff9e1')}`;
+ const limb=(x,y,rx,ry,rotation=0)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${rotation} ${x} ${y})" fill="${paint('skin')}" stroke="${outline}" stroke-width="1.5"/>`;
+ const wing=(x,y,scale=1)=>`<g transform="translate(${x} ${y}) scale(${scale})" fill="${paint('wing')}" stroke="${stage===10?'#efd27f':accent}" stroke-width="1.5"><path d="${power?'M0 15Q-32 0-58-60l21 10-3-29 23 24 6-24L9-9Z':'M0 15Q-60-1-61-62q25 4 34 29-8-24-1-42Q2-62 9-9Z'}"/><path d="M0 7-44-47M3-3-21-57M-4 13-39-13" stroke="#fff9e2" fill="none" stroke-width="1.5" opacity=".8"/></g>`;
+ // Every stage has its own body geometry, posture and head-to-body ratio.
+ const poses=[
+  [100,121,1.23,100,154,0],[99,91,1.13,100,139,0],[100,66,.98,100,120,0],
+  [94,65,.93,105,116,-12],[100,64,.96,100,124,0],[100,60,.82,100,112,0],
+  [72,79,.85,114,126,-7],[100,64,.8,100,117,0],[100,62,.94,100,121,0],[100,68,.74,100,119,0]
+ ];
+ const [hx,hy,hs,bx,by,tilt]=poses[stage-1];
+ let background=`<circle cx="100" cy="100" r="91" fill="${tint(c,.87)}"/>`;
+ if(look.background==='garden')background='<circle cx="100" cy="100" r="94" fill="#e3f6e8"/><path d="M12 143q40-35 88 0 46-44 88 0v20q-85 58-176 0" fill="#a5d6b1"/><g fill="#fff2aa"><circle cx="34" cy="119" r="7"/><circle cx="164" cy="151" r="8"/><circle cx="153" cy="42" r="6"/></g><path d="M34 125v22m130 11v15" stroke="#5da775" stroke-width="3"/>';
+ if(look.background==='moon')background='<circle cx="100" cy="100" r="94" fill="#293969"/><circle cx="153" cy="47" r="22" fill="#fff1b2"/><circle cx="163" cy="38" r="20" fill="#293969"/>'+[[30,50],[42,110],[163,117],[69,24],[171,80]].map(([x,y])=>star(x,y,3,'#d3e8ff')).join('');
+ if(look.background==='sunset')background='<circle cx="100" cy="100" r="94" fill="#fde3db"/><circle cx="144" cy="59" r="27" fill="#ffbf94"/><path d="M11 135 48 93l43 48 36-29 62 25v24q-90 58-178 0" fill="#beabd8"/><path d="M16 161q67-26 170-9" stroke="#fbe2d5" stroke-width="5" fill="none"/>';
+ if(look.background==='galaxy')background='<circle cx="100" cy="100" r="94" fill="#382858"/><ellipse cx="100" cy="105" rx="88" ry="35" transform="rotate(-30 100 105)" fill="#7460a3" opacity=".6"/>'+Array.from({length:17},(_,i)=>star(21+(i*41)%162,24+(i*53)%151,i%3===0?4:2,i%2?'#f4ccdf':'#a8e5f0')).join('');
+ let back='',body='',front='';
+ if(stage===1){body=limb(100,156,26,15)+`<path d="M65 153q34 24 71 0l-9 28H76Z" fill="${paint('metal')}"/><path d="M75 164q25 10 51 0" stroke="#fff" opacity=".7" fill="none" stroke-width="3"/>`;}
+ if(stage===2){body=limb(100,142,34,30)+limb(72,166,17,10)+limb(128,166,17,10)+limb(69,137,10,22,-25)+limb(131,137,10,22,25);front=`<path d="m76 118 23 8 24-8-5 16H81Z" fill="${paint('metal')}"/><path d="m108 129 16 26 8-22" fill="${paint('metal')}"/>`;}
+ if(stage===3){body=limb(100,122,25,33)+limb(79,174,14,12)+limb(121,174,14,12)+limb(70,116,10,25,15)+limb(130,116,10,25,-15);front=`<path d="M78 104q22 13 44 0v39H78Z" fill="${paint('metal')}" stroke="#fff" stroke-width="2"/>${star(100,123,10,'#fff4bc')}<path d="M80 154v12m40-12v12" stroke="${outline}" stroke-width="3"/>`;}
+ if(stage===4){back=`<path d="M85 94 146 85 171 159l-45-9-62 23Z" fill="${paint('metal')}" stroke="#f2d998" stroke-width="2"/>`;body=`<g transform="rotate(-12 103 125)">${limb(103,125,27,34)}${limb(81,168,14,11)}${limb(133,160,14,11)}${limb(65,110,12,24,36)}${limb(140,111,12,25,-43)}</g>`;front=`<path d="m74 96 24 9 28-10-7 14-23 5Z" fill="${paint('gold')}"/>${orb(153,87,9)}<path d="M153 95v56" stroke="#8d795c" stroke-width="5" stroke-linecap="round"/>`;}
+ if(stage===5){back=`<path d="M64 101 38 167l61-12 62 12-25-66" fill="${paint('metal')}"/>`;body=limb(100,128,37,32)+limb(72,170,19,13)+limb(128,170,19,13)+limb(55,119,15,26,-15)+limb(145,119,15,26,15);front=`<path d="M66 104 100 97l34 7-8 45-26 16-26-16Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="3"/>${orb(100,124,13)}<path d="m36 117 23-10 22 11-4 30-18 19-19-19Z" fill="${paint('gold')}" stroke="#ac7c48" stroke-width="2"/>${star(59,135,12,accent)}`;}
+ if(stage===6){back=`<path d="m72 81-34 93 35-19 27 26 30-24 33 19-34-95Z" fill="${paint('metal')}"/>`;body=`<path d="M76 91 100 85l24 6 12 45-19 12H83l-19-12Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="3"/>${limb(77,158,13,25,8)}${limb(123,158,13,25,-8)}<path d="m58 94 22 6-12 24-22-14m96-16-22 6 12 24 22-14" fill="${paint('gold')}"/>${limb(51,125,12,22,10)}${limb(149,125,12,22,-10)}${orb(100,108,12)}<path d="m84 128 16 9 16-9" stroke="#f8e3aa" stroke-width="3" fill="none"/>`;front=`<path d="M71 45 79 20l21 8 21-8 8 25-14-8-15 7-15-7Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="2"/>`;}
+ if(stage===7){back=wing(121,97,.92)+wing(143,103,-.75);body=`<path d="M141 124q39 18 39-18l-9 7-6-16q31 22 13 48l-30 4" fill="${paint('skin')}" stroke="${outline}" stroke-width="2"/>${limb(111,125,49,29,-8)}${limb(69,155,13,22,12)}${limb(94,157,13,22,-6)}${limb(141,151,13,24,-15)}<path d="m72 109 34-10 39 16-9 17-33-9-24 3Z" fill="${paint('metal')}" stroke="#f1d48c" stroke-width="2"/>`;front=`<path d="m46 99 33 3 16-7-4 18-37 1Z" fill="${paint('gold')}"/>`;}
+ if(stage===8){back=`<g class="evo-aura"><circle cx="100" cy="99" r="79" fill="${paint('aura')}"/><circle cx="100" cy="85" r="66" fill="none" stroke="${paint('gold')}" stroke-width="2" stroke-dasharray="8 5"/></g><path d="M66 107Q11 117 36 171q-8-47 44-24m54-40q55 10 30 64 8-47-44-24" fill="${paint('wing')}" opacity=".8"/>`;body=`<path d="M80 91q20 18 40 0 22 50-20 85-10-22-26-25 19-5 6-60Z" fill="${paint('wing')}" stroke="${accent}" stroke-width="2"/>${limb(62,113,10,27,55)}${limb(138,113,10,27,-55)}${orb(100,116,14)}<ellipse cx="100" cy="181" rx="40" ry="7" fill="none" stroke="${accent}" stroke-width="2"/>`;front=orb(41,104,11)+orb(159,104,11)+`<ellipse cx="100" cy="21" rx="27" ry="6" fill="none" stroke="${paint('gold')}" stroke-width="4"/>`;}
+ if(stage===9){back=`<path d="m60 82-27 96 66-17 68 17-28-96Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="3"/><path d="M45 169 61 104m94 65-16-65" stroke="#fff1ca" stroke-width="3"/>`;body=power?`${limb(100,128,42,37)}${limb(58,162,18,21,8)}${limb(142,162,18,21,-8)}${limb(100,139,27,35)}<path d="m65 103 35-10 35 10-10 32h-50Z" fill="${paint('gold')}" stroke="#b78a43" stroke-width="2"/>`:`<path d="M79 91q21 11 42 0l34 77q-54 26-109 0Z" fill="${paint('wing')}" stroke="${paint('gold')}" stroke-width="3"/><path d="M80 121 63 161m38-35v43m18-48 19 40" stroke="#fff4d1" stroke-width="3"/>${limb(66,111,11,27,30)}${limb(134,111,11,27,-30)}`;front=`<path d="m77 32-4-21 17 9L100 3l10 17 17-9-4 21Z" fill="${paint('gold')}" stroke="#ac7c40" stroke-width="2"/>${orb(100,25,6)}${orb(100,116,14)}<path d="M160 83v84" stroke="${paint('gold')}" stroke-width="5"/>${orb(160,74,13)}`;}
+ if(stage===10){back=`<g class="evo-aura"><circle cx="100" cy="100" r="95" fill="${paint('aura')}"/><circle cx="100" cy="100" r="86" fill="none" stroke="${paint('gold')}" stroke-width="2"/><ellipse cx="100" cy="100" rx="96" ry="51" transform="rotate(-30 100 100)" fill="none" stroke="#b4dff1" stroke-width="2"/></g>`+wing(83,103,1.05)+wing(117,103,-1.05)+wing(85,143,.85)+wing(115,143,-.85)+`<path d="M72 146q-53-21-51 25 17-28 57 6m44-31q53-21 51 25-17-28-57 6" fill="${paint('wing')}" stroke="#f4dc96" stroke-width="2"/>`;body=`<path d="M80 91q20 13 40 0l14 37-17 29-17 28-17-28-17-29Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="3"/>${limb(70,116,11,25,45)}${limb(130,116,11,25,-45)}${limb(84,158,10,20,18)}${limb(116,158,10,20,-18)}${orb(100,117,18)}<path d="m82 142 18 15 18-15" stroke="#fff0ba" stroke-width="3" fill="none"/>`;front=`<path d="m81 40-9-22 19 9 9-22 9 22 19-9-9 22Z" fill="${paint('gold')}" stroke="#b08144" stroke-width="2"/>${orb(100,31,6)}${orb(29,101,9)}${orb(171,101,9)}`;}
+ // Species retain their own ears, muzzle, markings and tails in every pose.
  let ears='';
- if(['cat','tiger'].includes(k))ears=`<path d="M24 42 20 17 43 31M56 31 80 17 76 42" fill="${c}" stroke="#39465c" stroke-width="2"/>`;
- else if(k==='dog')ears=`<ellipse cx="24" cy="46" rx="12" ry="22" fill="#bd8d66"/><ellipse cx="76" cy="46" rx="12" ry="22" fill="#bd8d66"/>`;
- else if(k==='long')ears=`<ellipse cx="36" cy="26" rx="9" ry="22" fill="${c}"/><ellipse cx="64" cy="26" rx="9" ry="22" fill="${c}"/><path d="M36 11v23M64 11v23" stroke="#f7e5ef" stroke-width="5" stroke-linecap="round"/>`;
- else if(['horn','unicorn','dino'].includes(k))ears=k==='unicorn'?'<path d="m43 33 7-25 9 25" fill="#f5cd77" stroke="#cda559" stroke-width="2"/>':`<path d="m23 37 3-22 16 17m19 0 13-17 3 22" fill="#f6cf80" stroke="#bb9363" stroke-width="2"/>`;
+ if(['cat','tiger'].includes(k))ears=`<path d="M24 42 20 17 43 31M56 31 80 17 76 42" fill="${c}" stroke="${outline}" stroke-width="2"/><path d="m25 24 3 14 10-6m24 0 10 6 3-14" fill="${tint(c,.55)}"/>`;
+ else if(k==='dog')ears='<ellipse cx="24" cy="46" rx="12" ry="24" transform="rotate(12 24 46)" fill="#bc8b64"/><ellipse cx="76" cy="46" rx="12" ry="24" transform="rotate(-12 76 46)" fill="#bc8b64"/>';
+ else if(k==='long')ears=`<ellipse cx="36" cy="23" rx="9" ry="26" transform="rotate(-10 36 23)" fill="${c}"/><ellipse cx="64" cy="23" rx="9" ry="26" transform="rotate(10 64 23)" fill="${c}"/><path d="M36 6v26M64 6v26" stroke="#f9e5ee" stroke-width="5" stroke-linecap="round"/>`;
+ else if(['horn','unicorn','dino'].includes(k))ears=k==='unicorn'?'<path d="m43 33 7-28 9 28" fill="#f5cd77" stroke="#cda559" stroke-width="2"/>':`<path d="m23 37 ${stage>=5?'0-34 20 29':'3-22 16 17'}m19 0 ${stage>=5?'20-29 0 34':'13-17 3 22'}" fill="#f6cf80" stroke="#bb9363" stroke-width="2"/>`;
  else if(['round','panda'].includes(k))ears=`<circle cx="27" cy="31" r="13" fill="${k==='panda'?'#55617c':c}"/><circle cx="73" cy="31" r="13" fill="${k==='panda'?'#55617c':c}"/>`;
  else if(k==='robot')ears='<path d="M50 30V15" stroke="#55617c" stroke-width="4"/><circle cx="50" cy="12" r="5" fill="#f5c46d"/><rect x="14" y="44" width="12" height="22" rx="5" fill="#7295bd"/><rect x="74" y="44" width="12" height="22" rx="5" fill="#7295bd"/>';
  else if(k==='frog')ears=`<circle cx="32" cy="32" r="13" fill="${c}"/><circle cx="68" cy="32" r="13" fill="${c}"/>`;
- let detail='';
  if(k==='lion')ears='<circle cx="50" cy="53" r="39" fill="#c79158"/>';
+ let detail='';
  if(['panda','owl'].includes(k))detail='<ellipse cx="36" cy="48" rx="11" ry="13" fill="#55617c"/><ellipse cx="64" cy="48" rx="11" ry="13" fill="#55617c"/>';
  if(k==='penguin')detail='<ellipse cx="50" cy="59" rx="24" ry="28" fill="#f8fbff"/>';
  if(k==='tiger')detail='<path d="m26 50 9 4-9 4m48-8-9 4 9 4M45 32l5 9 5-9" stroke="#906445" stroke-width="3" fill="none" stroke-linecap="round"/>';
- if(k==='dino')detail='<path d="m44 32 6-10 6 10" fill="#76a465"/>';
- const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="15" fill="${paint('skin')}" stroke="${tint(c,-.2)}" stroke-width="1"/>`:k==='slime'?`<path d="M17 68Q18 24 50 28q31 0 33 40Q50 90 17 68" fill="${paint('skin')}" stroke="${tint(c,-.2)}" stroke-width="1"/>`:`<ellipse cx="50" cy="55" rx="29" ry="29" fill="${paint('skin')}" stroke="${tint(c,-.2)}" stroke-width="1"/>`;
- const mouth=['chick','owl','penguin'].includes(k)?'<path d="m43 60 7 8 7-8" fill="#efaa54"/>':'<path d="M42 64q8 9 16 0" stroke="#39465c" stroke-width="2.5" fill="none" stroke-linecap="round"/>';
- const star=(x,y,size,color)=>`<path d="M${x} ${y-size}l${size*.3} ${size*.7} ${size*.7} ${size*.3}-${size*.7} ${size*.3}-${size*.3} ${size*.7}-${size*.3}-${size*.7}-${size*.7}-${size*.3} ${size*.7}-${size*.3}Z" fill="${color}"/>`;
- const gem=(x,y,r)=>`<path d="M${x} ${y-r} ${x+r*.75} ${y} ${x} ${y+r} ${x-r*.75} ${y}Z" fill="${paint('gem')}" stroke="#fff6d5" stroke-width=".7"/><path d="M${x} ${y-r}v${r*2}m${-r*.75} ${-r}h${r*1.5}" stroke="#fff" opacity=".6" stroke-width=".6"/>`;
- let back=`<circle class="evo-aura" cx="50" cy="50" r="57" fill="${paint('aura')}"/>`,front='';
- if(stage>=4)back+=`<path d="M29 62Q16 75 10 99l18-3 22 6 22-6 18 3Q84 75 71 62Z" fill="${paint('metal')}" stroke="${stage>=6?'#f9dc89':tint(accent,.6)}" stroke-width="1.6"/><path d="M29 72 20 93l30-5 30 5-9-21" fill="none" stroke="#fff4cf" stroke-width="1.5" opacity=".65"/>`;
- if(stage>=7){
-  const wing=power?'M28 72C10 67 1 55-4 29l14 9L5 17l16 16L19 9l17 28 1 27Z':'M28 74C11 69-1 52 0 29c8 3 14 9 20 17C12 31 11 21 13 13c12 9 21 27 23 50Z';
-  const feather=power?'M27 64 6 36m24 20L12 25m20 23L22 19':'M28 65Q10 49 7 36m24 23Q18 38 18 27m8 43Q9 62 5 54';
-  back+=`<g class="evo-wings" fill="${paint('wing')}" stroke="${stage>=9?'#e7b956':accent}" stroke-width="1.2"><path d="${wing}"/><path d="${wing}" transform="translate(100 0) scale(-1 1)"/><g fill="none" stroke="#fff9e5" stroke-width="1.3" opacity=".8"><path d="${feather}"/><path d="${feather}" transform="translate(100 0) scale(-1 1)"/></g></g>`;
- }
- if(stage>=8){
-  back+=`<g class="evo-orbit" fill="none" stroke="${paint('gold')}"><circle cx="50" cy="48" r="48" stroke-width="1.6"/><circle cx="50" cy="48" r="43" stroke-width=".6" stroke-dasharray="7 5" opacity=".8"/></g>`;
-  for(let i=0;i<(stage===10?10:6);i++){const angle=i*Math.PI*2/(stage===10?10:6),x=50+48*Math.cos(angle),y=48+48*Math.sin(angle);back+=`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.8" fill="${i%2?'#fff0af':tint(accent,.45)}"/>`;}
- }
- if(stage===10){
-  back+=`<ellipse class="evo-orbit" cx="50" cy="48" rx="56" ry="43" transform="rotate(-27 50 48)" fill="none" stroke="#a4dcf0" stroke-width="1.3" stroke-dasharray="20 5 3 5"/><ellipse cx="50" cy="48" rx="56" ry="43" transform="rotate(27 50 48)" fill="none" stroke="#e6b9f2" stroke-width="1.1" opacity=".85"/>`;
-  front+=`<path d="m23 72-10 12 13-2m51-10 10 12-13-2" fill="${paint('wing')}" stroke="#ffe7a8" stroke-width="1"/>`;
- }
- if(stage>=2)front+=`<path d="M27 74q23 10 46 0l-4 10q-19 7-38 0Z" fill="${paint('metal')}" stroke="${tint(accent,.6)}" stroke-width=".8"/><path d="m59 81 9 17 7-15" fill="${paint('metal')}"/><path d="M30 77q20 8 40 0" fill="none" stroke="#fff" stroke-width="1" opacity=".7"/>`;
- if(stage>=3)front+=`<circle cx="37" cy="81" r="6.5" fill="${paint('gold')}" stroke="#e8bc64" stroke-width=".8"/>${star(37,81,4.5,tint(accent,-.2))}${gem(37,81,2.4)}`;
- if(stage>=5)front+=`<path d="m24 69 11 5-4 15-12-7m57-13-11 5 4 15 12-7" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="1.8"/><path d="m23 75 9 3m45-3-9 3" stroke="#fff6cd" stroke-width="1"/>${gem(25,78,3.3)}${gem(75,78,3.3)}`;
- if(stage>=6)front+=`<path d="M33 83q17 8 34 0l-3 14H36Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="1.6"/><path d="m37 86 13 8 13-8m-26 6 8-3m18 3-8-3" stroke="#fff1c0" stroke-width="1" fill="none"/>${gem(50,88,stage>=9?6:4.5)}`;
- if(stage>=9)front+=`<path d="m33 24-3-16 11 7L50 1l9 14 11-7-3 16Z" fill="${paint('gold')}" stroke="#c68b38" stroke-width="1"/><path d="M33 24q17 4 34 0v5q-17 4-34 0Z" fill="${paint('metal')}" stroke="#ffe8a4" stroke-width=".8"/>${gem(50,17,5)}${gem(37,23,2.6)}${gem(63,23,2.6)}<circle cx="30" cy="8" r="2" fill="#fff0ab"/><circle cx="50" cy="1" r="2.6" fill="#fff3c2"/><circle cx="70" cy="8" r="2" fill="#fff0ab"/>`;
- const spots=[[84,77],[15,18],[87,22],[10,82],[90,58],[12,51],[25,5],[77,5],[29,100],[74,98],[50,-4],[50,106]];
- let sparks='';for(let i=0;i<Math.min(spots.length,1+Math.floor(stage*1.1));i++){const [x,y]=spots[i];sparks+=`<g class="evo-spark" style="--spark-delay:${(i*.23).toFixed(2)}s">${star(x,y,stage>=8?(i%3===0?4.5:2.7):2.2,i%3===1?tint(accent,.25):'#f9d477')}</g>`;}
- if(stage>=8&&!power)back+=`<path d="M7 73q-7-7 0-10 7 3 0 10m87-30q-7-7 0-10 7 3 0 10" fill="${tint(accent,.25)}" opacity=".8"/>`;
- const shine=stage>=5?`<path d="M31 37q11-7 21-3" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".4"/>`:'';
- return `<svg class="evo-character" data-evo-stage="${stage}" viewBox="-12 -14 124 124" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg">${defs}<circle cx="50" cy="51" r="46" fill="${c}" opacity=".12"/><ellipse cx="50" cy="101" rx="28" ry="3" fill="${accent}" opacity=".16"/>${back}${ears}${face}${detail}${shine}<circle cx="36" cy="49" r="4.3" fill="#25344d"/><circle cx="64" cy="49" r="4.3" fill="#25344d"/><circle cx="35" cy="48" r="1.6" fill="white"/><circle cx="63" cy="48" r="1.6" fill="white"/><ellipse cx="30" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".5"/><ellipse cx="70" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".5"/>${mouth}${front}${sparks}</svg>`;
+ const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="${stage>=6?8:15}" fill="${paint('skin')}"/>`:k==='slime'?`<path d="M17 68Q${stage>=5?'12 11':'18 24'} 50 28q31 0 33 40Q50 90 17 68" fill="${paint('skin')}"/>`:`<ellipse cx="50" cy="55" rx="${stage>=6&&power?32:29}" ry="${stage>=6?25:29}" fill="${paint('skin')}" stroke="${outline}" stroke-width="1"/>`;
+ const eyes=stage===1?'<path d="M31 49q5 6 10 0m18 0q5 6 10 0" stroke="#39465c" stroke-width="3" fill="none" stroke-linecap="round"/>':`<ellipse cx="36" cy="49" rx="${stage>=6&&power?5.2:4.3}" ry="${stage>=6&&power?3.5:5.2}" fill="#25344d"/><ellipse cx="64" cy="49" rx="${stage>=6&&power?5.2:4.3}" ry="${stage>=6&&power?3.5:5.2}" fill="#25344d"/><circle cx="35" cy="47" r="1.6" fill="white"/><circle cx="63" cy="47" r="1.6" fill="white"/>${stage>=5&&power?'<path d="m29 40 12 3m18 0 12-3" stroke="#39465c" stroke-width="2.5" stroke-linecap="round"/>':''}`;
+ const muzzle=bird?'<path d="m43 59 7 9 7-9" fill="#efaa54"/>':`<ellipse cx="50" cy="62" rx="16" ry="11" fill="${tint(c,.65)}"/><path d="m46 57 4 4 4-4Z" fill="#73595b"/><path d="M42 65q8 ${stage===1?5:9} 16 0" stroke="#73595b" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+ let hat='';
+ if(look.accessory==='bow')hat='<path d="M60 29 55 12l15 5 16-6-1 20-16-8Z" fill="#e36e99" stroke="#fff1ce" stroke-width="2"/><circle cx="69" cy="21" r="5" fill="#ffd5e4"/>';
+ if(look.accessory==='visor')hat='<path d="M26 44h48l-4 14H30Z" fill="#28547f" stroke="#a2f0f0" stroke-width="2"/><path d="m32 46 7 10m5-10 7 10" stroke="#92e5ef" stroke-width="3"/>';
+ if(look.accessory==='wizard')hat='<path d="M27 30 48-12 70 30Z" fill="#6660ba" stroke="#d8caef" stroke-width="2"/><ellipse cx="50" cy="31" rx="33" ry="7" fill="#8177ca"/>'+star(48,18,7,'#ffe2a0');
+ if(look.accessory==='flower')hat='<g fill="#fff3a9" stroke="#eca877" stroke-width="1"><circle cx="70" cy="19" r="7"/><circle cx="80" cy="25" r="7"/><circle cx="76" cy="35" r="7"/><circle cx="64" cy="34" r="7"/><circle cx="60" cy="24" r="7"/></g><circle cx="70" cy="27" r="7" fill="#f7bb68"/>';
+ const head=`<g class="evo-head" transform="translate(${hx} ${hy}) rotate(${tilt}) scale(${hs}) translate(-50 -55)">${ears}${face}${detail}${eyes}<ellipse cx="29" cy="61" rx="5" ry="3" fill="#e995a1" opacity=".5"/><ellipse cx="71" cy="61" rx="5" ry="3" fill="#e995a1" opacity=".5"/>${muzzle}${hat}</g>`;
+ // A visible outfit remains available even on the baby or beast silhouettes.
+ if(look.outfit)front+=`<path d="M${hx-21*hs} ${hy+29*hs}q${21*hs} ${12*hs} ${42*hs} 0l-${5*hs} ${10*hs}q-${16*hs} ${8*hs}-${32*hs} 0Z" fill="${paint('metal')}" stroke="#fff5d4" stroke-width="2"/>${star(hx,hy+39*hs,5,'#fff6cc')}`;
+ let effects='';
+ if(look.effect==='hearts')effects=[[27,69],[165,152],[163,27]].map(([x,y])=>`<path d="M${x} ${y}q-16-11-8-18 8-4 8 3 2-7 9-3 8 7-9 18" fill="#ed9cc3" stroke="#fff" stroke-width="1.5"/>`).join('');
+ if(look.effect==='lightning')effects='<path d="m27 76 15-34-2 24 13-2-27 41 7-28Zm128 69 15-34-2 24 13-2-27 41 7-28Z" fill="#ffe293" stroke="#d1a354" stroke-width="1.5"/>';
+ if(look.effect==='stardust')effects=Array.from({length:10},(_,i)=>`<g class="evo-spark" style="--spark-delay:${i*.2}s">${star(20+(i*43)%164,22+(i*57)%150,4,i%2?'#fae3ac':'#d3b7fb')}</g>`).join('');
+ if(stage>=8)effects+=Array.from({length:stage-3},(_,i)=>`<g class="evo-spark" style="--spark-delay:${i*.3}s">${star(23+(i*57)%156,23+(i*33)%151,stage===10?5:3)}</g>`).join('');
+ return `<svg class="evo-character" data-evo-stage="${stage}" data-body-form="${stage}" viewBox="0 0 200 200" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg">${defs}${background}<ellipse cx="100" cy="183" rx="42" ry="6" fill="${accent}" opacity=".15"/>${back}<g class="evo-body">${body}</g>${head}${front}${effects}</svg>`;
+}
+
+const COSMETIC_SLOTS={outfit:'의상',background:'배경',accessory:'머리 장식',effect:'빛 효과'};
+const COSMETIC_ITEMS=[
+ ['rose','outfit','벚꽃 망토',20],['ocean','outfit','바다 기사',30],['forest','outfit','숲의 탐험가',40],['royal','outfit','보라빛 왕실',70],
+ ['garden','background','꽃 피는 정원',20],['sunset','background','노을 산책',40],['moon','background','달빛 여행',60],['galaxy','background','은하 여행',120],
+ ['bow','accessory','딸기 리본',20],['flower','accessory','햇살 꽃',30],['visor','accessory','우주 고글',50],['wizard','accessory','마법사 모자',80],
+ ['hearts','effect','두근두근 하트',40],['lightning','effect','번개 에너지',60],['stardust','effect','반짝이는 별가루',90]
+].map(([id,slot,name,price])=>({id,slot,name,price}));
+function customization(c){
+ if(c.customization?.version!==1)c.customization={version:1,balance:60,earned:0,owned:[],equipped:{}};
+ const g=c.customization;
+ g.balance=Math.max(0,Math.floor(Number(g.balance)||0));g.earned=Math.max(0,Math.floor(Number(g.earned)||0));
+ g.owned=[...new Set((Array.isArray(g.owned)?g.owned:[]).filter(id=>COSMETIC_ITEMS.some(x=>x.id===id)))];
+ const equipped=g.equipped&&typeof g.equipped==='object'?g.equipped:{};
+ g.equipped=Object.fromEntries(Object.keys(COSMETIC_SLOTS).filter(slot=>COSMETIC_ITEMS.some(x=>x.id===equipped[slot]&&x.slot===slot&&g.owned.includes(x.id))).map(slot=>[slot,equipped[slot]]));
+ return g;
+}
+let cosmeticTab='outfit',cosmeticPreview=null,cosmeticPreviewProfile=null;
+function previewCosmetic(id){
+ const item=COSMETIC_ITEMS.find(x=>x.id===id);if(!item||!authUser)return;
+ cosmeticTab=item.slot;cosmeticPreview=id;cosmeticPreviewProfile=state.selected;renderCustomization();
+}
+function applyCosmetic(id){
+ if(!authUser)return false;
+ const item=COSMETIC_ITEMS.find(x=>x.id===id);if(!item)return false;
+ const g=customization(child()),owned=g.owned.includes(id);
+ if(!owned&&g.balance<item.price){if($('cosmeticStatus'))$('cosmeticStatus').textContent='별조각이 '+(item.price-g.balance)+'개 더 필요해요.';return false}
+ if(!owned){g.balance-=item.price;g.owned.push(id)}
+ g.equipped[item.slot]=id;cosmeticPreview=null;storeLearnerCheckpoint(state.selected);localSave();cloudSave();renderExploration();
+ if($('cosmeticStatus'))$('cosmeticStatus').textContent=item.name+(owned?' 착용했어요.':' 구매하고 착용했어요.');return true;
+}
+function resetCosmetic(slot){
+ if(!authUser||!Object.hasOwn(COSMETIC_SLOTS,slot))return;
+ delete customization(child()).equipped[slot];cosmeticPreview=null;storeLearnerCheckpoint(state.selected);localSave();cloudSave();renderExploration();
+ if($('cosmeticStatus'))$('cosmeticStatus').textContent=COSMETIC_SLOTS[slot]+'을 기본 모습으로 바꿨어요.';
+}
+function renderCustomization(){
+ const c=child(),g=customization(c),stage=evolutionState(c).equippedStage;
+ if(cosmeticPreviewProfile!==state.selected){cosmeticPreview=null;cosmeticPreviewProfile=state.selected}
+ const preview=COSMETIC_ITEMS.find(x=>x.id===cosmeticPreview),look={...g.equipped};if(preview)look[preview.slot]=preview.id;
+ if($('dressAvatar'))$('dressAvatar').innerHTML=characterSvg(c.characterId,stage,look);
+ if($('starBalance'))$('starBalance').textContent=g.balance.toLocaleString();
+ if($('homeStars'))$('homeStars').textContent='✦ 별조각 '+g.balance.toLocaleString()+'개 · 나만의 꾸미기';
+ if($('dressCaption'))$('dressCaption').textContent=preview?preview.name+' · 미리보기':EVOLUTION_FORMS[stage-1].name+' · 현재 착용 모습';
+ if($('cosmeticLoadout'))$('cosmeticLoadout').textContent=Object.values(g.equipped).map(id=>COSMETIC_ITEMS.find(x=>x.id===id)?.name).filter(Boolean).join(' · ')||'기본 꾸미기';
+ if($('cosmeticTabs'))$('cosmeticTabs').innerHTML=Object.entries(COSMETIC_SLOTS).map(([slot,name])=>`<button type="button" data-cosmetic-tab="${slot}" aria-pressed="${slot===cosmeticTab}" class="${slot===cosmeticTab?'selected':''}">${name}</button>`).join('');
+ if($('cosmeticGrid'))$('cosmeticGrid').innerHTML=COSMETIC_ITEMS.filter(x=>x.slot===cosmeticTab).map(x=>{const owned=g.owned.includes(x.id),equipped=g.equipped[x.slot]===x.id;return `<button type="button" class="cosmetic-item${cosmeticPreview===x.id?' previewing':''}${equipped?' equipped':''}" data-cosmetic-preview="${x.id}" aria-pressed="${cosmeticPreview===x.id}" aria-label="${x.name} 미리보기, ${equipped?'착용 중':owned?'보유 중':x.price+' 별조각'}">${characterSvg(c.characterId,stage,{...g.equipped,[x.slot]:x.id})}<strong>${x.name}</strong><span>${equipped?'✓ 착용 중':owned?'보유 중': '✦ '+x.price+' 별조각'}</span><small>미리보기</small></button>`}).join('');
+ if($('cosmeticAction'))$('cosmeticAction').innerHTML=preview?`<button type="button" class="primary wide" data-cosmetic-apply="${preview.id}" ${g.equipped[preview.slot]===preview.id||(!g.owned.includes(preview.id)&&g.balance<preview.price)?'disabled':''}>${g.equipped[preview.slot]===preview.id?'착용 중':g.owned.includes(preview.id)?'이 꾸미기 착용하기':preview.price+' 별조각으로 구매하고 착용'}${!g.owned.includes(preview.id)&&g.balance<preview.price?' · '+(preview.price-g.balance)+'개 부족':''}</button>`:'<p class="muted">아이템을 눌러 내 캐릭터에 미리 입혀 보세요.</p>';
+ if($('cosmeticReset'))$('cosmeticReset').innerHTML=`<button type="button" class="ghost" data-cosmetic-reset="${cosmeticTab}" ${g.equipped[cosmeticTab]?'':'disabled'}>${COSMETIC_SLOTS[cosmeticTab]} 기본 모습</button>`;
 }
 
 function exploration(c,profile=state.selected){
@@ -146,6 +211,7 @@ function exploration(c,profile=state.selected){
   const words=Object.values(c.words||{});
   c.exploration={version:1,xp:words.reduce((n,w)=>n+Math.max(0,Number(w.seen)||0)*5+Math.max(0,Number(w.independentCorrect)||0)*3,0),days:{}};
  }
+ customization(c);
  c.exploration.xp=Math.max(0,Math.floor(Number(c.exploration.xp)||0));
  c.exploration.days=c.exploration.days&&typeof c.exploration.days==='object'?c.exploration.days:{};
  return c.exploration;
@@ -158,14 +224,14 @@ function rewardAnswer(q,independent){
  // Same question across lessons on one day counts once; resuming also counts once.
  const passage=q.signature||[q.w.w,q.type,q.ctx,q.q].join('|');
  if(day.keys.length>=30||day.keys.some(x=>x.key===key||x.passage===passage))return 0;
- const xp=5+(independent?3:0);day.keys.push({key,passage});game.xp+=xp;
+ const xp=5+(independent?3:0);day.keys.push({key,passage});game.xp+=xp;const wardrobe=customization(child());wardrobe.balance+=2;wardrobe.earned+=2;
  for(const old of Object.keys(game.days).sort().slice(0,-60))delete game.days[old];
  return xp;
 }
 function rewardCompletion(){
- if(!authUser||session.account!==authUser.id||session.profile!==state.selected||session.mode==='level'||session.results.length<20)return 0;
+ if(!authUser||!session||session.account!==authUser.id||session.profile!==state.selected||session.mode==='level'||session.results.length<(session.target||20))return 0;
  const game=exploration(child()),day=game.days[today()]||(game.days[today()]={keys:[],bonus:false});
- if(day.bonus)return 0;day.bonus=true;game.xp+=40;return 40;
+ if(day.bonus)return 0;day.bonus=true;game.xp+=40;const wardrobe=customization(child());wardrobe.balance+=20;wardrobe.earned+=20;return 40;
 }
 const BASE_RIVAL_NAMES=['별빛대장','용감한참새','책먹는공룡','우주고양이','초록번개','달토끼','구름기사','문장마법사','호기심곰','바람여우','반짝연필','숲속탐정','젤리전사','파도펭귄','불꽃소년','꿈꾸는별','햇살강아지','나무부엉이','꼬마로봇','은빛늑대','새싹요정','민트구름','복숭아곰','파란혜성','작은용','도토리친구','느긋한코알라','콩알병아리','무지개토끼','첫걸음탐험가'];
 const RIVAL_PREFIXES=['푸른','노을','반짝','새벽','봄빛','달빛','초록','은하','바다','햇살'];
@@ -237,12 +303,12 @@ function renderExploration(){
  const date=new Date();renderedLeagueDate=leagueDate(date);
  const c=child(),rows=explorationRanking(c,state.selected,leagueDay(date)),me=rows.find(x=>x.isMe),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
  awardRankEvolutions(rows);const owned=evolutionState(c),awardedToday=owned.awardedAt&&leagueDate(new Date(owned.awardedAt))===renderedLeagueDate;
- const rowSvg=x=>characterSvg(x.characterId,x.virtual?evolutionForRank(x.rank):evolutionState(state.users[x.id]).equippedStage);
+ const rowSvg=x=>characterSvg(x.characterId,x.virtual?evolutionForRank(x.rank):evolutionState(state.users[x.id]).equippedStage,x.virtual?{}:customization(state.users[x.id]).equipped);
  for(const id of ['ayoung','inseong','guest']){
   const u=state.users[id];exploration(u,id);
-  for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId,evolutionState(u).equippedStage);
+  for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId,evolutionState(u).equippedStage,customization(u).equipped);
  }
- if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId,owned.equippedStage);
+ if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId,owned.equippedStage,customization(c).equipped);
  if($('explorerName'))$('explorerName').textContent=c.name+' · '+bandLabel(me.difficulty)+' 단계';
  if($('explorerRank'))$('explorerRank').textContent='현재 '+rankCaption(me)+' / '+rows.length+'명';
  if($('rankDifficultyLabel'))$('rankDifficultyLabel').textContent='리그 등급 '+me.difficulty.toFixed(1)+' · 출제 난이도 '+c.difficulty.toFixed(1)+' · 학습용 추정값';
@@ -251,15 +317,16 @@ function renderExploration(){
  if($('rankDailyUpdate'))$('rankDailyUpdate').textContent=renderedLeagueDate.replaceAll('-','.')+' · 매일 자정에 새 등급 반영';
  if($('rankTarget'))$('rankTarget').textContent=target;
  if($('characterTitle'))$('characterTitle').textContent=c.name+'의 캐릭터';
- if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id,owned.equippedStage)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
+ if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id,owned.equippedStage,customization(c).equipped)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
  if($('evolutionSummary'))$('evolutionSummary').textContent='진화 '+owned.equippedStage+'단계 · '+EVOLUTION_FORMS[owned.equippedStage-1].name;
  if($('evolutionGoal'))$('evolutionGoal').textContent=owned.unlockedStage===10?'10단계 보상을 모두 획득했어요!':(100-owned.unlockedStage*10)+'위 안에 들면 다음 진화형을 받아요.';
  if($('evolutionNotice')){$('evolutionNotice').textContent=awardedToday?'✨ 최고 '+owned.bestRank+'위 · 진화 '+owned.unlockedStage+'단계 '+EVOLUTION_FORMS[owned.unlockedStage-1].name+' 획득':'';$('evolutionNotice').classList.toggle('hidden',!awardedToday)}
- if($('evolutionGrid'))$('evolutionGrid').innerHTML=EVOLUTION_FORMS.map(form=>{const unlocked=form.stage<=owned.unlockedStage;return `<button type="button" class="evolution-form${unlocked?' unlocked':' locked'}${form.stage===owned.equippedStage?' equipped':''}" data-evolution="${form.stage}" ${unlocked?'':'disabled'} aria-pressed="${form.stage===owned.equippedStage}">${characterSvg(c.characterId,form.stage)}<span class="evolution-range">${form.minRank}~${form.maxRank}위</span><strong>${form.stage}단계 · ${form.name}</strong><small>${form.feature}</small><b>${form.stage===owned.equippedStage?'사용 중':unlocked?'적용하기':'🔒 순위 보상'}</b></button>`}).join('');
+ if($('evolutionGrid'))$('evolutionGrid').innerHTML=EVOLUTION_FORMS.map(form=>{const unlocked=form.stage<=owned.unlockedStage;return `<button type="button" class="evolution-form${unlocked?' unlocked':' locked'}${form.stage===owned.equippedStage?' equipped':''}" data-evolution="${form.stage}" ${unlocked?'':'disabled'} aria-pressed="${form.stage===owned.equippedStage}">${characterSvg(c.characterId,form.stage,customization(c).equipped)}<span class="evolution-range">${form.minRank}~${form.maxRank}위</span><strong>${form.stage}단계 · ${form.name}</strong><small>${form.feature}</small><b>${form.stage===owned.equippedStage?'사용 중':unlocked?'적용하기':'🔒 순위 보상'}</b></button>`}).join('');
  const card=x=>`<div class="podium-avatar">${rowSvg(x)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${rankCaption(x)}</span><strong>${escapeHtml(x.name)}</strong><b>${bandLabel(x.difficulty)}</b><small>등급 ${x.difficulty.toFixed(1)}</small><small>진화 ${x.virtual?evolutionForRank(x.rank):evolutionState(state.users[x.id]).equippedStage}단계</small>${x.isMe?'<small>나</small>':x.family?'<small>가족</small>':''}`;
  if($('rankPodium'))$('rankPodium').innerHTML=[rows[1],rows[0],rows[2]].map(x=>`<div class="podium place-${x.rank}">${card(x)}</div>`).join('');
  if($('rankFamilyOverview'))$('rankFamilyOverview').innerHTML=rows.filter(x=>['ayoung','inseong'].includes(x.id)).sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<div class="rank-family-card${x.isMe?' selected':''}"><div class="rank-avatar">${rowSvg(x)}</div><div><strong>${escapeHtml(x.name)}</strong><b>${rankCaption(x)}</b><small>${bandLabel(x.difficulty)} · 등급 ${x.difficulty.toFixed(1)}</small></div></div>`).join('');
- if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId,owned.equippedStage)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>등급 ${me.difficulty.toFixed(1)}</small></span>`;
+ if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId,owned.equippedStage,customization(c).equipped)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>등급 ${me.difficulty.toFixed(1)}</small></span>`;
+ renderCustomization();
  if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.family?' rank-family':''}${x.isMe?' rank-me':''}" data-rank-profile="${x.id}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${rowSvg(x)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small class="${x.virtual?'rank-change '+(x.dailyChange>0?'up':x.dailyChange<0?'down':'steady'):''}">${x.virtual?dailyChangeLabel(x.dailyChange):(x.isMe?'나 · ':'가족 · ')+'회상 기록 기반 등급'}</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>등급 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
 }
 
@@ -629,7 +696,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
    items:plans.map(p=>{
      const st=state.users[profile].words[p.w.w]||{},queued=[...(session?.profile===profile?session.queue:[]),...preparedQuestions].filter(q=>q.w.w===p.w.w).map(questionMemory);
      return ({
-     id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,domain:apiDomain(p.w.cat),
+     id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,readerLevel:Number(state.users[profile].difficulty)||2,domain:apiDomain(p.w.cat),
      example:p.w.example||'',contextSeed:p.contextSeed||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
      successStreak:p.successStreak,firstLearning:p.firstLearning,needsCard:!!p.needsCard,structureNote:p.structureNote||'',stage:p.stage||'',
      previousContexts:[...(st.problemHistory||[]),...queued].slice(-4),
@@ -975,7 +1042,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
  const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,signature:q.signature||''};
  if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec);rec.evidence=evidence}
- rec.xp=rewardAnswer(q,independent);
+ rec.xp=rewardAnswer(q,independent);rec.stars=rec.xp?2:0;
  session.results.push(rec);
  if(q.signature){
    const c=child();c.recentProblems=Array.isArray(c.recentProblems)?c.recentProblems:[];
@@ -1005,7 +1072,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
- $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(rec.stars?'<br><small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  checkpointSession();localSave();cloudSave();
 }
@@ -1171,12 +1238,13 @@ function finishSession(){
    c.levelTestCompleted=true;
    if(c.leagueLevel==null)c.leagueLevel=c.difficulty;
  }
- rewardCompletion();
+ const completionBonus=rewardCompletion();
+ const earnedStars=r.reduce((n,x)=>n+(x.stars||0),0)+(completionBonus?20:0);
  c.activeLesson=null;
  c.preparationRevision=(c.preparationRevision||0)+1;
  storeLearnerCheckpoint(session.profile);localSave();
  cloudSave().then(()=>warmDailyQuestions()); renderAll(); show(state.selected==='guest'?'home':'report');
- alert(session.mode==='level'?'시작 수준 확인 완료 · 출제 난이도 '+c.difficulty.toFixed(1):'오늘 학습 완료! '+total+'번의 활동을 기록했어요. 배운 단어는 다른 날 다시 확인해요.');
+ alert(session.mode==='level'?'시작 수준 확인 완료 · 출제 난이도 '+c.difficulty.toFixed(1):'오늘 학습 완료! '+total+'번의 활동을 기록했어요.'+(earnedStars?' ✦ 별조각 '+earnedStars+'개 획득! 캐릭터 꾸미기에서 사용해요.':'')+' 배운 단어는 다른 날 다시 확인해요.');
 }
 function renderAll(){
  renderResumeButton();
@@ -1238,6 +1306,7 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPro
 scheduleDailyLeague();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshDailyLeague()});
 $('evolutionGrid')?.addEventListener('click',e=>{const b=e.target.closest('[data-evolution]');if(b&&!b.disabled)equipEvolution(b.dataset.evolution)});
+$('customizationShop')?.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;if(b.dataset.cosmeticTab){cosmeticTab=b.dataset.cosmeticTab;cosmeticPreview=null;renderCustomization()}else if(b.dataset.cosmeticPreview)previewCosmetic(b.dataset.cosmeticPreview);else if(b.dataset.cosmeticApply)applyCosmetic(b.dataset.cosmeticApply);else if(b.dataset.cosmeticReset)resetCosmetic(b.dataset.cosmeticReset)});
 $('characterGrid')?.addEventListener('click',e=>{const button=e.target.closest('[data-character]');if(button)selectCharacter(button.dataset.character)});
 $('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null}else alert('브라우저 메뉴에서 “앱 설치” 또는 “홈 화면에 추가”를 눌러주세요.')};
 document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{checkpointSession();if(session?.preparation)session.preparation.cancel();session=null;state.selected=b.dataset.profile;localSave();cloudSave();renderAll();show('home');warmDailyQuestions()});
