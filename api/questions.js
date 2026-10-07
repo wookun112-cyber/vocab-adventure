@@ -1,6 +1,6 @@
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
-import {LEARNING_TYPES} from '../lib/learning-model.js';
+import {LEARNING_TYPES,QUESTION_POLICY,isLearningTarget} from '../lib/learning-model.js';
 const TYPES=LEARNING_TYPES;
 const SHOWN_TYPES=['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'];
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
@@ -131,6 +131,10 @@ function passageKeys(context,options=[]){
 }
 function deterministic(q,item){
   const issues=[];
+  if(!isLearningTarget(item.word,item.domain,item.band))issues.push('specialist_or_context_only_target');
+  const text=String(q.prompt||'')+' '+String(q.context||'');
+  const mathematical=/\d+\s*:\s*\d+|[√∑∫]|\b(?:sin|cos|tan|log)\b|\d+\s*[×÷=]\s*\d+/.test(text);
+  if(mathematical&&/(?:이라고|라고)\s*(?:하지|하죠|부르)|명칭|이름|무엇이라고/.test(text))issues.push('mathematical_name_quiz');
   const reading=passageProfile(item);if(String(q.context||'').length>reading.maxCharacters)issues.push('passage_too_long_for_reader');
   if(item.type==='mc_usage'&&(q.options||[]).some(o=>String(o.text||'').length>reading.maxCharacters/2))issues.push('choice_too_long_for_reader');
   const previous=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(p=>passageKeys(p.context,p.options||[]))]);
@@ -209,7 +213,7 @@ function verifySchema(items){
         naturalKorean:{type:'boolean'},
         coherentSituation:{type:'boolean'},
         ageAppropriate:{type:'boolean'},factualAccuracy:{type:'boolean'},readerLevelFit:{type:'boolean'},
-        noBackgroundBurden:{type:'boolean'},
+        noBackgroundBurden:{type:'boolean'},vocabularyFocus:{type:'boolean'},
         noAnswerLeak:{type:'boolean'},
         naturalAlternativesConsidered:{type:'boolean'},
         notTooSimilarToRecent:{type:'boolean'},learningCardAccurate:{type:'boolean'},
@@ -218,7 +222,7 @@ function verifySchema(items){
         },required:['text','credit','rationale'],additionalProperties:false}},
         issues:{type:'array',items:{type:'string'}}
       },
-      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
+      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','vocabularyFocus','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
       additionalProperties:false
     }}},required:['reviews'],additionalProperties:false
   };
@@ -228,9 +232,12 @@ function generationPrompt(items,recent,feedback={}){
     '한국어 어휘 학습 앱용 문제를 만드세요. 목표는 사전 정의 암기가 아니라 문맥에서 뜻을 이해하고 필요한 어휘를 떠올려 사용하는 능력입니다.',
     '',
     '공통 규칙:',
+    '- 검사하는 능력은 목표 어휘의 의미, 문맥에 맞는 선택, 자연스러운 쓰임입니다. 수학 계산, 공식 적용, 전문 개념이나 사실의 명칭 회상, 역사 인물·연도·과학 상식 맞히기는 금지합니다. 대화 빈칸으로 포장해도 같은 금지 규칙을 적용합니다.',
+    '- 지문의 지식은 어휘를 사용할 배경이지 정답 자체가 아닙니다. 필요한 사실은 글 안에 먼저 제공하고, 그 사실을 바탕으로 인물의 행동·원인·결과·관점에서 목표어가 필요한 문장을 만드세요. 목표어를 빼고 보았을 때도 수학/과학/역사 퀴즈로 남는 문제는 다시 설계하세요.',
+    '- 난이도는 어휘의 추상성, 문맥 단서의 직접성, 가까운 의미의 구별, 문장과 관점의 복잡성으로 조절합니다. 더 높은 수준이라고 전문 용어·숫자·공식을 늘리지 마세요. 단서를 숨겨 맞힐 수 없게 만드는 방식도 금지합니다.',
     '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 빈칸과 사전 정의를 외워 서술시키는 문제는 금지합니다. 의미 연결 문제도 목표는 한 단어이며 비교 단어 각각에 별도 답을 요구하지 않습니다.',
     '- 지문은 학년이 아니라 readingDesign의 현재 어휘력 수준에 맞춥니다. 문장 수·길이·문장 구조의 안내를 따르고 maxCharacters를 넘기지 마세요. subjective_use는 1~2문장, 대화는 2~4발화, mc_usage는 각 보기를 짧게 쓰는 유형 규칙이 우선합니다.',
-    '- 지문은 재미있고 유익한 작은 발견 이야기로 씁니다. knowledgeSeed는 선택 가능한 소재이지 필수가 아닙니다. 목표어와 직접 연결될 때만 제공된 사실을 사용하세요. 연결이 없거나 null이면 목표어의 실제 분야에서 자연스러운 생활·수학·문법·관찰 이야기를 쓰세요. 우주 사실과 수학 계산을 억지로 연결하지 마세요.',
+    '- 지문은 재미있고 유익한 작은 발견 이야기로 씁니다. knowledgeSeed는 선택 가능한 소재이지 필수가 아닙니다. 목표어의 의미와 자연스러운 쓰임을 확인하는 데 도움이 될 때만 사용하세요. 연결이 없거나 null이면 생활·관계·판단·관찰 상황을 쓰세요. 수학 풀이·문법 분류를 출제하지 마세요.',
     '- 세종의 한글 창제, 지구의 태양 주변 공전, 지구의 자연 위성인 달처럼 사실을 배우는 지문을 우선합니다. 목표어와 어울리지 않는다면 유익한 생활 장면을 선택하세요. 정보만 나열하거나 목표어를 억지로 끼워 넣지 마세요.',
     '- 핵심 역사·과학 사실은 knowledgeSeed에 제공된 사실을 바탕으로 쓰세요. 실제 인물의 말·업적·날짜·실험 결과를 지어내지 마세요. 가상의 아이가 탐구하는 장면은 가능하지만 실제 인물에게 가상의 말을 붙이지 마세요. 지구의 공전과 자전, 자연 위성과 인공위성을 혼동하지 마세요. 계절 변화의 주원인을 태양까지의 거리라고 쓰지 마세요.',
     '- 목표어 외 낯선 개념은 readingDesign.unfamiliarTerms 이내로 제한하고 같은 문장에서 쉬운 말로 풉니다. 처음 들어 보는 역사·과학 지식이라도 지문 자체만 읽으면 답할 수 있게 필요한 정보를 모두 넣으세요. 역사 연도나 과학 상식을 외워야만 맞히는 문제는 금지합니다.',
@@ -238,9 +245,9 @@ function generationPrompt(items,recent,feedback={}){
     '- 단순히 길게 늘리지 말고 정답 판단에 필요한 의미 있는 단서를 2개 이상 제공합니다.',
     '- 목표 어휘 외 표현은 해당 학습 단계보다 쉽게 씁니다. 어려운 배경지식·복잡한 추론이 핵심이 되면 안 됩니다.',
     '- 가족, 학교, 친구, 동물, 놀이, 자연, 과학, 탐험 등 배경을 다양하게 바꿉니다.',
-    '- contextSeed는 배경 후보입니다. 지식 이야기와 어울리면 연결하고, 생활 배경보다 유익한 지식 소재를 우선하되 목표어의 자연스러움을 지키세요. 목표어의 실제 의미와 맞지 않으면 의미를 억지로 확장하지 말고, 이전 지문과 겹치지 않는 다른 생활 장면으로 조정하세요. 같은 목표어의 다른 문제와 사건이 겹치지 않도록 하세요. 배경 문구를 복사하지 마세요.',
+    '- contextSeed는 배경 후보입니다. 어휘의 자연스러운 쓰임이 소재의 화려함보다 우선입니다. 목표어의 실제 의미와 맞지 않으면 의미를 억지로 확장하지 말고, 이전 지문과 겹치지 않는 다른 생활 장면으로 조정하세요. 같은 목표어의 다른 문제와 사건이 겹치지 않도록 하세요. 배경 문구를 복사하지 마세요.',
     '- previousContexts는 같은 어휘의 이전 실제 지문/보기입니다. 기존 문장, 사건, 핵심 행동과 결과를 재사용하지 마세요. 이름·장소·사물만 바꾸는 재작성도 금지합니다. 같은 배치에서 같은 어휘가 반복되면 각각 다른 사건과 문장 구조를 사용하세요.',
-    '- 중복 때문에 다시 만드는 문제는 실패 지문의 배경뿐 아니라 인물의 목적·행동·질문 방향과 문장 구조를 새로 설계하세요. 수학·문법 어휘는 동일한 개념을 유지하되 설명 방법이나 해결할 과제를 바꾸세요. 이전 실패 피드백이 유형 규칙과 충돌하면 이 규칙과 실제 type을 따르세요.',
+    '- 중복 때문에 다시 만드는 문제는 실패 지문의 배경뿐 아니라 인물의 목적·행동·질문 방향과 문장 구조를 새로 설계하세요. 이전 실패 피드백이 유형 규칙과 충돌하면 이 규칙과 실제 type을 따르세요.',
     '- 사전 example을 지문으로 복사하지 마세요. 목표어가 그 상황에서 실제로 쓰이는 자연스러운 표현인지 먼저 확인하세요. 목표어가 조사·서술어와 자연스럽게 호응하도록 완성 문장을 읽어 보고 작성하세요.',
     '- 한 장면 안에서 인물, 시간, 행동, 이유, 결과가 일관되게 이어져야 합니다. 이유 없는 행동, 갑자기 등장하는 사건, 앞 문장과 무관한 결론은 금지합니다.',
     '- 정답을 억지로 넣기 위해 같은 설명을 반복하거나 \"이것은 X이다\"라는 정의 문장을 덧붙이지 마세요. 단서가 사건 속에서 드러나는 간결하고 완결된 문장으로 씁니다.',
@@ -286,6 +293,7 @@ async function generate(items,recent,feedback){
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
+    'vocabularyFocus는 반드시 별도로 판정하세요. 정답의 근거가 목표 어휘의 의미와 상황 속 쓰임이어야 true입니다. 공식·계산·수학 관계의 이름·문법 분류·과학 현상의 명칭·역사 인물/연도/사실을 기억해야 정답이면 false이고 valid=false입니다. 정보를 글 안에 제공했더라도 그 정보의 전문 명칭을 맞히는 문제이면 false입니다. 대화나 빈칸 형식이라고 예외가 아닙니다. 단서를 충분히 제시한 일반 어휘의 자연스러운 쓰임을 묻는 것은 허용합니다.',
     '유형 규칙표: subjective_context와 subjective_dialogue는 목표어를 숨긴 빈칸 하나를 채우는 과제입니다. 빈칸이 있다는 이유로 반려하지 마세요. subjective_use만 목표어를 보여주고 자신의 완성 문장 하나를 만드는 과제입니다. 이 세 유형을 혼동하지 마세요.',
     'factualAccuracy는 실제 사실의 정확성을 검사합니다. knowledgeSeed는 선택용 소재입니다. 지문이 다른 분야를 다뤄도 실제 내용이 정확하면 true이며, seed와 주제가 다르거나 null이라는 이유만으로 반려하지 마세요. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
     'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조로 검사합니다. lengthGuide는 권장 길이이며 최소 글자 수가 아닙니다. 짧아도 완결된 상황과 충분한 단서가 있으면 통과하고 maxCharacters 초과는 탈락입니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
@@ -301,7 +309,7 @@ async function aiVerify(items,questions,recent){
     'coherentSituation은 인물·시간·행동·이유·결과의 앞뒤 연결과 목표어를 넣은 완성 문장의 조사·서술어 호응을 검사합니다. 어색한 번역투, 불필요한 반복, 갑작스러운 결론, 일상적으로 성립하지 않는 상황, 설명문을 옮긴 가짜 대화는 통과시키지 마세요.',
     '문법 판정은 실제 조사·활용·의미 결합의 오류를 근거로 하세요. 다른 표현을 더 선호한다는 이유만으로 자연스러운 문장을 오류 처리하지 마세요. 명사에 하다를 붙인 정상 표현인 문제 풀이를 하다, 문제 풀이를 하니 답을 찾았다, 문제 풀이를 보다는 그 결합 자체가 문법 오류가 아닙니다. 그 문장의 실제 맥락에 맞는지를 별도로 판단하세요.',
     '중복은 목표어별 previousContexts의 실제 문장과 구체적인 사건 전개를 우선 대조하세요. 최근 서명과 과목·배경·문제 유형만 같은 것은 중복 근거가 아닙니다. 서로 다른 수학 대화나 과학 실험이라는 이유만으로 notTooSimilarToRecent=false로 하지 마세요. 문장 재사용 또는 인물의 행동·문제 상황·전개가 실제로 지나치게 같은 경우는 계속 탈락시키세요.',
-    '목표어의 핵심 개념은 복습에서도 같아야 합니다. 등비중항 문제들이 두 양수 사이의 수를 다루거나 절대 온도 문제들이 켈빈을 다루는 것은 개념의 필수 요소이며 그 자체는 중복이 아닙니다. 동일 개념을 다른 문장 구조·정보 제시 방식·풀이 목적이나 질문 방향으로 다루면 허용하세요. 기존 문장을 그대로 복사하거나 전체 문장 틀에서 이름·숫자만 교체한 경우는 탈락입니다.',
+    '목표어의 핵심 의미는 복습에서도 같아야 하지만 사건·목적·관점·문장 구조는 바꾸세요. 기존 문장을 그대로 복사하거나 이름·숫자만 교체하면 탈락입니다. 수학·과학·문법의 명칭 퀴즈는 다른 장면으로 바꾸어도 vocabularyFocus=false입니다.',
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
@@ -359,17 +367,17 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
       const objective=item.type.startsWith('mc_');
       const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&
         (!objective||rv.oneClearAnswer)&&(!objective||rv.samePartOfSpeechChoices)&&
-        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.factualAccuracy&&rv.readerLevelFit&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
+        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.factualAccuracy&&rv.readerLevelFit&&rv.noBackgroundBurden&&rv.vocabularyFocus&&rv.noAnswerLeak&&
         (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent&&(!item.needsCard||rv.learningCardAccurate);
       if(pass){
-        q.validation={deterministic:true,aiVerified:true,checks:{
+        q.validation={policy:QUESTION_POLICY,deterministic:true,aiVerified:true,checks:{
           sufficientClues:rv.sufficientClues,oneClearAnswer:rv.oneClearAnswer,samePartOfSpeechChoices:rv.samePartOfSpeechChoices,
-          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,factualAccuracy:rv.factualAccuracy,readerLevelFit:rv.readerLevelFit,noBackgroundBurden:rv.noBackgroundBurden,
+          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,factualAccuracy:rv.factualAccuracy,readerLevelFit:rv.readerLevelFit,noBackgroundBurden:rv.noBackgroundBurden,vocabularyFocus:rv.vocabularyFocus,
           noAnswerLeak:rv.noAnswerLeak,naturalAlternativesConsidered:rv.naturalAlternativesConsidered,notTooSimilarToRecent:rv.notTooSimilarToRecent,learningCardAccurate:rv.learningCardAccurate
         }};
         accepted.set(item.id,q);pending.delete(item.id);delete feedback[item.id];
       }else{
-        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
+        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','vocabularyFocus','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
         feedback[item.id]=[...new Set([...d,...aiIssues,...(!rv?['verification_missing']:requiredChecks.filter(key=>!rv[key]).map(key=>'review_failed:'+key))])];
       }
     }

@@ -9,7 +9,7 @@ begin
  select * into j from vocab_private.preparations where user_id=u and profile='ayoung' for update;
  before_ready:=coalesce(j.payload->'ready','[]');
  update vocab_private.preparations set status='pending',attempts=8,is_consumed=false,
-  payload=jsonb_set(jsonb_set(j.payload,'{snapshot}','"recovery-test"'),'{budget,policy}','"daily-3-20-25-flex"')
+  payload=jsonb_set(jsonb_set(jsonb_set(j.payload,'{snapshot}','"recovery-test"'),'{budget,policy}','"daily-3-20-25-flex"'),'{questionPolicy}','"vocabulary-context-12.5"')
  where id=j.id;
  r:=public.ensure_prepared_lesson('ayoung','recovery-test',true);
  if r->>'id'<>j.id::text or r#>'{payload,ready}'<>before_ready or

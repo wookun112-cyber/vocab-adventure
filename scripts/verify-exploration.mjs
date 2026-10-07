@@ -31,7 +31,7 @@ f.run("session.lessonId='lesson-two'");assert.equal(f.run('rewardAnswer(q,true)'
 f.run("session.results.push({});q.signature='second'");assert.equal(f.run('rewardAnswer(q,false)'),5);
 f.run("session.account='another-account';q.signature='third'");assert.equal(f.run('rewardAnswer(q,true)'),0);
 f.run("session.account='family';session.profile='inseong'");assert.equal(f.run('rewardAnswer(q,true)'),0);
-f.run("session.profile='ayoung';for(let i=2;i<35;i++){session.results=Array(i);q.signature='question-'+i;rewardAnswer(q,true)}");
+f.run("session.profile='ayoung';for(let i=2;i<35;i++){session.results=Array(i).fill({credit:1});q.signature='question-'+i;rewardAnswer(q,true)}");
 assert.equal(f.run('exploration(child()).days[today()].keys.length'),30,'daily rewards stop at thirty questions');
 assert.equal(f.run('rewardCompletion()'),40);assert.equal(f.run('rewardCompletion()'),0,'repeat completions do not duplicate a bonus');
 const before=f.run('exploration(child()).xp');f.run("session.mode='level';delete exploration(child()).days[today()];");assert.equal(f.run('rewardCompletion()'),0);assert.equal(f.run('exploration(child()).xp'),before);

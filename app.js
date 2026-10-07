@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,summarizeEvidence,isLearningTarget} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,summarizeEvidence,isLearningTarget} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -374,7 +374,7 @@ function rewardAnswer(q,independent){
  return xp;
 }
 function rewardCompletion(){
- if(!authUser||!session||session.account!==authUser.id||session.profile!==state.selected||session.mode==='level'||session.results.length<(session.target||20))return 0;
+ if(!authUser||!session||session.account!==authUser.id||session.profile!==state.selected||session.mode==='level'||session.results.filter(isVocabularyResult).length<(session.target||20))return 0;
  const game=exploration(child()),day=game.days[today()]||(game.days[today()]={keys:[],bonus:false});
  if(day.bonus)return 0;day.bonus=true;game.xp+=40;const wardrobe=customization(child());wardrobe.balance+=20;wardrobe.earned+=20;return 40;
 }
@@ -563,7 +563,7 @@ function renderResumeButton(){
  const saved=savedLesson();
  const done=!saved&&child().lastDate===today(),p=preparations.get(preparationKey('daily'));
  $('startDaily').disabled=false;
- $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+(saved.nextIndex+1)+'번째 문제'):p&&!p.cancelled&&p.ready.size<20?'문제 준비 중 · '+p.ready.size+'/20개':done?'계속 학습하기':'오늘의 학습 시작';
+ $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):p&&!p.cancelled&&p.ready.size<20?'문제 준비 중 · '+p.ready.size+'/20개':done?'계속 학습하기':'오늘의 학습 시작';
 }
 function storeLearnerCheckpoint(profile){
  if(!authUser)return;
@@ -625,7 +625,9 @@ const needsRecovery=saved.mode==='daily'&&Array.from({length:20},(_,i)=>i).some(
  }
  // The lesson was consumed on its first start. Resuming must never consume it
  // again or ask the server for a replacement lesson.
- session={engine:saved.engine,model:saved.model,introAt:saved.introAt||0,introWords:saved.introWords||[],introCursor:saved.introCursor||0,introDone:saved.introDone!==false,activeMs:saved.activeMs||0,clockStarted:Date.now(),mode:saved.mode,queue:p.queue,preparation:p,results:saved.results.slice(),target:saved.target,max:saved.max||30,difficulty:saved.difficulty,ability:saved.ability,intros:[],newWords:saved.newWords,baseWords:saved.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:saved.id};
+ const eligibleIntro=(saved.introWords||[]).filter(w=>isLearningTarget(w));
+ const eligibleCursor=(saved.introWords||[]).slice(0,saved.introCursor||0).filter(w=>isLearningTarget(w)).length;
+ session={engine:saved.engine,model:saved.model,introAt:saved.introAt||0,introWords:eligibleIntro,introCursor:eligibleCursor,introDone:saved.introDone!==false||eligibleCursor>=eligibleIntro.length,activeMs:saved.activeMs||0,clockStarted:Date.now(),mode:saved.mode,queue:p.queue,preparation:p,results:saved.results.slice(),target:saved.target,max:saved.max||30,difficulty:saved.difficulty,ability:saved.ability,intros:[],newWords:saved.newWords,baseWords:saved.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:saved.id};
  Object.defineProperty(session,'pendingPlans',{get:()=>p.plans.slice(p.queue.length)});
  current=saved.nextIndex;introIndex=0;hintLevel=0;$('next').disabled=false;
  if(current>=session.target){finishSession();return}
@@ -725,12 +727,12 @@ function scorePriority(w){
 }
 function chooseNew(n=5){
  const target=child().difficulty;
- return WORDS.filter(w=>isLearningTarget(w.w)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt)
+ return WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt)
    .map(w=>({w,score:Math.abs((w.band||3)-target)*5+(w.source==='fixed'?-3:2)+Math.random()*4}))
    .sort((a,b)=>a.score-b.score).slice(0,n).map(x=>x.w);
 }
 function chooseReview(n=15){
- const seen=WORDS.filter(w=>isLearningTarget(w.w)&&(child().words[w.w]?.seen||child().words[w.w]?.introducedAt));
+ const seen=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&(child().words[w.w]?.seen||child().words[w.w]?.introducedAt));
  const due=seen.filter(w=>isDue(wordState(w.w).nextReviewAt)).sort((a,b)=>scorePriority(b)-scorePriority(a));
  const active=seen.filter(w=>{
    const st=wordState(w.w);
@@ -771,7 +773,7 @@ const TYPE_SEQUENCE=[
  'subjective_context','mc_usage','subjective_dialogue','mc_context','subjective_context'
 ];
 const TYPE_LABELS=LEARNING_LABELS;
-const apiDomain=cat=>({'사고':'수학·논리','수학':'수학·논리','논리':'수학·논리'}[cat]||(['국어','사회','과학','수학·논리','감정·관계','생활'].includes(cat)?cat:'국어'));
+const apiDomain=cat=>({'사고':'국어','수학':'수학·논리','논리':'국어'}[cat]||(['국어','사회','과학','수학·논리','감정·관계','생활'].includes(cat)?cat:'국어'));
 
 function pickLeastUsed(candidates,usage,lastWord){
  const pool=candidates.filter(Boolean);
@@ -893,7 +895,7 @@ function validPreparedQuestion(q,plan){return q?.w?.w===plan?.w?.w&&q.type===pla
 function questionPassageKeys(q){return passageKeys(q.ctx,(q.opts||[]).map(o=>o.t))}
 function savePreparation(p){
  if(p.adopted||p.cancelled)return;
- try{localStorage.setItem(p.key,JSON.stringify({engine:p.engine||PREPARATION_ENGINE,model:p.model,target:p.target,introAt:p.introAt,plannedFor:p.plannedFor,budget:p.budget,created:p.created,account:p.account,profile:p.profile,snapshot:p.snapshot,mode:p.mode,difficulty:p.difficulty,newWords:p.newWords,baseWords:p.baseWords,plans:p.plans,serverId:p.serverId,ready:[...p.ready]}))}catch{}
+ try{localStorage.setItem(p.key,JSON.stringify({questionPolicy:p.questionPolicy,engine:p.engine||PREPARATION_ENGINE,model:p.model,target:p.target,introAt:p.introAt,plannedFor:p.plannedFor,budget:p.budget,created:p.created,account:p.account,profile:p.profile,snapshot:p.snapshot,mode:p.mode,difficulty:p.difficulty,newWords:p.newWords,baseWords:p.baseWords,plans:p.plans,serverId:p.serverId,ready:[...p.ready]}))}catch{}
 }
 function createPreparation(meta,saved=[]){
  const p={...meta,queue:[],ready:new Map(),jobs:[],waiters:[],running:0,adopted:!!meta.adopted,cancelled:false};
@@ -1006,7 +1008,7 @@ async function getPreparation(mode='daily',retry=false){
  const profile=state.selected,account=authUser?.id,key=preparationKey(mode,profile,account);
  if(!account)throw new Error('로그인이 필요합니다.');
  const snapshot=preparationSnapshot(profile),existing=preparations.get(key);
- if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&existing.plans.every(p=>isLearningTarget(p.w?.w))&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy==='daily-3-20-25-flex')&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
+ if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&existing.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy==='daily-3-20-25-flex')&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
  if(preparationLoads.has(key))return preparationLoads.get(key);
  if(existing)existing.cancel();
  const loading=(async()=>{
@@ -1022,7 +1024,7 @@ async function getPreparation(mode='daily',retry=false){
        remote=await serverLesson(profile);
      }
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
-     if(remote?.payload?.snapshot===snapshot&&remote.payload.engine===PREPARATION_ENGINE&&remote.payload.plans?.length===20&&remote.payload.plans.every(p=>isLearningTarget(p.w?.w))&&remote.status!=='failed'){
+     if(remote?.payload?.snapshot===snapshot&&remote.payload.engine===PREPARATION_ENGINE&&remote.payload.questionPolicy===QUESTION_POLICY&&remote.payload.plans?.length===20&&remote.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))&&remote.status!=='failed'){
        const data=remote.payload;
        for(const plan of data.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
        rebuildCatalog();
@@ -1035,7 +1037,7 @@ async function getPreparation(mode='daily',retry=false){
      throw new Error('저장된 맞춤 문제를 확인하지 못했어요. 학습 기록은 유지됩니다. 다시 눌러 주세요.');
    }
    let meta;
-   const restored=saved?.engine===PREPARATION_ENGINE&&saved.account===account&&saved.profile===profile&&saved.snapshot===snapshot&&Date.now()-saved.created<PREPARATION_TTL&&saved.mode===mode&&saved.plans?.length===20&&saved.plans.every(p=>isLearningTarget(p.w?.w));
+   const restored=saved?.questionPolicy===QUESTION_POLICY&&saved?.engine===PREPARATION_ENGINE&&saved.account===account&&saved.profile===profile&&saved.snapshot===snapshot&&Date.now()-saved.created<PREPARATION_TTL&&saved.mode===mode&&saved.plans?.length===20&&saved.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band));
    if(restored){
      meta={...saved,key};
      for(const plan of saved.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
@@ -1044,12 +1046,12 @@ async function getPreparation(mode='daily',retry=false){
      await withDeadline(ensureCatalog(state.users[profile].difficulty,mode==='level'?'diagnostic':'daily'),20000,'어휘를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
      let newWords=[],reviewWords=[];
-     if(mode==='level')reviewWords=WORDS.filter(w=>isLearningTarget(w.w)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt).sort(()=>Math.random()-.5).slice(0,30);
+     if(mode==='level')reviewWords=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt).sort(()=>Math.random()-.5).slice(0,30);
      else if(mode==='review')reviewWords=chooseReview(20);
      else{const budget=studyBudget(child());newWords=chooseNew(budget.newCount);reviewWords=chooseReview(20-newWords.length)}
      const baseWords=[...newWords,...reviewWords];
      if(!baseWords.length)throw new Error(mode==='review'?'아직 복습할 기록이 충분하지 않아요. 오늘의 학습을 먼저 진행해 주세요.':'출제할 어휘를 준비하지 못했습니다.');
-     meta={key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,model:LEARNING_MODEL,target:20,introAt:mode==='daily'?Math.min(6,reviewWords.length):0,plans:assignScenarios(buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w)))};
+     meta={key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,questionPolicy:QUESTION_POLICY,model:LEARNING_MODEL,target:20,introAt:mode==='daily'?Math.min(6,reviewWords.length):0,plans:assignScenarios(buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w)))};
    }
    const p=createPreparation(meta,restored?saved.ready||[]:[]);
    preparations.set(key,p);p.pump();return p;
@@ -1127,6 +1129,17 @@ async function buildSession(mode='daily'){
  }
 }
 function renderQuestion(savedHint=0){
+ let skipped=0;
+ while(current<session.queue.length&&current<session.target){
+  const pending=session.queue[current];
+  if(isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false)break;
+  // Keep the original cursor and answered records. Excluded questions get a
+  // checkpoint entry, never a wrong answer, word statistic or reward.
+  if(session.results.length!==current)throw Error('학습 순서를 확인하지 못했어요. 기존 답안은 보관되어 있어요.');
+  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,stars:0,xp:0});
+  current++;skipped++;
+ }
+ if(skipped){checkpointSession();localSave();cloudSave()}
  if(current>=session.queue.length||current>=session.target){finishSession();return}
  if(session.model===LEARNING_MODEL&&!session.introDone&&current>=session.introAt){show('intro');renderIntro();return}
  const q=session.queue[current];rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
@@ -1135,7 +1148,7 @@ function renderQuestion(savedHint=0){
  if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · 20~25분 목표';
  if($('breakNotice')){$('breakNotice').textContent='25분 동안 학습했어요. 오늘은 여기서 마치거나 잠시 쉬어도 괜찮아요.';$('breakNotice').classList.toggle('hidden',activeTime()<25*60000)}
  if($('finishEarly'))$('finishEarly').classList.toggle('hidden',session.results.length<1);
- $('counter').textContent=(current+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
+ $('counter').textContent=(session.results.filter(isVocabularyResult).length+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
  $('qTag').textContent=q.label; $('difficulty').textContent=bandLabel(child().difficulty)+' · '+child().difficulty.toFixed(1);
  $('qWord').textContent=q.showTarget?q.w.w:'';
  $('qWord').classList.toggle('hidden',!q.showTarget);
@@ -1159,6 +1172,7 @@ function renderQuestion(savedHint=0){
  checkpointSession();localSave();cloudSave();prefetchQuestions();
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
+function isVocabularyResult(r){return !r.excludedFromVocabulary&&(!r.word||isLearningTarget(r.word))}
 function applyResult(q,result,feedback,normalized='',meta={}){
  exploration(child());
  rememberQuestion(q);
@@ -1203,18 +1217,18 @@ function applyResult(q,result,feedback,normalized='',meta={}){
    const c=child();c.recentProblems=Array.isArray(c.recentProblems)?c.recentProblems:[];
    const optionKey=q.opts?.length?'|'+q.opts.map(o=>o.t).join('§'):'';c.recentProblems.push(q.signature+optionKey);c.recentProblems=c.recentProblems.slice(-60);
  }
- const recent=session.results.filter(x=>!x.practiceOnly).slice(-6),bad=recent.filter(x=>x.credit<.75).length;
+ const recent=session.results.filter(x=>isVocabularyResult(x)&&!x.practiceOnly).slice(-6),bad=recent.filter(x=>x.credit<.75).length;
  if(session.mode==='level'){
-   const answered=session.results.length;
+   const qualifying=session.results.filter(isVocabularyResult),answered=qualifying.length;
    if(answered%4===0){
-     const last=session.results.slice(-4),g=last.reduce((sum,x)=>sum+x.credit,0);
+     const last=qualifying.slice(-4),g=last.reduce((sum,x)=>sum+x.credit,0);
      if(g>=3)session.ability=clamp(session.ability+.5,1,9); else if(g<=1.5)session.ability=clamp(session.ability-.5,1,9);
    }
    if(answered===20){
-     const ratio=session.results.reduce((sum,x)=>sum+x.credit,0)/20;
+     const ratio=qualifying.reduce((sum,x)=>sum+x.credit,0)/20;
      if(ratio>=.35&&ratio<=.85)session.target=Math.min(26,session.max);
    }else if(answered===26&&session.target===26){
-     const last6=session.results.slice(-6).reduce((sum,x)=>sum+x.credit,0);
+     const last6=qualifying.slice(-6).reduce((sum,x)=>sum+x.credit,0);
      if(last6>=2&&last6<=4.5)session.target=Math.min(30,session.max);
    }
  }else if(session.model!==LEARNING_MODEL){
@@ -1378,12 +1392,12 @@ async function nextQuestion(){
 function finishSession(){
  if(!session||session.completed)return;
  session.completed=true;
- const c=child(),r=session.results,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);
+ const c=child(),r=session.results.filter(isVocabularyResult),skipped=session.results.length-r.length,total=r.length,good=r.filter(x=>['◎','○'].includes(x.result)).length,ind=r.filter(x=>x.result==='◎').length,wrong=r.filter(x=>x.result==='×').length,score=Math.round(r.reduce((a,x)=>a+(x.credit??resultCredit(x.result)),0)/Math.max(1,total)*100);
  if(session.mode!=='level'){
    if((c.lastStudyDate||c.lastDate)!==today()){c.learningDays++;c.lastStudyDate=today()}
-   if(session.mode==='daily'&&total>=session.target&&session.introDone)c.lastDate=today();
+   if(session.mode==='daily'&&session.results.length>=session.target&&session.introDone)c.lastDate=today();
    if(session.model===LEARNING_MODEL)updateLearningLevels(c,r);
-   c.sessions.unshift({date:today(),mode:session.mode,score,total,good,wrong,difficulty:c.difficulty,model:session.model,activeMinutes:Math.round(activeTime()/6000)/10,recognition:r.filter(x=>x.type.startsWith('mc_')).length,recall:r.filter(x=>x.evidence?.kind==='recall').length,use:r.filter(x=>x.evidence?.kind==='use').length});
+   c.sessions.unshift({date:today(),mode:session.mode,score,total,good,wrong,skipped,difficulty:c.difficulty,model:session.model,activeMinutes:Math.round(activeTime()/6000)/10,recognition:r.filter(x=>x.type.startsWith('mc_')).length,recall:r.filter(x=>x.evidence?.kind==='recall').length,use:r.filter(x=>x.evidence?.kind==='use').length});
    c.sessions=c.sessions.slice(0,60);
  }else{
    const weighted=r.reduce((sum,x)=>sum+((x.credit??resultCredit(x.result))*(x.band||3)),0);
@@ -1400,7 +1414,7 @@ function finishSession(){
  c.preparationRevision=(c.preparationRevision||0)+1;
  storeLearnerCheckpoint(session.profile);localSave();
  cloudSave().then(()=>warmDailyQuestions()); renderAll(); show(state.selected==='guest'?'home':'report');
- alert(session.mode==='level'?'시작 수준 확인 완료 · 출제 난이도 '+c.difficulty.toFixed(1):'오늘 학습 완료! '+total+'번의 활동을 기록했어요.'+(earnedStars?' ✦ 별조각 '+earnedStars+'개 획득! 캐릭터 꾸미기에서 사용해요.':'')+' 배운 단어는 다른 날 다시 확인해요.');
+ alert(session.mode==='level'?'시작 수준 확인 완료 · 출제 난이도 '+c.difficulty.toFixed(1):'오늘 학습 완료! '+total+'번의 활동을 기록했어요.'+(skipped?' 전문 지식·설명형 문항 '+skipped+'개는 어휘 평가에서 제외했어요.':'')+(earnedStars?' ✦ 별조각 '+earnedStars+'개 획득! 캐릭터 꾸미기에서 사용해요.':'')+' 배운 단어는 다른 날 다시 확인해요.');
 }
 function renderAll(){
  renderResumeButton();

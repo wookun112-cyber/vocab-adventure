@@ -44,10 +44,10 @@ rewards.run("session={lessonId:'daily',account:'stars-reward',profile:'ayoung',m
 assert.equal(rewards.run('rewardAnswer(q,false)'),5,'wrong or assisted activities still earn effort rewards');assert.equal(rewards.run('customization(child()).balance'),62);
 assert.equal(rewards.run('rewardAnswer(q,true)'),0);assert.equal(rewards.run('customization(child()).balance'),62,'resuming an answered activity cannot grant more currency');
 rewards.run("session.lessonId='second'");assert.equal(rewards.run('rewardAnswer(q,true)'),0,'same passage across lessons receives one reward');
-rewards.run('session.results=Array(15)');assert.equal(rewards.run('rewardCompletion()'),0,'early finish has no completion bonus');
-rewards.run('session.results=Array(16)');assert.equal(rewards.run('rewardCompletion()'),40,'the new sixteen-activity plan receives the completion reward');
+rewards.run('session.results=Array(15).fill({credit:1})');assert.equal(rewards.run('rewardCompletion()'),0,'early finish has no completion bonus');
+rewards.run('session.results=Array(16).fill({credit:1})');assert.equal(rewards.run('rewardCompletion()'),40,'the new sixteen-activity plan receives the completion reward');
 assert.equal(rewards.run('customization(child()).balance'),82);assert.equal(rewards.run('rewardCompletion()'),0);
-rewards.run("for(let i=1;i<35;i++){session.results=Array(i);q.signature='unique-'+i;rewardAnswer(q,true)}");
+rewards.run("for(let i=1;i<35;i++){session.results=Array(i).fill({credit:1});q.signature='unique-'+i;rewardAnswer(q,true)}");
 assert.equal(rewards.run('customization(child()).balance'),140,'currency is capped at thirty activities plus one daily bonus');
 const before=rewards.run('customization(child()).balance');rewards.run("session.account='someone-else';q.signature='foreign'");assert.equal(rewards.run('rewardAnswer(q,true)'),0);assert.equal(rewards.run('customization(child()).balance'),before);
 const visual=fixture();

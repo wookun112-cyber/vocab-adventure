@@ -18,6 +18,11 @@ assert.equal(plans.filter(p=>p.needsCard).length,2);assert.equal(plans.slice(0,2
 assert.ok(plans.findIndex(p=>p.stage==='recall'&&p.w.w==='재사용')>=9,'three intervening activities after teaching');
 const emptyPlan=buildLearningPlan(fresh,[],20,'daily');
 assert.equal(emptyPlan.slice(0,20).filter(p=>p.type==='subjective_use').length,2);
+for(let k=0;k<=8;k++){
+ const balanced=buildLearningPlan(fresh,reviews.slice(0,k),20,'daily');
+ assert.equal(balanced.filter(p=>p.type.startsWith('mc_')).length,10,'each daily plan balances ten choices and ten written activities');
+ assert.equal(balanced.filter(p=>p.type.startsWith('subjective_')).length,10);
+}
 let learner={difficulty:2,words:{},learningEvidence:[]},st={lastExposureAt:'2026-09-30',recallStage:3};
 const good={credit:1,targetRecall:true,contextSuccess:true,practiceOnly:false,hintUsed:false,revealed:false};
 let evidence=recordLearningEvidence(learner,st,{w:word,type:'mc_context',showTarget:false},good,day);
@@ -116,3 +121,18 @@ selection.run("WORDS=[{w:'생활 정보 격차',band:2},{w:'생활정보격차',
 assert.equal(selection.run('chooseNew(20).some(w=>!isLearningTarget(w.w))'),false);
 assert.equal(selection.run('chooseReview(20).some(w=>!isLearningTarget(w.w))'),false);
 assert.equal(selection.run('child().words["생활 정보 격차"].seen'),2);
+// A pending specialist question is skipped without grading or word mutations;
+// answered records remain available at their original cursor positions.
+const interruptedState=JSON.parse(reopened.run('JSON.stringify(state)'));
+interruptedState.users.guest.activeLesson=JSON.parse(JSON.stringify(saved.users.guest.activeLesson));
+interruptedState.users.guest.activeLesson.introDone=true;
+interruptedState.users.guest.activeLesson.nextIndex=6;
+interruptedState.users.guest.activeLesson.plans[6].w={w:'등비중항',d:'수학 전문 용어',band:7,cat:'수학·논리'};
+interruptedState.users.guest.activeLesson.ready.find(([i])=>i===6)[1].w=interruptedState.users.guest.activeLesson.plans[6].w;
+const originalAnswers=JSON.stringify(interruptedState.users.guest.activeLesson.results);
+const skip=fixture(interruptedState);await skip.run('buildSession()');
+assert.equal(skip.run('current'),7);assert.equal(skip.run('session.results[6].excludedFromVocabulary'),true);
+assert.equal(skip.run('JSON.stringify(session.results.slice(0,6))'),originalAnswers);
+assert.equal(skip.run('child().words["등비중항"]'),undefined);
+assert.equal(skip.gradeCalls,0);
+console.log('Interrupted lesson verified: specialist item skipped, no wrong answer or reward, original answers/cursor preserved.');
