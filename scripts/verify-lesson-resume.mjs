@@ -32,7 +32,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
   })
  });
  run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);
- run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};
+ run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;
   globalThis.makeRemoteLesson=()=>{
    const newWords=SEED_WORDS.slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));
    const ready=plans.map((p,i)=>[i,{w:p.w,type:p.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'기록'+i+'를 읽고 새로운 상황'+i+'의 ＿＿＿＿를 살폈어요.',open:p.type.startsWith('subjective_'),hideWord:true,showTarget:false,

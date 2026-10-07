@@ -7,7 +7,7 @@ const local=new Map(),cloud=new Map();
 function fixture(account='family'){
  const nodes=new Map();const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',value:'',style:{},classList:{toggle(){},add(){},remove(){}}});return nodes.get(id)};
  const ctx=vm.createContext({console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
- const run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);run(`authUser={id:${JSON.stringify(account)}};warmDailyQuestions=()=>{};`);return {run,node};
+ const run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);run(`authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;warmDailyQuestions=()=>{};`);return {run,node};
 }
 const f=fixture();
 f.run("child().words['근거'].seen=9;child().words['근거'].independentCorrect=4;child().activeLesson={id:'paused',nextIndex:9};");

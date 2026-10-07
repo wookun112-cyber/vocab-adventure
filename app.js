@@ -415,7 +415,7 @@ function explorationRanking(c=child(),profile=state.selected,day=leagueDay()){
  return rows.map((x,i)=>{if(!i||x.difficulty!==rows[i-1].difficulty)rank=i+1;return {...x,rank,tied:rows.some((r,j)=>j!==i&&r.difficulty===x.difficulty)}});
 }
 function awardRankEvolutions(rows){
- if(!authUser)return [];
+ if(!canSaveLearning())return [];
  const upgrades=[];let changed=false;
  for(const row of rows.filter(x=>x.family)){
   const c=state.users[row.id],previous=evolutionState(c),stage=Math.max(previous.unlockedStage,evolutionForRank(row.rank)),bestRank=Math.min(previous.bestRank||100,row.rank);
@@ -482,6 +482,8 @@ const freshChild=name=>({
 });
 const initial=()=>({v:5,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성'),guest:freshChild('게스트')},updatedAt:Date.now()});
 let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null,hintLevel=0,introIndex=0;
+let loadedAccount=null,authEpoch=0,authLoadTask=null;
+const canSaveLearning=()=>!!authUser&&loadedAccount===authUser.id;
 
 function child(){return state.users[state.selected]}
 function wordState(w){
@@ -490,14 +492,18 @@ function wordState(w){
  else if(current.__v!==2)c.words[w]={...hydrateWordState(current),__v:2};
  return c.words[w];
 }
-function localSave(){localStorage.setItem('vocab-adventure-v8',JSON.stringify(state))}
-async function cloudLoad(){
- const {data,error}=await sb.from('app_state').select('state').eq('user_id',authUser.id).maybeSingle();
+function localSave(){if(canSaveLearning())localStorage.setItem('vocab-account-'+authUser.id,JSON.stringify({account:authUser.id,state}))}
+async function cloudLoad(account=authUser?.id,epoch=authEpoch){
+ if(!account)return false;
+ const {data,error}=await withDeadline(sb.from('app_state').select('state').eq('user_id',account).maybeSingle(),15000,'기록 불러오기가 지연됐어요.');
+ if(account!==authUser?.id||epoch!==authEpoch)return false;
  if(error) throw error;
  state=mergeState(data?.state||initial());
+ loadedAccount=account;
  const recovered=mergeLearnerCheckpoints();
  localSave();renderAll();
  if(!data?.state||recovered)await cloudSave();
+ return true;
 }
 function rebuildCatalog(){
  WORDS=[...SEED_WORDS];
@@ -533,21 +539,26 @@ function mergeState(raw){
 }
 let cloudSavePending=false,cloudSaveTask=null;
 async function cloudSave(silent=true){
- if(!authUser)return;
+ if(!canSaveLearning())return;
  cloudSavePending=true;
  if(cloudSaveTask)return cloudSaveTask;
  const account=authUser.id;
+ const epoch=authEpoch;
  cloudSaveTask=(async()=>{
   saving=true;
   try{
    do{
+    if(!canSaveLearning()||authUser.id!==account||epoch!==authEpoch)break;
     cloudSavePending=false;state.updatedAt=Date.now();localSave();
     const snapshot=JSON.parse(JSON.stringify(state));
     const {error}=await sb.from('app_state').upsert({user_id:account,state:snapshot,updated_at:new Date().toISOString()});
-    $('cloudPill').textContent=error?'저장 오류':'클라우드 저장됨';$('cloudPill').classList.toggle('on',!error);
+    if(account!==authUser?.id||epoch!==authEpoch)break;
+    const conflict=error?.message?.includes('LEARNING_STATE_REGRESSION');
+    $('cloudPill').textContent=conflict?'기존 기록 보호됨 · 새로고침 필요':error?'저장 오류':'클라우드 저장됨';$('cloudPill').classList.toggle('on',!error);
+    if(conflict){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('다른 기기의 최신 기록을 보호했어요. 새로고침하여 기록을 다시 불러와 주세요.',true)}
     if(error&&!silent)alert('클라우드 저장에 실패했어요. 인터넷 연결을 확인해 주세요.');
     if(error)break;
-   }while(cloudSavePending&&authUser?.id===account);
+   }while(cloudSavePending&&authUser?.id===account&&epoch===authEpoch);
   }finally{saving=false;cloudSaveTask=null}
  })();
  return cloudSaveTask;
@@ -566,7 +577,7 @@ function renderResumeButton(){
  $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):p&&!p.cancelled&&p.ready.size<20?'문제 준비 중 · '+p.ready.size+'/20개':done?'계속 학습하기':'오늘의 학습 시작';
 }
 function storeLearnerCheckpoint(profile){
- if(!authUser)return;
+ if(!canSaveLearning())return;
  const c=state.users[profile];
  c.lessonCheckpointAt=Math.max(Date.now(),(c.lessonCheckpointAt||0)+1);
  try{localStorage.setItem(learnerCheckpointKey(profile),JSON.stringify({account:authUser.id,profile,savedAt:c.lessonCheckpointAt,learner:c,catalog:state.catalog}))}catch{}
@@ -592,12 +603,19 @@ function mergeLearnerCheckpoints(){
  for(const profile of ['ayoung','inseong','guest']){
   let saved;try{saved=JSON.parse(localStorage.getItem(learnerCheckpointKey(profile))||'null')}catch{continue}
   const c=state.users[profile];
-  if(saved?.account!==authUser?.id||saved.profile!==profile||!saved.learner||!(saved.savedAt>(c.lessonCheckpointAt||0)))continue;
+  if(saved?.account!==authUser?.id||saved.profile!==profile||!saved.learner||!preservesLearning(c,saved.learner)||!(saved.savedAt>(c.lessonCheckpointAt||0)||hasMoreLearning(c,saved.learner)))continue;
   state.users[profile]=saved.learner;
   state.catalog={...state.catalog,...(saved.catalog||{})};changed=true;
  }
  if(changed)state=mergeState(state);
  return changed;
+}
+function preservesLearning(previous,next){
+ if((next.learningDays||0)<(previous.learningDays||0)||(next.sessions||[]).length<(previous.sessions||[]).length||previous.levelTestCompleted&&!next.levelTestCompleted)return false;
+ return Object.entries(previous.words||{}).every(([w,stats])=>(next.words?.[w]?.seen||0)>=(stats.seen||0));
+}
+function hasMoreLearning(previous,next){
+ return (next.learningDays||0)>(previous.learningDays||0)||(next.sessions||[]).length>(previous.sessions||[]).length||Object.entries(next.words||{}).some(([w,s])=>(s.seen||0)>(previous.words?.[w]?.seen||0));
 }
 async function resumeLesson(saved){
  const profile=state.selected,account=authUser?.id;
@@ -1447,15 +1465,56 @@ async function signup(){const email=$('email').value.trim(),password=$('password
 async function resendConfirm(){const email=$('email').value.trim();if(!email)return setMsg('먼저 이메일을 입력해 주세요.',true);setMsg('확인 메일을 다시 보내는 중…');const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg('새 확인 메일을 보냈어요. 가장 최근 메일의 링크를 눌러 주세요.')}
 function setMsg(m,e=false){$('authMsg').textContent=m;$('authMsg').className='authmsg'+(e?' error':'')}
 async function applyAuth(sessionObj){
+ const nextUser=sessionObj?.user||null;
+ if(nextUser?.id===authUser?.id){
+  if(canSaveLearning())return;
+  if(authLoadTask)return authLoadTask;
+ }
  const previousAccount=authUser?.id;
- authUser=sessionObj?.user||null;
- if(previousAccount&&previousAccount!==authUser?.id){for(const p of preparations.values())p.cancel();preparations.clear();if(session?.preparation)session.preparation.cancel();session=null}
-$('authGate').classList.toggle('hidden',!!authUser);
- if(authUser){$('accountEmail').textContent=authUser.email||'가족 계정';try{await cloudLoad();$('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');setTimeout(async()=>{await ensureCatalog(child().difficulty,'daily');warmDailyQuestions();const st=await curriculumStatus();if(st&&$('curriculumProgress')){const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0);
- const ready=n>=5000&&n<=7000;
- $('curriculumProgress').textContent=ready?'2차 선별 완료 · 사용 가능 '+n.toLocaleString()+'개 · 학년은 권장 단계':'사용 가능 '+n.toLocaleString()+'개 · 점검 필요';
- if($('buildCurriculum')){$('buildCurriculum').textContent=ready?'어휘 DB 확인 완료':'다시 확인';$('buildCurriculum').disabled=ready;}}},700)}catch(e){const loc=localStorage.getItem('vocab-adventure-v8');if(loc)state=mergeState(JSON.parse(loc));mergeLearnerCheckpoints();renderAll();$('cloudPill').textContent='로컬 모드'}} 
+ const epoch=++authEpoch;loadedAccount=null;authUser=nextUser;
+ $('authGate').classList.remove('hidden');
+ if(previousAccount!==nextUser?.id){
+  for(const p of preparations.values())p.cancel();preparations.clear();
+  if(session?.preparation)session.preparation.cancel();session=null;
+  state=mergeState(initial());
+ }
+ if(!nextUser){setMsg('로그인하면 저장된 기록을 불러옵니다.');renderAll();return}
+ const account=nextUser.id;
+ $('accountEmail').textContent=nextUser.email||'가족 계정';
+ setMsg('저장된 학습 기록을 확인하고 있어요…');
+ const task=(async()=>{
+  try{
+   if(cloudSaveTask)await cloudSaveTask;
+   if(epoch!==authEpoch)return;
+   const loaded=await cloudLoad(account,epoch);
+   if(!loaded||epoch!==authEpoch||!canSaveLearning())return;
+   $('authGate').classList.add('hidden');setMsg('');
+   $('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');
+   setTimeout(async()=>{
+    if(epoch!==authEpoch||!canSaveLearning())return;
+    try{
+     await ensureCatalog(child().difficulty,'daily');
+     if(epoch!==authEpoch||!canSaveLearning())return;
+     warmDailyQuestions();const st=await curriculumStatus();
+     if(epoch!==authEpoch||!canSaveLearning())return;
+     if(st&&$('curriculumProgress')){
+      const n=Object.values(st).reduce((a,b)=>a+Number(b||0),0),ready=n>=5000&&n<=7000;
+      $('curriculumProgress').textContent=ready?'2차 선별 완료 · 사용 가능 '+n.toLocaleString()+'개 · 학년은 권장 단계':'사용 가능 '+n.toLocaleString()+'개 · 점검 필요';
+      if($('buildCurriculum')){$('buildCurriculum').textContent=ready?'어휘 DB 확인 완료':'다시 확인';$('buildCurriculum').disabled=ready;}
+     }
+    }catch{}
+   },700);
+  }catch(e){
+   if(epoch!==authEpoch)return;
+   loadedAccount=null;++authEpoch;
+   $('cloudPill').textContent='기록 불러오기 실패';$('cloudPill').classList.remove('on');
+   setMsg('기록을 불러오지 못했어요. 기존 기록은 보호됩니다. 인터넷 연결을 확인하고 다시 로그인하거나 새로고침해 주세요.',true);
+  }
+ })();
+ authLoadTask=task;
+ try{return await task}finally{if(authLoadTask===task)authLoadTask=null}
 }
+
 function startVoice(){
  const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return alert('이 브라우저에서는 음성입력을 지원하지 않아요. Chrome/Edge에서 사용해 주세요.');
  const r=new R();r.lang='ko-KR';r.interimResults=false;$('mic').classList.add('recording');$('mic').textContent='듣는 중…';
@@ -1520,4 +1579,3 @@ if('serviceWorker'in navigator){
 renderAll();
 
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else if(session&&['learn','intro'].some(id=>$(id)?.classList.contains('active')))session.clockStarted=Date.now()});
-
