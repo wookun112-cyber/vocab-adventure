@@ -34,8 +34,7 @@ begin
  perform vocab_private.kick_preparation(j.id);
  select * into j from vocab_private.preparations where user_id=auth.uid() and profile=p_profile;
  return jsonb_build_object('id',j.id,'status',case when j.attempts>=8 and jsonb_array_length(coalesce(j.payload->'ready','[]'))<20 then 'failed' else j.status end,'payload',j.payload);
-end $function$
-
+end $function$;
 
 CREATE OR REPLACE FUNCTION vocab_private.bank_candidates(p_user uuid, p_level numeric)
  RETURNS jsonb
@@ -46,8 +45,7 @@ AS $function$
  select coalesce(jsonb_agg(jsonb_build_object('question',b.question,'readerLevel',b.reader_level,'supportLevel',b.support_level)),'[]') from (
  select * from vocab_private.question_bank where user_id=p_user and policy='vocabulary-level-fit-12.13' and reader_level between p_level-.35 and p_level+.35 order by created_at desc limit 800
  ) b;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION vocab_private.cache_packet(p_user uuid, p_payload jsonb)
  RETURNS integer
@@ -69,8 +67,7 @@ begin
   end if;
  end loop;
  return n;
-end $function$
-
+end $function$;
 
 CREATE OR REPLACE FUNCTION vocab_private.reserve_usable(p_payload jsonb, l jsonb)
  RETURNS boolean
@@ -98,8 +95,7 @@ begin
   end loop;
  end loop;
  return true;
-end $function$
-
+end $function$;
 
 CREATE OR REPLACE FUNCTION vocab_private.ensure_reserves(p_user uuid, p_profile text)
  RETURNS void
@@ -124,4 +120,4 @@ begin
    where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.13' or payload->>'selectionPolicy' is distinct from 'target-band-12.9' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
  perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
-end $function$
+end $function$;
