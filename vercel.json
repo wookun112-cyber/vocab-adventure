@@ -46,6 +46,6 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "node scripts/verify-server-preparation.mjs && node scripts/verify-question-loading.mjs && node scripts/verify-question-batches.mjs",
+  "buildCommand": "node scripts/verify-lesson-resume.mjs && node scripts/verify-server-preparation.mjs && node scripts/verify-question-loading.mjs && node scripts/verify-question-batches.mjs",
   "outputDirectory": "."
 }
