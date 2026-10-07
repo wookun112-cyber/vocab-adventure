@@ -1,4 +1,4 @@
-import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget} from '../lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
@@ -14,7 +14,7 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&p.w?.w!=='민사 재판')))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'});
+ let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&inTargetBand(p.w,job.learner.difficulty)&&p.w?.w!=='민사 재판')))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'});
  const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
  hydrateFromBank(payload,job.learner,job.bank||[],job.reserved||[]);

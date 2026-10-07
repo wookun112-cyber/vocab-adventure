@@ -37,7 +37,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
    const newWords=SEED_WORDS.slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));
    const ready=plans.map((p,i)=>[i,{w:p.w,type:p.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'기록'+i+'를 읽고 새로운 상황'+i+'의 ＿＿＿＿를 살폈어요.',open:p.type.startsWith('subjective_'),hideWord:true,showTarget:false,
     opts:p.type.startsWith('mc_')?[{t:p.w.w,ok:true},...['가나다','라마바','사아자','차카타'].map(t=>({t,ok:false}))]:[],acceptedAnswers:[p.w.w],hints:['상황의 단서를 살펴보세요.','앞뒤 문장을 함께 살펴보세요.'],feedbackCorrect:'문맥에 맞는 말이에요.',signature:'새 상황'+i,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}}]);
-   return {id:'job-'+state.selected,status:'ready',payload:{questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,mode:'daily',snapshot:preparationSnapshot(state.selected),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords:newWords,plans,ready}};
+   return {id:'job-'+state.selected,status:'ready',payload:{selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,mode:'daily',snapshot:preparationSnapshot(state.selected),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords:newWords,plans,ready}};
   };
  `);
  return {run,ctx,node,alerts,calls,local,cloud,block(){blockWrites=true},release(){blockWrites=false;deferred.splice(0).forEach(resolve=>resolve())}};

@@ -75,18 +75,31 @@ begin
  update vocab_private.lesson_reserves set next_attempt=now()+interval '6 minutes' where id=p_id;
 end $$;
 
-create or replace function vocab_private.ensure_reserves(p_user uuid,p_profile text) returns void language plpgsql security definer set search_path='' as $$
-declare l jsonb; i integer;
+CREATE OR REPLACE FUNCTION vocab_private.ensure_reserves(p_user uuid, p_profile text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare l jsonb; s jsonb; i integer;
 begin
- select state#>array['users',p_profile] into l from public.app_state where user_id=p_user;
- if l is null or not exists(select 1 from jsonb_each(coalesce(l->'words','{}')) where coalesce((value->>'seen')::integer,0)>0 or value->>'introducedAt' is not null) then return; end if;
+ select state into s from public.app_state where user_id=p_user;l:=s#>array['users',p_profile];
+ if l is null or not exists(
+  select 1 from jsonb_each(coalesce(l->'words','{}')) w
+  left join public.curriculum_words c on c.word=w.key
+  where (coalesce((w.value->>'seen')::integer,0)>0 or w.value->>'introducedAt' is not null)
+   and coalesce(c.quality_status,'reviewed')<>'rejected' and w.key<>'민사 재판'
+   and coalesce(c.band,(s#>>array['catalog',w.key,'band'])::integer,0)
+    between greatest(1,ceil(coalesce((l->>'difficulty')::numeric,2)-1)) and least(9,floor(coalesce((l->>'difficulty')::numeric,2)+1))
+ ) then return;end if;
  for i in 1..1 loop
   insert into vocab_private.lesson_reserves(user_id,profile,slot) values(p_user,p_profile,i) on conflict(user_id,profile,slot) do nothing;
   update vocab_private.lesson_reserves set id=gen_random_uuid(),capability=gen_random_uuid(),lease=null,status='pending',payload=null,attempts=0,next_attempt=now(),updated_at=now()
-   where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
+   where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or payload->>'selectionPolicy' is distinct from 'target-band-12.9' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
  perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
-end $$;
+end $function$
+
 
 create or replace function vocab_private.claim_reserve(p_id uuid,p_key uuid) returns jsonb language plpgsql security definer set search_path='' as $$
 declare j vocab_private.lesson_reserves; s jsonb; l jsonb; words jsonb; lease_id uuid; desired_band integer;
@@ -114,12 +127,17 @@ end $$;
 create or replace function public.save_reserve_preparation(p_id uuid,p_key uuid,p_lease uuid,p_payload jsonb,p_failed boolean default false) returns boolean language sql security invoker set search_path='' as $$select vocab_private.save_reserve_preparation(p_id,p_key,p_lease,p_payload,p_failed)$$;
 
 -- Reject used sentences, stale levels, and words not yet learned before promotion.
-create or replace function vocab_private.reserve_usable(p_payload jsonb,l jsonb) returns boolean language plpgsql stable security definer set search_path='' as $$
+CREATE OR REPLACE FUNCTION vocab_private.reserve_usable(p_payload jsonb, l jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
 declare r jsonb; q jsonb; st jsonb; h jsonb; used text[];
 begin
- if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or jsonb_array_length(coalesce(p_payload->'ready','[]'))<>20 or jsonb_array_length(coalesce(p_payload->'plans','[]'))<>20
+ if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or p_payload->>'selectionPolicy' is distinct from 'target-band-12.9' or jsonb_array_length(coalesce(p_payload->'ready','[]'))<>20 or jsonb_array_length(coalesce(p_payload->'plans','[]'))<>20
   or abs(coalesce((p_payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35 then return false;end if;
- if exists(select 1 from jsonb_array_elements(p_payload->'plans') x where coalesce((x#>>'{w,band}')::numeric,3)>=greatest(1,floor(coalesce((l->>'difficulty')::numeric,2))-1)) and (select count(*) from jsonb_array_elements(p_payload->'plans') x where coalesce((x#>>'{w,band}')::numeric,3)<greatest(1,floor(coalesce((l->>'difficulty')::numeric,2))-1))>4 then return false;end if;
+ if exists(select 1 from jsonb_array_elements(p_payload->'plans') x where coalesce((x#>>'{w,band}')::numeric,0) not between greatest(1,ceil(coalesce((l->>'difficulty')::numeric,2)-1)) and least(9,floor(coalesce((l->>'difficulty')::numeric,2)+1))) then return false;end if;
  for r in select value from jsonb_array_elements(p_payload->'ready') loop
   q:=r->1;st:=l#>array['words',q#>>'{w,w}'];
   if st is null or (coalesce((st->>'seen')::integer,0)=0 and st->>'introducedAt' is null)
@@ -135,7 +153,8 @@ begin
   end loop;
  end loop;
  return true;
-end $$;
+end $function$
+
 
 create or replace function vocab_private.promote_reserve(p_user uuid,p_profile text) returns jsonb language plpgsql security definer set search_path='' as $$
 declare j vocab_private.lesson_reserves; l jsonb; day text; fresh_count integer; r jsonb; q jsonb; ready jsonb:='[]'; data jsonb; st jsonb; practice boolean; plans jsonb:='[]'; pl jsonb;

@@ -107,7 +107,7 @@ for(const phrase of CONTEXT_ONLY_EXPRESSIONS){
 for(const w of ['격차','정보','기준','시행착오','역지사지','탄소 중립','먹이 사슬','발이 넓다'])assert.equal(isLearningTarget(w),true);
 const rejectedCatalog={'생활 정보 격차':{w:'생활 정보 격차',d:'설명형 표현',band:7,source:'fixed'}};
 const rejectedLearner={...learner,difficulty:7,words:{'생활 정보 격차':{seen:10,introducedAt:'2026-09-01'}}};
-const rejectedCurriculum=[...curriculum,...CONTEXT_ONLY_EXPRESSIONS.map(word=>({word,definition:'설명형 표현',band:7,domain:'생활'}))];
+const rejectedCurriculum=[...guestCurriculum,...CONTEXT_ONLY_EXPRESSIONS.map(word=>({word,definition:'설명형 표현',band:7,domain:'생활'}))];
 const curated=makePreparedPlan(rejectedLearner,rejectedCatalog,rejectedCurriculum,'family','guest');
 assert.ok(curated.plans.every(p=>isLearningTarget(p.w.w)));
 assert.ok(curated.newWords.every(isLearningTarget));assert.equal(rejectedLearner.words['생활 정보 격차'].seen,10);
