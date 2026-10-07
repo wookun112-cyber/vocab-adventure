@@ -123,3 +123,5 @@ for(const w of ["등비중항","소인수분해","삼각형의 합동","사동 �
 for(const w of ["나누다","확인하다","수렴","편차","비교"])assert.equal(isLearningTarget(w,"수학·논리",7),true);
 assert.equal(isLearningTarget("새로운 수학 공식","수학·논리",7),false);
 assert.equal(isLearningTarget("간섭","과학",7),true);assert.equal(isLearningTarget("새로운 전문 과학명","과학",7),false);
+
+for(const w of ['꾸미는 말','부사','주어','자외선 차단'])assert.equal(isLearningTarget(w),false);
