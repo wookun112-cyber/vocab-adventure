@@ -187,3 +187,23 @@ const missing=fixture();missing.run("sb.rpc=async()=>({data:null,error:null});en
 await missing.run('buildSession()');
 assert.equal(missing.run('session'),null);assert.equal(missing.calls.generation,0);assert.equal(missing.node('startDaily').disabled,false);
 console.log('Reported failure regression verified: eight-question partial lesson repaired from the cloud, first result kept, resumes at question two without re-consumption or live generation; missing stored lessons cannot fall back.');
+
+// The reported tide blank is upgraded only for presentation and grading. Stored
+// question order/validation stays compatible with an interrupted old lesson.
+const legacyWritten=fixture();await legacyWritten.run('buildSession()');
+legacyWritten.run(`globalThis.tideQuestion={...session.queue[9],w:{w:'밀물',d:'바닷물이 해안 쪽으로 밀려와 바닷물의 높이가 높아지는 현상',band:3,cat:'과학'},type:'subjective_context',open:true,showTarget:false,hideWord:true,opts:[],q:'빈칸에 들어갈 알맞은 말을 쓰세요.',ctx:'갯벌 입구에 오후에는 물이 들어온다는 안내가 있었어요. 아빠는 ＿＿＿＿이 더 차오르기 전에 짐을 옮겼어요.',acceptedAnswers:[{text:'밀물',credit:1},{text:'바닷물',credit:.5}],hints:['짐을 옮긴 이유를 생각해요.'],signature:'과거 갯벌 지문'};
+ session.queue[9]=tideQuestion;session.preparation.ready.set(9,tideQuestion);session.preparation.plans[9]={...session.preparation.plans[9],w:tideQuestion.w,type:tideQuestion.type};`);
+for(let i=0;i<9;i++){
+ legacyWritten.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1})");
+ if(i<8)await legacyWritten.run('nextQuestion()');
+}
+await legacyWritten.run('cloudSave()');
+const originalWrittenAnswers=legacyWritten.run('JSON.stringify(session.results)');
+const legacyRestart=fixture(legacyWritten.local,legacyWritten.cloud);await legacyRestart.run('cloudLoad()');await legacyRestart.run('buildSession()');
+assert.equal(legacyRestart.run('current'),9);assert.equal(legacyRestart.run('JSON.stringify(session.results)'),originalWrittenAnswers);
+assert.ok(legacyRestart.node('qText').textContent.includes('설명'));assert.ok(!legacyRestart.node('qContext').textContent.includes('＿＿＿＿'));assert.ok(legacyRestart.node('qContext').textContent.includes('높이가 높아지는'));
+assert.equal(legacyRestart.run('session.queue[9].type'),'subjective_context','stored original remains unchanged');
+legacyRestart.run("showHint();$('answer').value='밀물'");await legacyRestart.run('gradeCurrent(false)');
+assert.equal(legacyRestart.run('session.results.at(-1).type'),'subjective_recall');assert.equal(legacyRestart.run('session.results.at(-1).targetRecall'),true);assert.equal(legacyRestart.run('session.results.at(-1).hintUsed'),true);
+assert.equal(legacyRestart.calls.generation,0);assert.equal(legacyRestart.calls.consumes,0);
+console.log('Written migration verified in the actual app: ninth-answer restart presents clear tide meaning clues at question ten, keeps all prior answers and stored question order, grades the new recall task with hint accounting, and needs zero AI generation.');

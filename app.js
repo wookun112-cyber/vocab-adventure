@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -769,14 +769,14 @@ function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=f
  st.lastReviewAt=today();
  st.nextReviewAt=dayOffset(days);
 }
-const QUIZ_TYPES=['mc_context','mc_usage','subjective_context','subjective_dialogue'];
+const QUIZ_TYPES=['mc_usage','mc_reading','subjective_recall','subjective_use'];
 const TYPE_SEQUENCE=[
  'mc_context','mc_usage','mc_context','mc_usage','mc_context',
- 'subjective_context','mc_usage','subjective_dialogue','subjective_context','mc_context',
- 'subjective_dialogue','mc_usage','subjective_context','subjective_dialogue','mc_context',
- 'subjective_context','mc_usage','subjective_dialogue','subjective_context','subjective_dialogue',
- 'mc_context','subjective_context','mc_usage','subjective_dialogue','mc_context',
- 'subjective_context','mc_usage','subjective_dialogue','mc_context','subjective_context'
+ 'subjective_recall','mc_usage','subjective_use','subjective_recall','mc_context',
+ 'subjective_use','mc_usage','subjective_recall','subjective_use','mc_context',
+ 'subjective_recall','mc_usage','subjective_use','subjective_recall','subjective_use',
+ 'mc_context','subjective_recall','mc_usage','subjective_use','mc_context',
+ 'subjective_recall','mc_usage','subjective_use','mc_context','subjective_recall'
 ];
 const TYPE_LABELS=LEARNING_LABELS;
 const apiDomain=cat=>({'사고':'국어','수학':'수학·논리','논리':'국어'}[cat]||(['국어','사회','과학','수학·논리','감정·관계','생활'].includes(cat)?cat:'국어'));
@@ -1149,7 +1149,7 @@ function renderQuestion(savedHint=0){
  if(skipped){checkpointSession();localSave();cloudSave()}
  if(current>=session.queue.length||current>=session.target){finishSession();return}
  if(session.model===LEARNING_MODEL&&!session.introDone&&current>=session.introAt){show('intro');renderIntro();return}
- const q=session.queue[current];rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
+ const q=presentWrittenQuestion(session.queue[current]);rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
  $('learnType').textContent=STAGE_LABELS[q.stage]||(session.mode==='level'?'시작 수준 확인':session.mode==='review'?'집중 복습':'오늘의 학습');
  if($('learningPath'))$('learningPath').textContent=session.model===LEARNING_MODEL?'지난 단어 복습 → 뜻 익히기 → 상황 이해 → 내 문장':'';
  if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · 20~25분 목표';
@@ -1165,7 +1165,7 @@ function renderQuestion(savedHint=0){
  $('next').classList.add('hidden'); $('answer').value='';
  $('options').innerHTML='';
  $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
- $('answer').placeholder=q.type==='subjective_use'?'이 단어를 넣어 나만의 문장을 써 보세요.':q.type==='subjective_dialogue'?'대화에 어울리는 어휘를 써 보세요.':'빈칸에 들어갈 어휘를 써 보세요.';
+ $('answer').placeholder=q.type==='subjective_use'?'이 단어를 넣어 나만의 문장을 써 보세요.':'설명에 해당하는 단어를 써 보세요.';
  $('hint').classList.remove('hidden'); $('hint').disabled=false; $('hint').textContent='힌트';
  if(q.opts?.length)q.opts.forEach((o,i)=>{
    const b=document.createElement('button');b.className='option';b.textContent=o.t;
@@ -1251,7 +1251,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function showHint(){
  if(!session?.queue?.[current]||!$('next').classList.contains('hidden'))return;
- const q=session.queue[current],hints=q.hints||[];
+ const q=presentWrittenQuestion(session.queue[current]),hints=q.hints||[];
  if(!hints.length){$('hint').classList.add('hidden');return}
  hintLevel=Math.min(hints.length,hintLevel+1);
  $('hintBox').textContent='힌트 '+hintLevel+': '+hints[hintLevel-1];
@@ -1263,7 +1263,7 @@ function showHint(){
 const normalizeTyped=s=>String(s||'').replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
 
 async function gradeCurrent(dontKnow){
- const active=session,q=active.queue[current];if(active.results.length>current||!$('next').classList.contains('hidden'))return;
+ const active=session,q=presentWrittenQuestion(active.queue[current]);if(active.results.length>current||!$('next').classList.contains('hidden'))return;
  const hintUsed=hintLevel>0;
  if(dontKnow){
    const clue=q.feedbackCorrect||('정답은 “'+q.w.w+'”입니다.');
@@ -1299,7 +1299,7 @@ async function gradeCurrent(dontKnow){
    });
    return;
  }
- $('submit').disabled=true;$('submit').textContent='문맥 채점 중…';
+ $('submit').disabled=true;$('submit').textContent=q.type==='subjective_use'?'문장 확인 중…':'뜻 확인 중…';
  try{
    const {data}=await sb.auth.getSession();const token=data.session?.access_token;
    if(!token)throw new Error('로그인이 필요합니다.');
@@ -1307,7 +1307,7 @@ async function gradeCurrent(dontKnow){
      method:'POST',
      headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
      body:JSON.stringify({
-       taskType:q.type==='subjective_use'?'sentence_use':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
+       taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
        question:q.q+'\n지문: '+q.ctx,
        targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,
        acceptedAnswers:q.acceptedAnswers||[],answer,source:answerSource

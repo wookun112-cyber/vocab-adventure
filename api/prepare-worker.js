@@ -53,7 +53,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
        const plan=payload.plans.find(p=>p.id===f.id);
        // Preserve ten written activities while replacing an overly broad blank
        // with independently reviewed productive use. Never rewrite a paused lesson.
-       if(!recovering&&plan?.taskDemand==='advanced'&&['subjective_context','subjective_dialogue'].includes(plan.type)&&f.issues.includes('review_failed:levelDemandFit')){
+       if(!recovering&&plan?.taskDemand==='advanced'&&['subjective_context','subjective_dialogue','subjective_recall'].includes(plan.type)&&f.issues.includes('review_failed:levelDemandFit')){
         plan.type='subjective_use';plan.stage='use';
         feedback[f.id].push('이 문항은 이제 subjective_use입니다. 빈칸을 만들지 말고 목표어를 보여준 뒤, 새 상황의 판단·이유·조건·결과가 드러나는 문장 하나를 직접 쓰게 하세요.');
        }else if(!recovering&&plan?.taskDemand==='advanced'&&plan.type==='mc_relation'&&f.issues.includes('review_failed:levelDemandFit')){

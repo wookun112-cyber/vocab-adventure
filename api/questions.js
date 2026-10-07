@@ -93,7 +93,7 @@ function normalizeCandidate(q,item){
     if(particle)c=c.replace('＿＿＿＿'+particle,'＿＿＿＿'+expectedParticle(q.answerForm,particle));
     q.context=c;
   }
-  if(SHOWN_TYPES.includes(item.type))q.context=String(q.context||'').replace(/＿{2,}|_{3,}/g,'');
+  if(SHOWN_TYPES.includes(item.type)&&item.type!=='subjective_use')q.context=String(q.context||'').replace(/＿{2,}|_{3,}/g,'');
   q.showTarget=SHOWN_TYPES.includes(item.type);
   if(item.type.startsWith('mc_')&&Array.isArray(q.options)){
     const opts=q.options.map(x=>({...x}));
@@ -148,7 +148,12 @@ function deterministic(q,item){
   if(hidden&&q.showTarget)issues.push('hidden_type_showTarget_true');
   if(SHOWN_TYPES.includes(item.type)&&!q.showTarget)issues.push('usage_type_showTarget_false');
   if(hidden&&(String(q.prompt).includes(item.word)||String(q.context).includes(item.word)||String(q.prompt).includes(q.answerForm||item.word)||String(q.context).includes(q.answerForm||item.word)))issues.push('target_leaked_before_answer');
-  if(SHOWN_TYPES.includes(item.type)&&blankCount(q.context)!==0)issues.push('usage_question_has_blank');
+  if(SHOWN_TYPES.includes(item.type)&&/＿{2,}|_{2,}|□{2,}|빈칸/.test(q.context+' '+q.prompt))issues.push('usage_question_has_blank');
+  if(item.type==='subjective_recall'){
+    if(/＿{2,}|_{2,}|□{2,}|빈칸/.test(q.context+' '+q.prompt))issues.push('recall_question_has_blank');
+    if(!String(q.context||'').trim())issues.push('recall_missing_meaning_clues');
+    if(norm(q.answerForm)!==norm(item.word))issues.push('recall_answer_not_headword');
+  }
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)&&blankCount(q.context)!==1)issues.push('blank_count_not_one');
   if(item.type==='subjective_dialogue'&&!/[“”"':：]|\n/.test(q.context))issues.push('dialogue_not_clear');
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)&&sentenceCount(q.context)<2)issues.push('context_too_short');
@@ -235,11 +240,14 @@ function generationPrompt(items,recent,feedback={}){
     '한국어 어휘 학습 앱용 문제를 만드세요. 목표는 사전 정의 암기가 아니라 문맥에서 뜻을 이해하고 필요한 어휘를 떠올려 사용하는 능력입니다.',
     '',
     '공통 규칙:',
+    '- 새 주관식은 subjective_recall(뜻 설명을 읽고 단어 회상)과 subjective_use(목표어를 넣어 자신의 문장 쓰기)만 출제합니다. 주관식 빈칸 채우기는 출제하지 않습니다. 요청 JSON이 subjective_context/subjective_dialogue인 경우에만 기존 미완료 학습 복구용으로 해당 요청 유형 규칙을 따르며, 새 유형에는 적용하지 않습니다.',
+    '- subjective_recall은 배운 어휘의 핵심 뜻과 유사어와 구별되는 특징을 쉬운 설명 1~3문장으로 제시합니다. 답을 넣는 빈칸·완성 문장·철자·초성·글자 수 힌트 없이 단어를 쓰게 합니다. 예: 바닷물이 해안 쪽으로 들어오면서 바닷물의 높이가 높아지는 현상 → 밀물. 바닷물 같은 상위어와 구별되는 의미를 분명히 제시하세요. 명사뿐 아니라 행동이나 상태를 뜻하는 단어도 기본형으로 회상할 수 있습니다.',
+    '- subjective_recall은 정의의 철자를 외워 설명하게 하는 활동이 아닙니다. 아이는 단어만 답합니다. 이미 배운 단어의 뜻 회상이므로 지문에 필요한 의미를 설명한 것은 답안 노출이나 과학 상식 퀴즈가 아닙니다. 전문 용어 제외 목록은 그대로 적용합니다. 목표 어휘의 band로 난이도를 맞추고 어려운 단어의 핵심 뜻을 명확히 제시하세요.',
     '- 검사하는 능력은 목표 어휘의 의미, 문맥에 맞는 선택, 자연스러운 쓰임입니다. 수학 계산, 공식 적용, 전문 개념이나 사실의 명칭 회상, 역사 인물·연도·과학 상식 맞히기는 금지합니다. 대화 빈칸으로 포장해도 같은 금지 규칙을 적용합니다.',
     '- 지문의 지식은 어휘를 사용할 배경이지 정답 자체가 아닙니다. 필요한 사실은 글 안에 먼저 제공하고, 그 사실을 바탕으로 인물의 행동·원인·결과·관점에서 목표어가 필요한 문장을 만드세요. 목표어를 빼고 보았을 때도 수학/과학/역사 퀴즈로 남는 문제는 다시 설계하세요.',
-    '- 일반 수량 어휘 배·비율·차이·평균은 생활 속 변화나 느낌을 표현하는 문맥으로 출제할 수 있습니다. 수학 공식이나 계산 관계의 이름을 묻지 마세요. 기본 교과 어휘도 사전 정의를 준 뒤 그 이름만 채우게 하지 말고, 관찰·행동·결과에서 그 어휘의 역할과 쓰임을 이해하도록 설계하세요.',
-    '- taskDemand=advanced는 글 길이보다 어휘 의미의 세밀한 구별과 쓰임 판단을 어렵게 하세요. 가까운 상황들이 모두 그럴듯하지만 목적·조건·의도·결과 중 목표어의 핵심 차이로 정답 하나를 가를 수 있게 하세요. 단어 하나를 단순한 정의와 연결하거나 엉뚱한 보기 네 개로 답을 드러내면 안 됩니다. 전문지식이나 트릭으로 어렵게 하지 마세요.',
-    '- advanced의 subjective_use는 목표어를 사용해 인물의 판단·이유·조건 또는 행동의 결과가 드러나는 문장 하나를 만들게 합니다. 목표어 뜻을 다시 쓰거나 제시 문장을 베끼게 하지 마세요. 상황 단서는 짧고 질문은 하나입니다. foundation-review는 소수의 낮은 단계 기억 확인이고 initial-practice는 새 뜻을 배운 직후의 연습입니다.',
+    '- 일반 수량 어휘 배·비율·차이·평균은 생활 속 변화나 느낌을 표현하는 문맥으로 출제할 수 있습니다. 수학 공식이나 계산 관계의 이름을 묻지 마세요. 기본 교과 어휘의 subjective_recall을 제외한 이해·활용 활동에서는 관찰·행동·결과에서 그 어휘의 역할과 쓰임을 이해하도록 설계하세요.',
+    '- taskDemand=advanced는 글 길이보다 어휘 의미의 세밀한 구별과 쓰임 판단을 어렵게 하세요. 가까운 상황들이 모두 그럴듯하지만 목적·조건·의도·결과 중 목표어의 핵심 차이로 정답 하나를 가를 수 있게 하세요. subjective_recall의 뜻 설명은 허용합니다. 객관식에서 단어 하나를 단순한 정의와 연결하거나 엉뚱한 보기 네 개로 답을 드러내면 안 됩니다. 전문지식이나 트릭으로 어렵게 하지 마세요.',
+    '- advanced의 subjective_use는 목표어를 사용해 인물의 판단·이유·조건 또는 행동의 결과 중 한 가지가 드러나는 문장 하나를 만들게 합니다. 낮은 수준은 짧은 생활 문장도 충분합니다. 다양한 자기 표현을 인정하며 도덕성·문체 취향·문장 길이를 평가하지 않습니다. 목표어 뜻을 다시 쓰거나 제시 문장을 베끼게 하지 마세요. 상황 단서는 짧고 질문은 하나입니다. foundation-review는 소수의 낮은 단계 기억 확인이고 initial-practice는 새 뜻을 배운 직후의 연습입니다.',
     '- advanced 빈칸에서 열심히·좋다·문제·생각 같은 넓고 쉬운 표현만으로 목표어의 핵심 의미 차이를 쓰지 않고도 충분히 해결되면 문항을 다시 설계하세요. 자연스러운 유의어를 일부러 오답으로 처리하거나 허용 답안을 좁혀 어렵게 하지 마세요. 같은 의미를 온전히 담은 자연스러운 답은 계속 인정합니다.',
     '- 난이도는 어휘의 추상성, 문맥 단서의 직접성, 가까운 의미의 구별, 문장과 관점의 복잡성으로 조절합니다. 더 높은 수준이라고 전문 용어·숫자·공식을 늘리지 마세요. 단서를 숨겨 맞힐 수 없게 만드는 방식도 금지합니다.',
     '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 빈칸과 사전 정의를 외워 서술시키는 문제는 금지합니다. 의미 연결 문제도 목표는 한 단어이며 비교 단어 각각에 별도 답을 요구하지 않습니다.',
@@ -249,7 +257,7 @@ function generationPrompt(items,recent,feedback={}){
     '- 핵심 역사·과학 사실은 knowledgeSeed에 제공된 사실을 바탕으로 쓰세요. 실제 인물의 말·업적·날짜·실험 결과를 지어내지 마세요. 가상의 아이가 탐구하는 장면은 가능하지만 실제 인물에게 가상의 말을 붙이지 마세요. 지구의 공전과 자전, 자연 위성과 인공위성을 혼동하지 마세요. 계절 변화의 주원인을 태양까지의 거리라고 쓰지 마세요.',
     '- 목표어 외 낯선 개념은 readingDesign.unfamiliarTerms 이내로 제한하고 같은 문장에서 쉬운 말로 풉니다. 처음 들어 보는 역사·과학 지식이라도 지문 자체만 읽으면 답할 수 있게 필요한 정보를 모두 넣으세요. 역사 연도나 과학 상식을 외워야만 맞히는 문제는 금지합니다.',
     '- 같은 어휘를 복습할 때는 다른 소재·질문·사건 전개로 새 지문을 씁니다. 과학 사실이 같아도 같은 설명 문장을 복사하거나 인물 이름만 바꾸면 안 됩니다.',
-    '- 단순히 길게 늘리지 말고 정답 판단에 필요한 의미 있는 단서를 2개 이상 제공합니다.',
+    '- subjective_recall에는 정확한 핵심 뜻 설명을, subjective_use에는 문장을 만들 수 있는 상황 단서를 제공합니다. 다른 상황 이해 유형은 단순히 길게 늘리지 말고 정답 판단에 필요한 의미 있는 단서를 2개 이상 제공합니다.',
     '- 목표 어휘 외 표현은 해당 학습 단계보다 쉽게 씁니다. 어려운 배경지식·복잡한 추론이 핵심이 되면 안 됩니다.',
     '- 가족, 학교, 친구, 동물, 놀이, 자연, 과학, 탐험 등 배경을 다양하게 바꿉니다.',
     '- 격식 있는 어휘는 그 의미가 자연스러운 실제 상황을 고르세요. 증여를 색종이를 친구에게 주는 장면에 억지로 쓰지 마세요. 새 단어의 자기 문장 활동에서는 최초 상황 선택과 다른 목적·문제·결과를 제시하세요. 단어의 핵심 뜻은 유지하되 가게 문 열기/물건 고르기와 같은 사건을 반복하지 마세요.',
@@ -288,6 +296,7 @@ function generationPrompt(items,recent,feedback={}){
     'mc_relation: 목표어를 보여주고 이 말과 의미상 잘 연결되는 상황, 상위 범주, 반대 상황, 자연스러운 결합 중 한 가지를 5개의 보기에서 고르게 합니다. 질문 하나이며 정답은 하나입니다.',
     'mc_structure: 목표어와 structureNote의 구성 단서를 제시하고 구성 요소가 전체 뜻에 어떻게 기여하는지 하나의 질문으로 묻습니다. 보기 5개, 정답 하나입니다.',
     'mc_reading: 목표어를 보여주고 처음 보는 자연스러운 짧은 글 3~4문장을 읽게 합니다. 글에서 목표어의 뜻이나 쓰임을 이해했는지 하나의 질문과 5개 보기로 확인합니다. 빈칸은 없습니다.',
+    'subjective_recall: 목표어 철자는 숨기고 definition의 핵심 뜻과 유사어와 구별되는 특징을 1~3문장으로 쉽게 설명합니다. 구체적인 예가 필요하면 짧게 덧붙이되 설명에 불필요한 상식을 넣지 않습니다. prompt는 설명에 해당하는 단어를 쓰라는 질문 하나입니다. context와 prompt에 빈칸을 만들지 않습니다. answerForm은 목표어 기본형, options는 빈 배열입니다. acceptedAnswers에는 목표어와 의미가 완전히 같은 자연스러운 어휘만 넣습니다. 상위어·관련어를 완전 정답으로 넣지 않습니다.',
     'subjective_use: 목표어를 보여주고 실제로 있을 법한 상황 단서를 간단히 준 뒤 이 어휘를 사용한 자신의 문장 하나를 쓰도록 요청합니다. 정답 문장이나 복사할 예문은 지문에 제시하지 않습니다. context는 빈칸 없이 1~2문장, options와 acceptedAnswers는 빈 배열입니다. 힌트는 생각할 상황과 말할 목적을 제안하되 완성 문장을 주지 않습니다.',
     'subjective_dialogue: 2~4개의 짧은 대화 흐름에 answerForm을 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꿉니다.',
     '',
@@ -303,10 +312,13 @@ async function generate(items,recent,feedback){
 async function aiVerify(items,questions,recent){
   const prompt=[
     '아래 한국어 어휘 문제를 출제 전 검증하세요. 생성자의 자기평가가 아니라 별도 검수자처럼 엄격히 판단하세요.',
+    '아래 subjective_recall 규칙은 과학 현상 명칭 회상과 정의 질문에 대한 일반 금지보다 우선합니다. 기존 전문 용어 제외 목록과 배경지식 금지는 유지합니다.',
     'vocabularyFocus는 반드시 별도로 판정하세요. 정답의 근거가 목표 어휘의 의미와 상황 속 쓰임이어야 true입니다. 공식·계산·전문 수학 관계의 명칭·문법 분류·과학 현상의 명칭·역사 인물/연도/사실을 기억해야 정답이면 false이고 valid=false입니다. 정보를 글 안에 제공했더라도 그 정보의 전문 명칭을 맞히는 문제이면 false입니다. 대화나 빈칸 형식이라고 예외가 아닙니다. 단서를 충분히 제시한 일반 어휘의 자연스러운 쓰임을 묻는 것은 허용합니다.',
-    '수량과 관계 있다는 이유만으로 일반 어휘를 배제하지 마세요. 배, 비율, 차이, 평균 등을 일상의 변화·비교·감정 표현에 알맞게 쓰는 문항은 어휘 학습입니다. 예를 들어 기쁨이 두 배가 된다는 자연스러운 쓰임은 등비중항 같은 전문 명칭 퀴즈에 해당하지 않습니다. 세포, 전지 같은 기본 교과 어휘도 생활·관찰 맥락에서 역할과 의미를 이해해야 하는 문항은 허용하되, 정의를 준 뒤 개념 이름만 묻는 문항은 반려하세요.',
+    '수량과 관계 있다는 이유만으로 일반 어휘를 배제하지 마세요. 배, 비율, 차이, 평균 등을 일상의 변화·비교·감정 표현에 알맞게 쓰는 문항은 어휘 학습입니다. 예를 들어 기쁨이 두 배가 된다는 자연스러운 쓰임은 등비중항 같은 전문 명칭 퀴즈에 해당하지 않습니다. 세포, 전지 같은 기본 교과 어휘도 생활·관찰 맥락에서 역할과 의미를 이해해야 하는 문항은 허용하되, 기존 빈칸에서 정의를 준 뒤 전문 개념 이름만 묻는 문항은 반려하세요. subjective_recall의 배운 어휘 뜻 회상은 허용합니다.',
+    'subjective_recall은 뜻 설명과 핵심 의미 차이를 읽고 어휘 하나를 떠올리는 활동입니다. 정의 설명에 해당하는 배운 단어를 답하는 것은 허용하며 vocabularyFocus=true입니다. 설명은 정답 철자를 노출하면 안 되고 빈칸도 없어야 합니다. 상위어가 아니라 핵심 의미를 담은 단어로 답할 수 있는지 검사하세요. acceptedAnswers에는 핵심 뜻 전체를 만족하는 자연스러운 어휘만 포함하세요. 밀물의 바닷물 유입과 수위 상승 설명에 바닷물은 완전 정답이 아닙니다. 전문 용어 제외는 그대로 적용합니다.',
     '유형 규칙표: subjective_context와 subjective_dialogue는 목표어를 숨긴 빈칸 하나를 채우는 과제입니다. 빈칸이 있다는 이유로 반려하지 마세요. subjective_use만 목표어를 보여주고 자신의 완성 문장 하나를 만드는 과제입니다. 이 세 유형을 혼동하지 마세요.',
     'factualAccuracy는 실제 사실의 정확성을 검사합니다. knowledgeSeed는 선택용 소재입니다. 지문이 다른 분야를 다뤄도 실제 내용이 정확하면 true이며, seed와 주제가 다르거나 null이라는 이유만으로 반려하지 마세요. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
+    'levelDemandFit에서 subjective_recall은 목표 band의 어휘 뜻을 핵심 의미가 빠짐없이 정확하게 설명하고 가까운 말과 구별되면 true입니다. 문장 길이나 애매한 단서로 회상을 어렵게 하지 마세요.',
     'levelDemandFit는 읽기 길이와 별개로 taskDemand의 의미 판단 수준을 검사합니다. advanced인데 넓고 쉬운 낱말만으로 핵심 의미를 구별하지 않고 빈칸이 해결되거나, 객관식 오답들이 엉뚱해 하나만 눈에 띄거나, subjective_use가 단순 예문 복사이면 false와 valid=false입니다. 자연스러운 대체 답을 삭제해서 난이도를 높이지 말고 문항을 재설계하게 하세요. foundation-review와 initial-practice는 기본 기억/첫 뜻 연습을 허용하며 더 높은 난이도의 숙달 검사라고 해석하지 않습니다. standard는 읽기 수준에 맞는 기본 의미와 쓰임을 검사합니다.',
     'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조로 검사합니다. lengthGuide는 권장 길이이며 최소 글자 수가 아닙니다. 짧아도 완결된 상황과 충분한 단서가 있으면 통과하고 maxCharacters 초과는 탈락입니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',

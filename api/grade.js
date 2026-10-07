@@ -20,7 +20,8 @@ export async function runGrade(payload){
   if(!question||typeof answer!=='string')throw new Error('Bad request');
 
   const sentenceMode=taskType==='sentence_use';
-  const contextMode=taskType==='context_answer'||sentenceMode;
+  const recallMode=taskType==='definition_recall';
+  const contextMode=taskType==='context_answer'||sentenceMode||recallMode;
   const prompt=sentenceMode?`당신은 초등학생의 한국어 어휘 사용 문장에 짧고 구체적인 피드백을 줍니다.
 목표 어휘: ${targetWord}
 기준 뜻: ${definition}
@@ -29,7 +30,14 @@ export async function runGrade(payload){
 ${taskDemand==='advanced'?'이번 과제는 심화 활용입니다. 목표어를 자연스럽게 썼는지와, 과제에서 요구한 판단·이유·조건·결과 중 해당 요소를 문장에 담았는지 함께 확인하세요. 단어만 끼워 넣은 일반 문장으로 요청한 상황이나 의미 관계를 보여 주지 못했다면 0.5 이하이며, 문체의 화려함이나 길이로 점수를 주지 마세요.':''}
 학생 문장: ${answer}
 입력 방식: ${source}
-규칙: 목표어 또는 같은 어휘의 자연스러운 활용형을 포함하고, 문장 전체가 실제 상황에서 해당 뜻으로 적절하게 쓰였으면 score 1입니다. 단어만 쓴 답, 뜻만 복사한 답, 목표어 없이 다른 표현만 쓴 답은 완전 정답이 아닙니다. 뜻을 일부 반영했으나 사용이 불완전하면 0.5, 뜻과 쓰임이 틀리거나 단어만 썼으면 0입니다. 의미가 분명한 사소한 오타/띄어쓰기는 허용합니다. 목표어를 화면에 보여준 활동이므로 targetRecall은 항상 false입니다. contextSuccess는 score 1일 때만 true입니다. 의견의 도덕성이나 문체 취향은 평가하지 않습니다. feedback은 단어가 왜 맞게/부족하게 쓰였는지와 개선 단서 하나를 1~2문장으로 주세요. voice는 명백한 인식 오류만 보정하며 발음은 평가하지 않습니다. JSON으로 normalizedAnswer,result(○|△|×),score(0|0.5|1),contextSuccess,targetRecall,feedback,correctionApplied,correctionNote를 반환하세요.`:contextMode?`당신은 한국어 어휘 문맥 문제를 채점합니다.
+규칙: 목표어 또는 같은 어휘의 자연스러운 활용형을 포함하고, 문장 전체가 실제 상황에서 해당 뜻으로 적절하게 쓰였으면 score 1입니다. 단어만 쓴 답, 뜻만 복사한 답, 목표어 없이 다른 표현만 쓴 답은 완전 정답이 아닙니다. 뜻을 일부 반영했으나 사용이 불완전하면 0.5, 뜻과 쓰임이 틀리거나 단어만 썼으면 0입니다. 의미가 분명한 사소한 오타/띄어쓰기는 허용합니다. 목표어를 화면에 보여준 활동이므로 targetRecall은 항상 false입니다. contextSuccess는 score 1일 때만 true입니다. 의견의 도덕성이나 문체 취향은 평가하지 않습니다. feedback은 단어가 왜 맞게/부족하게 쓰였는지와 개선 단서 하나를 1~2문장으로 주세요. voice는 명백한 인식 오류만 보정하며 발음은 평가하지 않습니다. JSON으로 normalizedAnswer,result(○|△|×),score(0|0.5|1),contextSuccess,targetRecall,feedback,correctionApplied,correctionNote를 반환하세요.`:recallMode?`당신은 한국어 어휘의 뜻 회상 답을 확인합니다.
+목표 어휘: ${targetWord}
+기준 뜻: ${definition}
+뜻 설명과 질문: ${question}
+검토된 답안: ${JSON.stringify(acceptedAnswers)}
+학생 답: ${answer}
+입력 방식: ${source}
+설명에 제시한 핵심 뜻 전체를 만족하는 목표어 또는 자연스러운 동의어는 score 1입니다. 관련된 넓은 말이 핵심 의미 일부만 담으면 0.5, 핵심 의미를 담지 못하면 0입니다. 문장 빈칸에 넣어 보는 채점은 하지 않습니다. 예를 들어 바닷물이 해안 쪽으로 들어와 수위가 높아지는 현상의 답 밀물에 바닷물은 완전 정답이 아닙니다. 사소한 오타·띄어쓰기는 의미가 명확하면 허용합니다. 다른 자연스러운 동의어를 숨겨 둔 목표어와 다르다는 이유로 깎지 마세요. targetRecall은 목표 어휘 자체 또는 사소한 오타·자연스러운 활용형을 회상했을 때만 true입니다. 동의어 정답은 contextSuccess=true,targetRecall=false입니다. source가 voice이면 명백한 인식 오류만 보정하고 발음은 평가하지 않습니다. feedback에는 핵심 뜻이 맞는지 또는 어떤 의미가 빠졌는지 짧게 설명합니다. JSON으로 normalizedAnswer,result(○|△|×),score(0|0.5|1),contextSuccess,targetRecall,feedback,correctionApplied,correctionNote를 반환하세요.`:contextMode?`당신은 한국어 어휘 문맥 문제를 채점합니다.
 목표 어휘: ${targetWord}
 기준 뜻: ${definition}
 권장 학습 단계: ${band}
@@ -95,7 +103,12 @@ ${question}
   });
   if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,220));
   const graded=JSON.parse(extractText(await r.json()).trim());
-  if(sentenceMode){graded.targetRecall=false;graded.contextSuccess=graded.score===1}
+  if(sentenceMode){
+    const compact=s=>String(s).normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'');
+    if(compact(answer)===compact(targetWord)){graded.score=0;graded.result='×';graded.feedback='단어만 쓰기보다, 이 단어를 넣어 무슨 일이 있었는지 한 문장으로 써 보세요.'}
+    graded.targetRecall=false;graded.contextSuccess=graded.score===1;
+  }
+  if(recallMode)graded.contextSuccess=graded.score===1;
   return {...graded,model};
 }
 export default async function handler(req,res){
