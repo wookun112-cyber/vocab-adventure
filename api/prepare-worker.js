@@ -2,6 +2,7 @@ import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget} from '../lib/learning-m
 import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
+import {hydrateFromBank,withReservedHistory} from '../lib/question-bank.js';
 const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
@@ -13,7 +14,10 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
+ let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'});
+ const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
+ if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
+ hydrateFromBank(payload,job.learner,job.bank||[],job.reserved||[]);
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));
@@ -23,7 +27,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   const copy=JSON.parse(JSON.stringify(payload));
   checkpoint=checkpoint.then(async()=>{
    if(obsolete)return;
-   const ok=await call('save_preparation',{p_id:job.id,p_key:key,p_lease:job.lease,p_payload:copy,p_failed:failed});
+   const ok=await call(job.kind==='reserve'?'save_reserve_preparation':'save_preparation',{p_id:job.id,p_key:key,p_lease:job.lease,p_payload:copy,p_failed:failed});
    if(!ok){obsolete=true;throw Error('Preparation superseded')}
   });
   return checkpoint;
@@ -39,7 +43,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
     let missing=group;
     for(let attempt=0;attempt<(remaining.length<=4?3:2)&&missing.length;attempt++){
      const known=[...ready];
-     const items=generationItems(missing.map(([,p])=>p),job.learner,known);
+     const items=generationItems(missing.map(([,p])=>p),generationLearner,known);
      const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40),feedback);
      if(questions.failed?.length){payload.preparationIssues=[...(payload.preparationIssues||[]),...questions.failed];for(const f of questions.failed)feedback[f.id]=failureFeedback(f)}
      if(obsolete)return;
@@ -48,8 +52,8 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
       const raw=questions.find(q=>String(q.id)===p.id);
       if(!raw){retry.push([i,p]);continue}
       if(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation)throw Error('Unverified prepared question');
-      const q=browserQuestion(raw,p);
-      const used=new Set([...(job.learner.words?.[p.w.w]?.usedPassageKeys||[]),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
+      const q=browserQuestion(raw,p);q.bankReaderLevel=Number(job.learner.difficulty)||2;q.bankSupportLevel=p.supportLevel||0;q.bankPassageKeys=passageKeys(q.ctx,q.opts.map(o=>o.t));
+      const used=new Set([...(generationLearner.words?.[p.w.w]?.usedPassageKeys||[]),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
       if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){duplicates=true;feedback[p.id]=['이미 사용한 문장이 중복되었습니다. 이전 문장을 재사용하지 말고 다른 사건으로 새 지문을 작성하세요.','이전 실패 지문: '+q.ctx];retry.push([i,p]);continue}
       ready.set(i,q);
      }
