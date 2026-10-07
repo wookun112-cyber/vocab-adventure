@@ -246,3 +246,12 @@ assert.equal(lowRestart.run('session.results[9].exclusionReason'),'out_of_target
 assert.equal(lowRestart.run('JSON.stringify(savedLesson().plans)'),lowOrder);assert.equal(lowRestart.calls.generation,0);
 assert.equal(lowRestart.node('qWord').textContent,'간주하다');assert.equal(lowRestart.node('difficulty').textContent,'학습 등급 7.4 · 어휘 7단계');
 console.log('Actual 7.4 restart verified: old reservation task skipped without penalty or AI generation, all nine answers and original plans retained, next valid high-band question displayed with separate learner/word levels.');
+
+const creditBlocked=fixture();creditBlocked.run(`globalThis.recoveryRemote={...makeRemoteLesson(),status:'failed'};recoveryRemote.payload.preparationBlocked='ai_credit_exhausted'`);
+await creditBlocked.run('buildSession()');assert.equal(creditBlocked.run('session'),null);assert.equal(creditBlocked.calls.generation,0);assert.ok(creditBlocked.alerts.at(-1).includes('API 잔액'));assert.equal(creditBlocked.node('startDaily').textContent,'문제 생성 서비스 확인 필요');
+creditBlocked.run('preparationBlock=null;authUser=null;renderResumeButton()');
+const gradeBlocked=fixture();await gradeBlocked.run('buildSession()');
+gradeBlocked.run(`session.queue[0]={...session.queue[0],w:{w:'의견',d:'어떤 일에 대한 생각이나 판단',band:2,cat:'국어'},type:'subjective_use',open:true,showTarget:true,opts:[],acceptedAnswers:[]};renderQuestion();$('answer').value='내 의견은 공원으로 소풍을 가자는 거야.';fetch=async()=>({ok:false,json:async()=>({code:'ai_credit_exhausted',error:'API 잔액 소진'})})`);
+const essayStats=gradeBlocked.run('JSON.stringify(child().words)');await gradeBlocked.run('gradeCurrent(false)');
+assert.equal(gradeBlocked.run('session.results.length'),0);assert.equal(gradeBlocked.run('JSON.stringify(child().words)'),essayStats);assert.ok(gradeBlocked.node('answer').value.includes('공원'));assert.ok(gradeBlocked.alerts.at(-1).includes('API 잔액'));assert.equal(gradeBlocked.node('submit').disabled,false);
+console.log('Actual app credit block verified: preparation shows the billing cause instead of indefinite loading; failed sentence grading keeps input and word statistics without a wrong result; signed-out rendering remains safe.');

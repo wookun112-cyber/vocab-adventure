@@ -575,7 +575,8 @@ function renderResumeButton(){
  const saved=savedLesson();
  const done=!saved&&child().lastDate===today(),p=preparations.get(preparationKey('daily'));
  $('startDaily').disabled=false;
- $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):p&&!p.cancelled&&p.ready.size<20?'문제 준비 중 · '+p.ready.size+'/20개':done?'계속 학습하기':'오늘의 학습 시작';
+ const blocked=preparationBlock&&preparationBlock.account===authUser?.id&&preparationBlock.profile===state.selected||p?.jobs?.some(j=>j.error?.code==='ai_credit_exhausted');
+ $('startDaily').textContent=saved?(saved.nextIndex>=saved.target?'학습 완료 확인':'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):blocked?'문제 생성 서비스 확인 필요':p&&!p.cancelled&&p.ready.size<20?'문제 준비 중 · '+p.ready.size+'/20개':done?'계속 학습하기':'오늘의 학습 시작';
 }
 function storeLearnerCheckpoint(profile){
  if(!canSaveLearning())return;
@@ -839,6 +840,9 @@ function rememberQuestion(q){
 }
 const QUESTION_BATCH_SIZE=4;
 const FIRST_QUESTION_COUNT=1;
+let preparationBlock=null;
+const creditMessage='문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 시작 버튼으로 다시 준비할 수 있어요. 기존 학습 기록은 유지됩니다.';
+function serverPreparationError(remote){return remote?.payload?.preparationBlocked==='ai_credit_exhausted'||/credit_balance_exhausted|insufficient_quota/.test(remote?.payload?.preparationError||'')?Object.assign(new Error(creditMessage),{code:'ai_credit_exhausted'}):null}
 let preparingSession=false;
 const QUESTION_WAIT_MS=15000;
 function withDeadline(task,milliseconds,message){
@@ -863,6 +867,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
  const r=await fetch('/api/questions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body)});
  if(!r.ok){
    const j=await r.json().catch(()=>({}));
+   if(j.code==='ai_credit_exhausted')throw Object.assign(new Error(creditMessage),{code:j.code});
    throw new Error([502,503,504].includes(r.status)?'문제를 준비하는 서버 응답이 늦어졌어요. 잠시 뒤 다시 눌러 주세요.':(j.error||'문제 검증에 실패했습니다.'));
  }
  const j=await r.json();
@@ -920,7 +925,8 @@ function createPreparation(meta,saved=[]){
    if(p.adopted&&!p.cancelled&&session?.preparation===p&&checkpointSession()){localSave();cloudSave()}
    if(!p.adopted&&!p.cancelled&&p.mode==='daily'&&authUser?.id===p.account&&state.selected===p.profile&&!preparingSession&&(!session||current>=session.target)){
      const failed=p.jobs.find(j=>j.indices.includes(0))?.error;
-     $('cloudPill').textContent=failed?'문제 준비 지연 · 시작 버튼으로 재시도':p.queue.length>=20?'학습 준비 완료':p.queue.length?'전체 문제 준비 중':'학습 문제 미리 준비 중';
+     const blocked=p.jobs.some(j=>j.error?.code==='ai_credit_exhausted');
+     $('cloudPill').textContent=blocked?'API 잔액 확인 필요':failed?'문제 준비 지연 · 시작 버튼으로 재시도':p.queue.length>=20?'학습 준비 완료':p.queue.length?'전체 문제 준비 중':'학습 문제 미리 준비 중';
      renderResumeButton();
    }
  };
@@ -995,6 +1001,7 @@ function createServerPreparation(meta,saved){
   serverLesson(p.profile,p.serverId).then(remote=>{
    if(p.cancelled)return;
    if(remote?.id!==p.serverId)throw new Error('학습 기록이 바뀌어 준비된 문제를 다시 확인해야 해요.');
+   const blocked=serverPreparationError(remote);if(blocked)throw blocked;
    if(remote.status==='failed'){
     throw new Error('문제 준비가 지연됐어요. 잠시 뒤 다시 눌러 주세요.');
    }
@@ -1024,6 +1031,8 @@ async function getPreparation(mode='daily',retry=false){
    if(mode==='daily'&&['ayoung','inseong','guest'].includes(profile)){
      if(cloudSaveTask)await withDeadline(cloudSaveTask,10000,'학습 기록 저장이 늦어졌어요. 잠시 뒤 다시 눌러 주세요.');
      let remote=await serverLesson(profile,null,retry),tries=0;
+     const blocked=serverPreparationError(remote);if(blocked)throw blocked;
+     if(preparationBlock&&preparationBlock.account===account&&preparationBlock.profile===profile)preparationBlock=null;
      while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries++<4){
        $('cloudPill').textContent='맞춤 학습 문제를 서버에서 미리 준비 중';
        await new Promise(resolve=>setTimeout(resolve,2000));
@@ -1073,6 +1082,7 @@ function warmDailyQuestions(){
  const profile=state.selected,account=authUser.id;
  getPreparation('daily').catch(error=>{
   if(account!==authUser?.id||profile!==state.selected)return;
+  if(error.code==='ai_credit_exhausted'){preparationBlock={account,profile};$('cloudPill').textContent='API 잔액 확인 필요';renderResumeButton();return}
   $('cloudPill').textContent=error.preparationPending?'학습 문제 미리 준비 중':'시작 버튼으로 문제 준비 재시도';
   if(error.preparationPending){clearTimeout(preparationRetryTimer);preparationRetryTimer=setTimeout(()=>{if(account===authUser?.id&&profile===state.selected)warmDailyQuestions()},10000)}
  });
@@ -1127,13 +1137,13 @@ async function buildSession(mode='daily'){
    current=0;introIndex=0;hintLevel=0;$('next').disabled=false;
    show('learn');renderQuestion();prefetchQuestions();
  }catch(e){
-   if(state.selected===profile&&authUser?.id===account){if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));show('home')}
+   if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')preparationBlock={account,profile};if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));show('home')}
  }finally{
    preparingSession=false;
    $(button).textContent=oldText;
    for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=false;
    renderResumeButton();
-   $('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');
+   $('cloudPill').textContent=preparationBlock&&preparationBlock.account===account&&preparationBlock.profile===profile?'API 잔액 확인 필요':'클라우드 연결';$('cloudPill').classList.add('on');
  }
 }
 function renderQuestion(savedHint=0){
@@ -1314,7 +1324,7 @@ async function gradeCurrent(dontKnow){
        acceptedAnswers:q.acceptedAnswers||[],answer,source:answerSource
      })
    });
-   if(!r.ok)throw new Error('채점 서버 오류');
+   if(!r.ok){const failure=await r.json().catch(()=>({}));throw Object.assign(new Error(failure.error||'채점 서버 오류'),{code:failure.code})}
    const j=await r.json();
    if(session!==active||state.selected!==active.profile)return;
    const credit=Number(j.score)===1?1:Number(j.score)===0.5?.5:0;
@@ -1324,7 +1334,7 @@ async function gradeCurrent(dontKnow){
      independent:credit===1&&!hintUsed,hintUsed,revealed:false
    });
  }catch(e){
-   if(session===active&&state.selected===active.profile)alert('채점을 완료하지 못했어요. 답은 기록하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 채점해 주세요.');
+   if(session===active&&state.selected===active.profile)alert(e.code==='ai_credit_exhausted'?creditMessage+' 입력한 문장은 화면에 남아 있습니다.':'채점을 완료하지 못했어요. 답은 기록하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 채점해 주세요.');
  }finally{
    if(session===active){$('submit').disabled=false;$('submit').textContent='채점하기'}
  }

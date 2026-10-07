@@ -21,7 +21,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));
- delete payload.preparationError;delete payload.preparationIssues;
+ delete payload.preparationError;delete payload.preparationIssues;delete payload.preparationBlocked;
  let checkpoint=Promise.resolve(),obsolete=false;
  const save=failed=>{
   const copy=JSON.parse(JSON.stringify(payload));
@@ -84,7 +84,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   if(failed)throw failed.reason;
   if(payload.ready.length<20)throw Error(duplicates?'Repeated sentence withheld':'Incomplete validated preparation');
  }catch(error){
-  if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);checkpoint=checkpoint.catch(()=>{});await save(true)}
+  if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);if(/credit_balance_exhausted|insufficient_quota/.test(payload.preparationError))payload.preparationBlocked='ai_credit_exhausted';checkpoint=checkpoint.catch(()=>{});await save(true)}
   throw error;
  }
  return payload;

@@ -116,5 +116,5 @@ export default async function handler(req,res){
   if(!(await verifyUser(req.headers.authorization)))return res.status(401).json({error:'Login required'});
   if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
   try{return res.status(200).json(await runGrade(req.body||{}))}
-  catch(e){return res.status(500).json({error:String(e?.message||e)})}
+  catch(e){if(/credit_balance_exhausted|insufficient_quota/.test(String(e?.message||e)))return res.status(503).json({code:'ai_credit_exhausted',error:'문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 다시 시도해 주세요. 학습 기록은 유지됩니다.'});return res.status(500).json({error:String(e?.message||e)})}
 }

@@ -462,6 +462,7 @@ export default async function handler(req,res){
     }
     return res.status(200).json({questions,validated:true,validationMethod:'deterministic+independent_ai_review'});
   }catch(e){
+    if(/credit_balance_exhausted|insufficient_quota/.test(String(e?.message||e)))return res.status(503).json({code:'ai_credit_exhausted',error:'문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 다시 시도해 주세요. 학습 기록은 유지됩니다.'});
     return res.status(422).json({error:String(e?.message||e).slice(0,1000),failed:e.failed||[]});
   }
 }
