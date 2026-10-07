@@ -97,7 +97,12 @@ function characterSvg(id,evolution=1,look={}){
  const defs=`<defs><radialGradient id="${uid}-skin" cx="32%" cy="22%" r="85%"><stop stop-color="${tint(c,.62)}"/><stop offset=".6" stop-color="${c}"/><stop offset="1" stop-color="${tint(c,-.18)}"/></radialGradient><linearGradient id="${uid}-metal" x2=".8" y2="1"><stop stop-color="${tint(accent,.55)}"/><stop offset=".45" stop-color="${accent}"/><stop offset="1" stop-color="${tint(accent,-.3)}"/></linearGradient><linearGradient id="${uid}-gold" x2=".3" y2="1"><stop stop-color="#fff3b4"/><stop offset=".5" stop-color="#f3cf72"/><stop offset="1" stop-color="#b98036"/></linearGradient><linearGradient id="${uid}-wing" x2="1" y2="1">${(stage===10?['#9be8f1','#baa9ef','#f3aad0','#ffe99a']:['#fff5d0',tint(accent,.4),accent]).map((color,i,arr)=>`<stop offset="${i/(arr.length-1)}" stop-color="${color}"/>`).join('')}</linearGradient><radialGradient id="${uid}-aura"><stop offset=".2" stop-color="${accent}" stop-opacity=".02"/><stop offset=".7" stop-color="${accent}" stop-opacity=".3"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient></defs>`;
  const star=(x,y,r,color='#f3cf72')=>`<path d="M${x} ${y-r}l${r*.3} ${r*.7} ${r*.7} ${r*.3}-${r*.7} ${r*.3}-${r*.3} ${r*.7}-${r*.3}-${r*.7}-${r*.7}-${r*.3} ${r*.7}-${r*.3}Z" fill="${color}"/>`;
  const orb=(x,y,r)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${paint('wing')}" stroke="#ffedb5" stroke-width="2"/>${star(x,y,r*.6,'#fff9e1')}`;
- const limb=(x,y,rx,ry,rotation=0)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${rotation} ${x} ${y})" fill="${paint('skin')}" stroke="${outline}" stroke-width="1.5"/>`;
+ const limb=(x,y,rx,ry,rotation=0)=>{
+  const transform=`rotate(${rotation} ${x} ${y})`,fill=a.id==='panda'&&rx<22?'#3d4f60':a.id==='penguin'?'#435c75':paint('skin');
+  if(a.id==='robot')return `<g transform="${transform}"><rect x="${x-rx}" y="${y-ry}" width="${rx*2}" height="${ry*2}" rx="${Math.min(rx,ry)*.4}" fill="${paint('skin')}" stroke="#56758e" stroke-width="1.5"/><path d="M${x-rx*.65} ${y+ry*.5}h${rx*1.3}" stroke="#e0edf4" stroke-width="2"/><circle cx="${x}" cy="${y}" r="${Math.min(rx,ry)*.25}" fill="#7292a9" stroke="#c9e5ea" stroke-width="1"/></g>`;
+  if(bird&&ry>rx*1.5&&x!==100)return `<path d="M${x-rx} ${y-ry}q${rx*2} ${-ry*.3} ${rx*2} ${ry}l-${rx*.3} ${ry}q-${rx*1.8} ${-ry*.2}-${rx*1.7}-${ry}Z" transform="${transform}" fill="${a.id==='penguin'?'#3e5368':tint(c,-.16)}" stroke="${outline}" stroke-width="1.5"/>`;
+  return `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="${transform}" fill="${fill}" stroke="${outline}" stroke-width="1.5"/>`;
+ };
  const wing=(x,y,scale=1)=>`<g transform="translate(${x} ${y}) scale(${scale})" fill="${paint('wing')}" stroke="${stage===10?'#efd27f':accent}" stroke-width="1.5"><path d="${power?'M0 15Q-32 0-58-60l21 10-3-29 23 24 6-24L9-9Z':'M0 15Q-60-1-61-62q25 4 34 29-8-24-1-42Q2-62 9-9Z'}"/><path d="M0 7-44-47M3-3-21-57M-4 13-39-13" stroke="#fff9e2" fill="none" stroke-width="1.5" opacity=".8"/></g>`;
  // Every stage has its own body geometry, posture and head-to-body ratio.
  const poses=[
@@ -122,29 +127,169 @@ function characterSvg(id,evolution=1,look={}){
  if(stage===8){back=`<g class="evo-aura"><circle cx="100" cy="99" r="79" fill="${paint('aura')}"/><circle cx="100" cy="85" r="66" fill="none" stroke="${paint('gold')}" stroke-width="2" stroke-dasharray="8 5"/></g><path d="M66 107Q11 117 36 171q-8-47 44-24m54-40q55 10 30 64 8-47-44-24" fill="${paint('wing')}" opacity=".8"/>`;body=`<path d="M80 91q20 18 40 0 22 50-20 85-10-22-26-25 19-5 6-60Z" fill="${paint('wing')}" stroke="${accent}" stroke-width="2"/>${limb(62,113,10,27,55)}${limb(138,113,10,27,-55)}${orb(100,116,14)}<ellipse cx="100" cy="181" rx="40" ry="7" fill="none" stroke="${accent}" stroke-width="2"/>`;front=orb(41,104,11)+orb(159,104,11)+`<ellipse cx="100" cy="21" rx="27" ry="6" fill="none" stroke="${paint('gold')}" stroke-width="4"/>`;}
  if(stage===9){back=`<path d="m60 82-27 96 66-17 68 17-28-96Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="3"/><path d="M45 169 61 104m94 65-16-65" stroke="#fff1ca" stroke-width="3"/>`;body=power?`${limb(100,128,42,37)}${limb(58,162,18,21,8)}${limb(142,162,18,21,-8)}${limb(100,139,27,35)}<path d="m65 103 35-10 35 10-10 32h-50Z" fill="${paint('gold')}" stroke="#b78a43" stroke-width="2"/>`:`<path d="M79 91q21 11 42 0l34 77q-54 26-109 0Z" fill="${paint('wing')}" stroke="${paint('gold')}" stroke-width="3"/><path d="M80 121 63 161m38-35v43m18-48 19 40" stroke="#fff4d1" stroke-width="3"/>${limb(66,111,11,27,30)}${limb(134,111,11,27,-30)}`;front=`<path d="m77 32-4-21 17 9L100 3l10 17 17-9-4 21Z" fill="${paint('gold')}" stroke="#ac7c40" stroke-width="2"/>${orb(100,25,6)}${orb(100,116,14)}<path d="M160 83v84" stroke="${paint('gold')}" stroke-width="5"/>${orb(160,74,13)}`;}
  if(stage===10){back=`<g class="evo-aura"><circle cx="100" cy="100" r="95" fill="${paint('aura')}"/><circle cx="100" cy="100" r="86" fill="none" stroke="${paint('gold')}" stroke-width="2"/><ellipse cx="100" cy="100" rx="96" ry="51" transform="rotate(-30 100 100)" fill="none" stroke="#b4dff1" stroke-width="2"/></g>`+wing(83,103,1.05)+wing(117,103,-1.05)+wing(85,143,.85)+wing(115,143,-.85)+`<path d="M72 146q-53-21-51 25 17-28 57 6m44-31q53-21 51 25-17-28-57 6" fill="${paint('wing')}" stroke="#f4dc96" stroke-width="2"/>`;body=`<path d="M80 91q20 13 40 0l14 37-17 29-17 28-17-28-17-29Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="3"/>${limb(70,116,11,25,45)}${limb(130,116,11,25,-45)}${limb(84,158,10,20,18)}${limb(116,158,10,20,-18)}${orb(100,117,18)}<path d="m82 142 18 15 18-15" stroke="#fff0ba" stroke-width="3" fill="none"/>`;front=`<path d="m81 40-9-22 19 9 9-22 9 22 19-9-9 22Z" fill="${paint('gold')}" stroke="#b08144" stroke-width="2"/>${orb(100,31,6)}${orb(29,101,9)}${orb(171,101,9)}`;}
- // Species retain their own ears, muzzle, markings and tails in every pose.
- let ears='';
- if(['cat','tiger'].includes(k))ears=`<path d="M24 42 20 17 43 31M56 31 80 17 76 42" fill="${c}" stroke="${outline}" stroke-width="2"/><path d="m25 24 3 14 10-6m24 0 10 6 3-14" fill="${tint(c,.55)}"/>`;
- else if(k==='dog')ears='<ellipse cx="24" cy="46" rx="12" ry="24" transform="rotate(12 24 46)" fill="#bc8b64"/><ellipse cx="76" cy="46" rx="12" ry="24" transform="rotate(-12 76 46)" fill="#bc8b64"/>';
- else if(k==='long')ears=`<ellipse cx="36" cy="23" rx="9" ry="26" transform="rotate(-10 36 23)" fill="${c}"/><ellipse cx="64" cy="23" rx="9" ry="26" transform="rotate(10 64 23)" fill="${c}"/><path d="M36 6v26M64 6v26" stroke="#f9e5ee" stroke-width="5" stroke-linecap="round"/>`;
- else if(['horn','unicorn','dino'].includes(k))ears=k==='unicorn'?'<path d="m43 33 7-28 9 28" fill="#f5cd77" stroke="#cda559" stroke-width="2"/>':`<path d="m23 37 ${stage>=5?'0-34 20 29':'3-22 16 17'}m19 0 ${stage>=5?'20-29 0 34':'13-17 3 22'}" fill="#f6cf80" stroke="#bb9363" stroke-width="2"/>`;
- else if(['round','panda'].includes(k))ears=`<circle cx="27" cy="31" r="13" fill="${k==='panda'?'#55617c':c}"/><circle cx="73" cy="31" r="13" fill="${k==='panda'?'#55617c':c}"/>`;
- else if(k==='robot')ears='<path d="M50 30V15" stroke="#55617c" stroke-width="4"/><circle cx="50" cy="12" r="5" fill="#f5c46d"/><rect x="14" y="44" width="12" height="22" rx="5" fill="#7295bd"/><rect x="74" y="44" width="12" height="22" rx="5" fill="#7295bd"/>';
- else if(k==='frog')ears=`<circle cx="32" cy="32" r="13" fill="${c}"/><circle cx="68" cy="32" r="13" fill="${c}"/>`;
- if(k==='lion')ears='<circle cx="50" cy="53" r="39" fill="#c79158"/>';
- let detail='';
- if(['panda','owl'].includes(k))detail='<ellipse cx="36" cy="48" rx="11" ry="13" fill="#55617c"/><ellipse cx="64" cy="48" rx="11" ry="13" fill="#55617c"/>';
- if(k==='penguin')detail='<ellipse cx="50" cy="59" rx="24" ry="28" fill="#f8fbff"/>';
- if(k==='tiger')detail='<path d="m26 50 9 4-9 4m48-8-9 4 9 4M45 32l5 9 5-9" stroke="#906445" stroke-width="3" fill="none" stroke-linecap="round"/>';
- const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="${stage>=6?8:15}" fill="${paint('skin')}"/>`:k==='slime'?`<path d="M17 68Q${stage>=5?'12 11':'18 24'} 50 28q31 0 33 40Q50 90 17 68" fill="${paint('skin')}"/>`:`<ellipse cx="50" cy="55" rx="${stage>=6&&power?32:29}" ry="${stage>=6?25:29}" fill="${paint('skin')}" stroke="${outline}" stroke-width="1"/>`;
- const eyes=stage===1?'<path d="M31 49q5 6 10 0m18 0q5 6 10 0" stroke="#39465c" stroke-width="3" fill="none" stroke-linecap="round"/>':`<ellipse cx="36" cy="49" rx="${stage>=6&&power?5.2:4.3}" ry="${stage>=6&&power?3.5:5.2}" fill="#25344d"/><ellipse cx="64" cy="49" rx="${stage>=6&&power?5.2:4.3}" ry="${stage>=6&&power?3.5:5.2}" fill="#25344d"/><circle cx="35" cy="47" r="1.6" fill="white"/><circle cx="63" cy="47" r="1.6" fill="white"/>${stage>=5&&power?'<path d="m29 40 12 3m18 0 12-3" stroke="#39465c" stroke-width="2.5" stroke-linecap="round"/>':''}`;
- const muzzle=bird?'<path d="m43 59 7 9 7-9" fill="#efaa54"/>':`<ellipse cx="50" cy="62" rx="16" ry="11" fill="${tint(c,.65)}"/><path d="m46 57 4 4 4-4Z" fill="#73595b"/><path d="M42 65q8 ${stage===1?5:9} 16 0" stroke="#73595b" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+ // Hand-drawn species silhouettes, facial planes and markings; no shared round-face template.
+ const species=a.id,cream='#fff2d7',dark='#34445c';
+ let ears='',face='',detail='',muzzle='',eyeY=48,eyeX=[36,64],eyeColor=dark;
+ const skin=paint('skin'),edge=outline;
+ const ell=(x,y,rx,ry,fill,stroke='none',width=1.5)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"/>`;
+ const path=(d,fill,stroke='none',width=1.5)=>`<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+ const smile=(x=50,y=64)=>path(`M${x-8} ${y}q8 8 16 0`,'none',dark,2);
+ const snout=(x=50,y=62,rx=16,ry=11,fill=cream)=>ell(x,y,rx,ry,fill)+path(`M${x-4} ${y-5}q4-3 8 0l-4 4Z`,dark)+path(`M${x} ${y-1}v4m0-1q-5 6-10 1m10-1q5 6 10 1`,'none',dark,1.6);
+ const whiskers=path('M22 57 12 54m10 9-11 1m67-7 10-3m-10 9 11 1','none',dark,1.5);
+ const furLines=path('m30 34 3-3m12 0 4-2m14 3 4-2','none',tint(c,-.22),1.3);
+ const tooth=path('m43 69 4 7 3-7m4 0 3 7 4-7','#fff9e7');
+ if(species==='puppy'){
+  ears=path('M26 29Q10 29 10 46L8 67q2 15 13 9l10-19Z','#b68157', '#936842',1.5)+path('M74 29q16 0 16 17l2 21q-2 15-13 9L69 57Z','#b68157','#936842',1.5)+path('M16 39q-6 26 2 31m66-31q6 26-2 31','none','#d6ac83',3);
+  face=path('M22 45q0-20 28-20t28 20l-1 20q-6 19-27 18T23 65Z',skin,edge);
+  detail=ell(33,47,12,16,'#ce9a6d')+path('m43 29q-5-9 4-11 11 1 7 9','none','#c59261',2)+path('M43 31q8-4 15 1','none','#fff1d3',3);
+  muzzle=snout(50,64,20,14)+ell(47,59,1.3,1,'white')+path('m34 62 1 0m1 5 1 0m28-5 1 0m-1 5 1 0','none','#ae8160',1.8)+(stage<5?path('M47 72h7q0 10-4 10t-3-10','#ef9caa'):'');
+ }else if(species==='dragon'){
+  ears=path('M24 36Q10 22 16 9q5 15 21 18m27 0q17-3 21-18 6 13-8 27','#f4cd89','#b98a49',2)+path('m16 10 9 18m60-18-10 18','none','#fff2c7',2)+path('m22 41-13-5 4 15-6 9 17 2m54-21 13-5-4 15 6 9-17 2',tint(c,-.16),edge);
+  face=path('M24 38 36 27h28l12 11 4 24-12 17H32L20 62Z',skin,edge,1.8);
+  detail=path('m42 31 8-9 8 9-8 7Zm-13 9 5-4 5 4-5 5m22-5 5-4 5 4-5 5',tint(c,-.25))+path('m31 38 4 0m27 0 4 0','none',tint(c,.6),2);
+  muzzle=path('M31 56q19-9 38 0l4 12-9 10H36l-9-10Z',tint(c,.45),edge)+ell(37,60,2,1.5,'#478868')+ell(63,60,2,1.5,'#478868')+smile(50,69)+tooth;
+ }else if(species==='cat'){
+  ears=path('M22 42 16 9 40 27m20 0L84 9l-6 33',skin,edge,2)+path('m23 20 4 15 8-7m30 0 8 7 4-15','#eaa9c4');
+  face=path('M25 35q25-16 50 0l6 18-5 20-12-3-14 12-14-12-12 3-5-20Z',skin,edge);
+  detail=path('m43 28 7 10 7-10',tint(c,-.3))+path('m26 57 8 8-6 6m46-14-8 8 6 6',tint(c,.6));
+  muzzle=snout(50,64,14,10,'#f8eafa')+whiskers;
+ }else if(species==='fox'){
+  ears=path('M21 40 16 6l27 25m14 0L84 6l-5 34',skin,edge,2)+path('m22 14 4 20 13-5m22 0 13 5 4-20','#664c53')+path('m27 24 3 8 7-3m26 0 7 3 3-8','#f7dac0');
+  face=path('M25 33q25-12 50 0l14 27-18 11-21 14-21-14-18-11Z',skin,edge,1.5);
+  detail=path('M15 57 30 61 42 70 50 80 58 70 70 61 85 57 71 75 50 86 29 75Z',cream)+path('m39 35 11 8 11-8',tint(c,-.1));
+  muzzle=path('m44 68 6-3 6 3-6 6Z','#4c3b42')+path('M50 74v3m0-1q-4 4-8 0m8 0q4 4 8 0','none','#5b4245',1.5);eyeY=51;eyeColor='#624844';
+ }else if(species==='bear'){
+  ears=ell(25,31,14,15,'#b17b52',edge)+ell(75,31,14,15,'#b17b52',edge)+ell(25,31,8,9,'#dfbb95')+ell(75,31,8,9,'#dfbb95');
+  face=path('M22 41q2-18 28-18t28 18l3 24q-8 19-31 19T19 65Z',skin,edge);
+  detail=furLines+path('M28 35q6-5 11-4m22 0q6-1 11 4','none','#9b6f4f',2);
+  muzzle=snout(50,65,20,14,'#efcea4')+ell(49,59,2,1,'#fff3dd');
+ }else if(species==='panda'){
+  ears=ell(25,29,14,15,'#344557')+ell(75,29,14,15,'#344557')+ell(25,29,7,8,'#63758a')+ell(75,29,7,8,'#63758a');
+  face=path('M22 41q2-18 28-18t28 18l3 24q-8 19-31 19T19 65Z','#fbfaf3','#bdc5ca');
+  detail=`<ellipse cx="34" cy="49" rx="12" ry="16" transform="rotate(24 34 49)" fill="#394c60"/><ellipse cx="66" cy="49" rx="12" ry="16" transform="rotate(-24 66 49)" fill="#394c60"/>`;
+  muzzle=snout(50,66,15,11,'#fffdf2');eyeColor='#1d2b3c';
+ }else if(species==='rabbit'){
+  ears=path('M28 37Q13 2 26-5q13-5 18 36m12 0Q60-5 74-3q14 5-3 40',skin,edge,1.7)+path('M29 24q-9-20-2-24 7 2 10 25m27 0q4-23 9-22 7 5-3 25','#efb2d4');
+  face=path('M24 43q5-17 26-17t26 17l3 20q-5 20-29 22T21 63Z',skin,edge);
+  detail=path('m44 32 6-5 6 5','none','#fff4f9',3);
+  muzzle=ell(42,64,10,8,'#fff5f7')+ell(58,64,10,8,'#fff5f7')+path('m45 59 5-3 5 3-5 5Z','#d47aa2')+path('M45 70h10v10H45Z','#fffdf2', '#bb9baa',1)+path('M50 71v8','none','#d8c2cd',1)+whiskers;
+ }else if(species==='wolf'){
+  ears=path('M21 39 19 10l25 19m12 0 25-19-2 29',skin,edge,2)+path('m25 18 3 16 10-4m24 0 10 4 3-16','#667c93');
+  face=path('M25 33 35 24l15 6 15-6 10 9 4 13 8 9-9 4 8 10-13 2-10 12-13-6-13 6-10-12-13-2 8-10-9-4 8-9Z',skin,edge);
+  detail=path('M29 50 39 59 50 56 61 59 71 50l7 16-14 12-14-6-14 6-14-12Z','#e3edf2')+path('M40 31 50 45 60 31',tint(c,-.33));
+  muzzle=snout(50,67,15,9,'#f3f6f5')+path('m40 72 3 5 3-5m8 0 3 5 3-5','#fffef2');eyeColor='#43677a';
+ }else if(species==='lion'){
+  ears=path('M50 10 59 18 72 14 76 26 90 31 84 43 94 55 83 63 87 78 73 78 66 91 53 85 41 92 33 81 18 82 19 67 7 59 17 47 10 34 24 29 29 16 40 19Z','#bb803e','#926237',2)+path('m25 31 8 6m-10 27 11-3m32-24 8-6m-9 30 12 4m-35 14 4-10m14 10-3-10','none','#e8b363',2)+ell(26,36,9,10,'#ddab62')+ell(74,36,9,10,'#ddab62');
+  face=path('M26 41q24-20 48 0l3 21q-5 20-27 20T23 62Z',skin,edge);
+  detail=path('m42 32 8 8 8-8','#f5d187');muzzle=snout(50,65,19,13,'#ffe5ad')+path('m32 62 1 0m4 5 1 0m29-5 1 0m-5 5 1 0','none','#ae824b',1.8);
+ }else if(species==='tiger'){
+  ears=ell(25,30,13,14,'#aa683b')+ell(75,30,13,14,'#aa683b')+ell(25,30,7,8,'#ffd7a2')+ell(75,30,7,8,'#ffd7a2');
+  face=path('M24 38q26-19 52 0l4 25q-7 22-30 22T20 63Z',skin,edge);
+  detail=path('m41 28 9 12 9-12-9 5Zm-18 14 13 4-14 4m0 4 13 4-11 5m53-21-13 4 14 4m0 4-13 4 11 5','#744d36')+path('M29 61q21-9 42 0l-4 16H33Z','#fff2d1');
+  muzzle=snout(50,68,18,11,'#fff2d1')+whiskers;
+ }else if(species==='frog'){
+  ears=ell(30,31,15,16,skin,edge)+ell(70,31,15,16,skin,edge);
+  face=path('M21 40q-12 7-11 23 0 19 40 19t40-19q1-16-11-23Z',skin,edge,1.7);
+  detail=ell(30,31,10,11,'#eef8b9')+ell(70,31,10,11,'#eef8b9')+ell(20,58,4,3,'#70b468')+ell(80,58,4,3,'#70b468')+ell(26,67,2,2,'#70b468')+ell(74,67,2,2,'#70b468');
+  muzzle=path('M25 66q25 19 50 0','none','#477946',2.4)+ell(45,57,1.8,1.2,'#518c4d')+ell(55,57,1.8,1.2,'#518c4d');eyeY=31;eyeX=[30,70];
+ }else if(species==='slime'){
+  face=path('M12 66q3-29 24-32 13-3 16-19 18 10 16 23 16 1 20 27 4 20-38 20T12 66Z',skin,'#66b8ac',1.7);
+  detail=path('M24 55q1-13 12-16m13-12q3-2 4-5','none','#edffff',4)+ell(71,56,7,9,'#d9ffff')+ell(76,72,3,4,'#e8fffe')+ell(26,73,4,3,'#c2f7eb')+path('M19 78q31 12 62-1','none','#65b9ae',2);
+  muzzle=path('M41 65q9 11 18 0','none','#438b84',2.5);eyeColor='#316f70';
+ }else if(species==='robot'){
+  ears=path('M50 28V12','none','#627e9d',4)+ell(50,10,5,5,'#f7ce69','#a88748')+path('M21 40H10v26h11m58-26h11v26H79','#7b9dba','#486684',2);
+  face=path('M30 25h40l11 11v34L69 82H31L19 70V36Z',skin,'#526e8a',2)+path('M27 39h46v24H27Z','#23465d','#d1edf2',2);
+  detail=path('M31 68h38v8H31Z','#e5eef0','#7a9aaa',1)+path('M36 69v6m7-6v6m7-6v6m7-6v6m7-6v6','none','#809aaa',1)+[ [27,31],[73,31],[25,70],[75,70] ].map(([x,y])=>ell(x,y,2,2,'#5c7d98')+path(`M${x-1} ${y}h2`,'none','#c1d3df',.8)).join('');
+  muzzle='';eyeY=50;eyeColor='#8af0df';
+ }else if(species==='monster'){
+  ears=path('M26 39Q9 37 9 25l9 3-3-15q16 4 21 19m28 0q5-15 21-19l-3 15 9-3q0 12-17 14','#bc87d6','#84659d',2);
+  face=path('M22 39 33 25l17 5 17-5 11 14 7 19-7 18-16 7-12-5-12 5-16-7-7-18Z',skin,edge,1.8);
+  detail=ell(29,60,5,3,'#8b74bc')+ell(71,60,5,3,'#8b74bc')+path('m44 31 6-4 6 4','#ead7fc');
+  muzzle=path('M34 65q16 24 32 0Z','#584773')+path('m37 67 4 8 4-6m10 0 4 6 4-8','#fff2db')+path('M44 77q6-5 12 0','#dd9abd');eyeColor='#5b426f';
+ }else if(species==='owl'){
+  ears=path('M24 41 17 16l21 12m24 0 21-12-7 25','#8f7151','#775d44',1.6);
+  face=path('M24 35q26-16 52 0l5 22-8 22-23 8-23-8-8-22Z',skin,edge);
+  detail=path('M22 48q-3-23 22-15l6 7 6-7q25-8 22 15l-4 20-24 11-24-11Z','#f5e5c6')+ell(34,49,13,15,'#e1c998','#987c5f',1)+ell(66,49,13,15,'#e1c998','#987c5f',1)+path('m30 70 4 6 4-6m8 5 4 6 4-6m8-5 4 6 4-6','#ba9565');
+  muzzle=path('m45 58 5-4 5 4-5 12Z','#dfa750','#9f794d',1);eyeX=[34,66];eyeColor='#3c342d';
+ }else if(species==='penguin'){
+  face=path('M26 41q3-20 24-20t24 20l7 24q-6 21-31 23T19 65Z','#435c75','#30475f');
+  detail=path('M26 50q0-15 15-14l9 13 9-13q15-1 15 14v21q-24 19-48 0Z','#f7f7e8')+path('M39 26q11-6 22 0','none','#7797b0',3);
+  muzzle=path('M40 61q10-7 20 0l-10 9Z','#eda84f','#a97b43',1.3);eyeX=[35,65];eyeY=53;
+ }else if(species==='chick'){
+  ears=path('M43 29q-13-13 0-18l4 13q-1-18 11-19l-1 19q9-13 17-5L61 33','#f3b957','#cc974e',1.3);
+  face=path('M23 41q6-19 27-19t27 19l3 21q-4 24-30 24T20 62Z',skin,edge);
+  detail=path('M27 43q6-10 15-11','none','#fff4bd',3)+ell(27,64,7,4,'#efb787')+ell(73,64,7,4,'#efb787');
+  muzzle=path('m42 59 8-3 8 3-8 13Z','#eaa34b','#bd863c',1.4)+path('M44 63h12','none','#ffd29a',1.3);eyeY=51;
+ }else if(species==='koala'){
+  ears=path('M30 30 24 16 14 17 8 25 9 39 4 43 10 47 11 55 26 54 36 42m28 0 10 12 15 1 1-8 6-4-5-4 1-14-6-8-10-1-6 14','#a6b6c3','#7b8f9f',1.5)+ell(20,36,10,13,'#dce7eb')+ell(80,36,10,13,'#dce7eb')+path('m10 28 7 4m-8 4 6 2m75-10-7 4m8 4-6 2','none','#edf4f5',2);
+  face=path('M25 41q4-18 25-18t25 18l4 25q-8 18-29 18T21 66Z',skin,edge);
+  detail=path('m43 30 7-5 7 5','none','#d9e7eb',3);muzzle=ell(50,59,9,17,'#455a69','#354955',1.4)+ell(47,53,2,5,'#768b98')+path('M43 76q7 4 14 0','none','#596d7e',1.7);eyeX=[32,68];eyeY=51;
+ }else if(species==='unicorn'){
+  ears=path('M23 41 22 17l19 15m18 0 19-15-1 24',skin,edge,1.5)+path('m27 25 3 11 7-2m26 0 7 2 3-11','#f2b9ce')+path('M41 31 51 1l10 30Z','#f1d799','#c9aa65',1.5)+path('m47 12 9 4m-12 3 14 5','none','#c6a252',1.3);
+  face=path('M25 38q4-14 25-14t25 14l-4 22-7 18q-14 12-28 0l-7-18Z',skin,edge,1.5);
+  detail=path('M28 37Q15 26 27 20q14-8 25 11-8-1-10 10L30 52Z','#aa8dda')+path('M61 29q20 6 17 21l-8 17 14 7q-16 3-23-8 15-7 0-37','#dfacd6')+path('M30 25q9-2 13 8','none','#e4cbf4',2);
+  muzzle=ell(50,69,19,13,'#f6dbe5','#c6a5c6',1)+ell(40,66,2,2,'#a583a0')+ell(60,66,2,2,'#a583a0')+smile(50,73);eyeY=49;
+ }else if(species==='dino'){
+  ears=path('M31 37 36 18l11 14 7-21 10 20 11-10 1 18','#75a365','#507f4d',1.5);
+  face=path('M26 35q24-16 46 2l6 17 6 8q2 17-31 22-30 3-37-14l3-20Z',skin,edge,1.8);
+  detail=ell(24,53,4,3,'#86b974')+ell(72,48,4,3,'#86b974')+ell(66,35,3,2,'#d6eab0');
+  muzzle=path('M25 57q24-9 52 3l3 12q-24 20-50 6Z','#d5e6aa', '#80a063',1.2)+ell(36,62,2,2,'#6c9158')+ell(66,62,2,2,'#6c9158')+smile(51,70)+path('m39 73 3 5 3-5m11 0 3 5 3-5','#fff8d9');eyeX=[32,66];eyeY=47;
+ }
+ const eyes=species==='robot'?(stage===1?path('M32 49h9m18 0h9','none','#93e9db',3):path('M32 46h9v9h-9Zm27 0h9v9h-9Z','#87eedc')+path('M33 46h3m24 0h3','none','#e1ffff',1.5)):
+  stage===1?path(`M${eyeX[0]-5} ${eyeY}q5 6 10 0m${eyeX[1]-eyeX[0]-10} 0q5 6 10 0`,'none',eyeColor,2.5):eyeX.map(x=>ell(x,eyeY,species==='owl'?6:species==='frog'?5.5:power&&stage>=6?5:4.2,species==='owl'?8:power&&stage>=6?4:6,eyeColor)+ell(x-1.4,eyeY-2.3,1.7,2,'#fff')+(species==='owl'||species==='frog'?ell(x+1.3,eyeY+2,1,1,'#d9ecd7'):'')).join('')+(power&&stage>=5&&species!=='robot'?path(`M${eyeX[0]-7} ${eyeY-10}l12 3m${eyeX[1]-eyeX[0]-12} 0 12-3`,'none',edge,2):'');
+ const blush=species==='robot'||species==='dragon'||species==='dino'||species==='wolf'?'':ell(eyeX[0]-8,eyeY+13,5,2.5,'#e99daf')+ell(eyeX[1]+8,eyeY+13,5,2.5,'#e99daf');
+ // Tails and native anatomy remain visible around evolution clothing.
+ const tailY=stage===1?158:stage===2?147:stage===7?139:151,tailScale=stage===1?.65:1;
+ let anatomyBack='',anatomyFront='';
+ const tail=(drawing)=>`<g class="species-tail" transform="translate(${stage===7?8:0} ${tailY-151}) scale(${tailScale})">${drawing}</g>`;
+ if(species==='puppy')anatomyBack=tail(path('M126 151q24 13 37-6 9-16-1-23 2 17-16 19l-17-3Z','#c79467','#9a714f',1.5)+path('M160 128q4 12-8 15','none','#f5dcb7',3));
+ if(species==='cat')anatomyBack=tail(path('M126 154q43 7 40-33-1-13-10-12-10 2-5 13 3-11 8-1 2 25-30 17Z',skin,edge,1.5)+path('M157 111q-8 3-3 12','none','#e6d7fb',3));
+ if(species==='fox')anatomyBack=tail(path('M126 151q29 8 39-20 3-16 14-22 13 41-16 57-26 10-39-2Z',skin,edge,1.5)+path('M166 126 178 110q9 28-8 42l-7-6-5 7 2-17Z',cream));
+ if(species==='wolf')anatomyBack=tail(path('M126 149q26-2 35-31l6 11 9-7-2 19 10-2-10 14 5 4-19 11-15-4-18 0Z',skin,edge,1.5)+path('m164 136 9-8-2 15 7-1-11 13-10-3Z','#dce8ef'));
+ if(species==='lion')anatomyBack=tail(path('M129 151q38 24 34-25','none','#c89e55',7)+path('M165 108q18 7 11 21l-15 8-9-15Z','#ba7b3e','#936439',1.5)+path('m164 115 3 12','none','#e1ad5e',2));
+ if(species==='tiger')anatomyBack=tail(path('M130 153q40 15 35-22-1-12-10-19','none','#dca06a',9)+path('m160 120 7-4m-3 17 6-2m-7 14 7 2m-15 11 2 7m-15-9-1 7','none','#744d36',4));
+ if(species==='dragon'||species==='dino')anatomyBack=tail(path('M123 145q32 5 47-18l-2-14 17 9-3 18q-17 33-52 26Z',skin,edge,1.5)+path('m137 144 2-16 12 8 3-15 10 5 7-15 6 11',species==='dragon'?'#dfb367':'#73a25f',edge,1)+path('M135 159q31 0 43-24','none',tint(c,.5),3));
+ if(species==='rabbit')anatomyBack=tail(ell(137,151,15,15,'#fff0f4','#d8b2cb',1.5)+path('m129 141 4-2m8 2 3 3m-15 12 4 2','none','#e1c6d8',1.3));
+ if(species==='bear'||species==='panda'||species==='koala')anatomyBack=tail(ell(135,154,species==='koala'?8:11,10,species==='panda'?'#edf1e9':skin,edge));
+ if(species==='unicorn')anatomyBack=tail(path('M126 148q23-10 35-2 15 10 10 29l-12-7-9 8 2-16-20 2Z','#ceaddf','#af86c2',1.5)+path('M146 149q16 3 17 18','none','#f2c6df',4)+path('M144 156q10 0 9 13','none','#b8dce9',3));
+ if(species==='monster')anatomyBack=tail(path('M129 150q25 7 32-10l-6-9 18-5 7 17-11 1q-7 24-34 18Z',skin,edge)+path('m157 127 8 5 5-9','#dbc79a'));
+ if(species==='owl')anatomyBack=tail(path('M79 151 86 181 96 177 101 184 108 177 118 181l6-30Z','#9a7a55','#775d43',1.5)+path('M94 161v16m14-16v16','none','#d8bd95',2));
+ if(species==='penguin')anatomyBack=tail(path('m79 147 11 31 11-7 9 7 12-31Z','#3f576e','#2d4257',1.3));
+ if(species==='chick')anatomyBack=tail(path('m125 153 19-18-3 15 13-3-7 18-21 1Z','#edbe60','#c89b46',1.5));
+ if(species==='frog')anatomyBack=tail(path('m66 147-23 13-10 9 15 1-2 9 18-10 9-12m61-10 23 13 10 9-15 1 2 9-18-10-9-12',tint(c,-.1),edge,1.2));
+ if(species==='robot')anatomyBack=tail(path('M139 131q31 4 25-23','none','#748fa6',4)+path('m160 99 10 1-2 10-10-1Z','#9bd8e1','#4e738d',1.5));
+ // Small paw, hoof, scale and feather details make the body read as the chosen species.
+ const feet=stage===1?[]:stage===2?[[72,166],[128,166]]:stage===3?[[79,174],[121,174]]:stage===4?[[81,168],[133,160]]:stage===5?[[72,170],[128,170]]:stage===6?[[77,173],[123,173]]:stage===7?[[69,169],[94,171],[141,167]]:stage===9?power?[[58,174],[142,174]]:[]:stage===10?[[84,171],[116,171]]:[];
+ for(const [x,y] of feet){
+  if(species==='unicorn')anatomyFront+=path(`M${x-9} ${y-4}h18v8h-18Z`,'#8e76a0','#715a86',1.2)+path(`M${x} ${y-3}v6`,'none','#ceb5db',1);
+  else if(bird)anatomyFront+=path(`M${x} ${y-5}v6m0-2-9 5m9-5 9 5m-9-5v7`,'none','#d69a4a',3);
+  else if(species==='dragon'||species==='dino'||species==='monster')anatomyFront+=[-6,0,6].map(dx=>path(`M${x+dx-2} ${y}l2 7 3-7Z`,'#fff0cc',edge,.7)).join('');
+  else if(species!=='robot'&&species!=='slime'&&species!=='frog')anatomyFront+=path(`m${x-6} ${y-3}v4m6-4v4m6-4v4`,'none',tint(c,-.36),1.2);
+ }
+ if(species==='slime'){
+  const spread=[28,38,27,32,44,32,54,29,48,40][stage-1],bottom=[174,176,182,178,183,184,179,173,184,184][stage-1];
+  body=path(`M${bx-spread} ${by+22}q-7-24 ${spread-12}-35l12-15 13 15q${spread} 12 ${spread} 37l8 13q-${spread+5} 16-${spread*2+10} 0Z`,skin,'#68b4a8',1.8)+ell(bx+spread*.5,by+5,5,9,'#d9fff8')+path(`M${bx-spread+8} ${by+13}q-2-18 10-21`,'none','#e4fffb',4)+ell(bx,bottom-8,spread-4,6,'#83c8bd');
+ }else if(species==='panda')anatomyFront+=path(`M${bx-21} ${by+22}q21 8 42 0v8q-21 8-42 0Z`,'#3d4f60');
+ else if(species==='tiger')anatomyFront+=path(`m${bx-26} ${by+17} 12 3-10 4m48-7-12 3 10 4`,'none','#845535',3);
+ else if(species==='owl'&&stage<5)anatomyFront+=[-12,0,12].map(dx=>path(`m${bx+dx-4} ${by+28} 4 5 4-5`,'none','#987851',2)).join('');
+ else if(species==='dragon'||species==='dino')anatomyFront+=path(`M${bx-13} ${by+22}q13 5 26 0m-24 5q11 4 22 0`,'none',tint(c,-.24),1.4);
+ anatomyBack=`<g class="species-anatomy-back" data-species="${species}">${anatomyBack}</g>`;
+ anatomyFront=`<g class="species-anatomy-front">${anatomyFront}</g>`;
  let hat='';
  if(look.accessory==='bow')hat='<path d="M60 29 55 12l15 5 16-6-1 20-16-8Z" fill="#e36e99" stroke="#fff1ce" stroke-width="2"/><circle cx="69" cy="21" r="5" fill="#ffd5e4"/>';
  if(look.accessory==='visor')hat='<path d="M26 44h48l-4 14H30Z" fill="#28547f" stroke="#a2f0f0" stroke-width="2"/><path d="m32 46 7 10m5-10 7 10" stroke="#92e5ef" stroke-width="3"/>';
  if(look.accessory==='wizard')hat='<path d="M27 30 48-12 70 30Z" fill="#6660ba" stroke="#d8caef" stroke-width="2"/><ellipse cx="50" cy="31" rx="33" ry="7" fill="#8177ca"/>'+star(48,18,7,'#ffe2a0');
  if(look.accessory==='flower')hat='<g fill="#fff3a9" stroke="#eca877" stroke-width="1"><circle cx="70" cy="19" r="7"/><circle cx="80" cy="25" r="7"/><circle cx="76" cy="35" r="7"/><circle cx="64" cy="34" r="7"/><circle cx="60" cy="24" r="7"/></g><circle cx="70" cy="27" r="7" fill="#f7bb68"/>';
- const head=`<g class="evo-head" transform="translate(${hx} ${hy}) rotate(${tilt}) scale(${hs}) translate(-50 -55)">${ears}${face}${detail}${eyes}<ellipse cx="29" cy="61" rx="5" ry="3" fill="#e995a1" opacity=".5"/><ellipse cx="71" cy="61" rx="5" ry="3" fill="#e995a1" opacity=".5"/>${muzzle}${hat}</g>`;
+ const head=`<g class="evo-head" transform="translate(${hx} ${hy}) rotate(${tilt}) scale(${hs}) translate(-50 -55)">${ears}${face}${detail}${eyes}${blush}${muzzle}${hat}</g>`;
+ // Tall ears stay outside the helmet; a unicorn's crown frames its horn.
+ if(stage===6&&['rabbit','cat','fox','wolf','unicorn'].includes(species)){
+  // The helmet is the only stage-six foreground element before cosmetics.
+  front=`<g transform="translate(100 0) scale(.68 1) translate(-100 0)">${front}</g>`;
+ }
+ if(species==='rabbit'&&stage>=9)front=front.replace(/^<path[^>]+\/>/,crown=>`<g transform="translate(100 0) scale(.55 1) translate(-100 0)">${crown}</g>`);
+ if(species==='unicorn'&&stage>=6)anatomyFront+=`<g transform="translate(${hx} ${hy}) rotate(${tilt}) scale(${hs}) translate(-50 -55)">${path('M41 31 51 1l10 30Z','#f1d799','#c9aa65',1.5)}${path('m47 12 9 4m-12 3 14 5','none','#c6a252',1.3)}</g>`;
+ if(species==='unicorn'&&stage===9)front=front.replace('m77 32-4-21 17 9L100 3l10 17 17-9-4 21Z','m77 32-4-21 17 9 3-7 7 8 7-8 3 7 17-9-4 21Z');
+ if(species==='unicorn'&&stage===10)front=front.replace('m81 40-9-22 19 9 9-22 9 22 19-9-9 22Z','m81 40-9-22 19 9 4-9 5 9 5-9 4 9 19-9-9 22Z');
  // A visible outfit remains available even on the baby or beast silhouettes.
  if(look.outfit)front+=`<path d="M${hx-21*hs} ${hy+29*hs}q${21*hs} ${12*hs} ${42*hs} 0l-${5*hs} ${10*hs}q-${16*hs} ${8*hs}-${32*hs} 0Z" fill="${paint('metal')}" stroke="#fff5d4" stroke-width="2"/>${star(hx,hy+39*hs,5,'#fff6cc')}`;
  let effects='';
@@ -152,7 +297,7 @@ function characterSvg(id,evolution=1,look={}){
  if(look.effect==='lightning')effects='<path d="m27 76 15-34-2 24 13-2-27 41 7-28Zm128 69 15-34-2 24 13-2-27 41 7-28Z" fill="#ffe293" stroke="#d1a354" stroke-width="1.5"/>';
  if(look.effect==='stardust')effects=Array.from({length:10},(_,i)=>`<g class="evo-spark" style="--spark-delay:${i*.2}s">${star(20+(i*43)%164,22+(i*57)%150,4,i%2?'#fae3ac':'#d3b7fb')}</g>`).join('');
  if(stage>=8)effects+=Array.from({length:stage-3},(_,i)=>`<g class="evo-spark" style="--spark-delay:${i*.3}s">${star(23+(i*57)%156,23+(i*33)%151,stage===10?5:3)}</g>`).join('');
- return `<svg class="evo-character" data-evo-stage="${stage}" data-body-form="${stage}" viewBox="0 0 200 200" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg">${defs}${background}<ellipse cx="100" cy="183" rx="42" ry="6" fill="${accent}" opacity=".15"/>${back}<g class="evo-body">${body}</g>${head}${front}${effects}</svg>`;
+ return `<svg class="evo-character" data-evo-stage="${stage}" data-body-form="${stage}" data-species="${a.id}" viewBox="0 0 200 200" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg">${defs}${background}<ellipse cx="100" cy="183" rx="42" ry="6" fill="${accent}" opacity=".15"/>${back}${anatomyBack}<g class="evo-body">${body}</g>${head}${front}${anatomyFront}${effects}</svg>`;
 }
 
 const COSMETIC_SLOTS={outfit:'의상',background:'배경',accessory:'머리 장식',effect:'빛 효과'};
