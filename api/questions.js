@@ -125,7 +125,7 @@ function deterministic(q,item){
     if(item.type==='mc_usage'&&hasCompare((q.options||[]).map(x=>x.text).join(' ')))issues.push('usage_choices_compare_words');
   }else{
     if((q.options||[]).length)issues.push('subjective_has_choices');
-    const full=(q.acceptedAnswers||[]).some(x=>norm(x.text)===norm(item.word)&&Number(x.credit)===1);
+    const full=(q.acceptedAnswers||[]).some(x=>(norm(x.text)===norm(item.word)||norm(x.text)===norm(q.answerForm||item.word))&&Number(x.credit)===1);
     if(item.type==='subjective_use'&&(q.acceptedAnswers||[]).length)issues.push('sentence_use_has_fixed_answers');
     if(item.type!=='subjective_use'&&!full)issues.push('target_missing_from_accepted_answers');
   }
@@ -247,6 +247,7 @@ async function aiVerify(items,questions,recent){
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     'completedContext는 목표 정답을 넣은 실제 완성 문장입니다. 이 문장은 문법과 의미가 모두 자연스러워야 합니다. 목표어를 넣었을 때 조사·활용·서술어가 틀리면 naturalKorean=false입니다.',
+    'subjective_use의 sufficientClues는 문장을 만들 수 있는 구체적인 상황 단서와 목표어/과제가 있는지로 검사합니다. 이미 목표어를 보여주는 사용 과제이므로 숨겨진 단어를 추론할 두 단서나 고정 정답은 필요하지 않습니다.',
     'subjective_use의 naturalAlternativesConsidered는 다양한 적절한 문장을 허용하는 과제인지로 검사하고, 적절한 열린 과제이면 true입니다. 완성 문장 정답을 만들지 말고 acceptedAnswers는 빈 배열을 유지하세요.',
     'mc_relation, mc_structure, mc_reading은 목표어를 보여주는 객관식입니다. 보기의 동일 품사는 해당 없음으로 true, 정답 유일성과 상황/의미의 타당성을 검사하세요. subjective_use는 목표어를 보여주고 문장 하나를 만드는 과제입니다. 빈칸이나 고정 정답이 필요하지 않고 acceptedAnswers는 빈 배열입니다. 목표어 표시 자체는 답안 노출이 아닙니다. 모든 유형의 answerForm은 목표어와 동일한 어휘의 자연스러운 활용형인지 검사하세요.',
     'learningCardAccurate는 needsCard=true일 때 쉬운 뜻, 예문, 비예와 이유가 실제 어휘 의미에 맞는지, 예문이 문제 문장과 겹치지 않는지, structureNote가 제공된 검토 문구와 맞는지 검사합니다. needsCard=false는 해당 없음으로 true입니다. 틀린 학습 자료가 있으면 valid=false입니다.',
@@ -258,6 +259,7 @@ async function aiVerify(items,questions,recent){
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
+    '힌트의 뜻 풀이가 사전 정의와 비슷하다는 이유만으로 noAnswerLeak=false로 하지 마세요. 목표어 철자나 정답 번호/고유 보기 문구를 직접 제시하는 것만 힌트 노출 오류입니다. 힌트 사용은 이후 독립 회상으로 채점되지 않습니다.',
     '힌트는 학습자가 요청한 뒤에만 나타나는 단계적 도움입니다. 현재 상황의 의미 단서를 가리키거나 의미 범위를 좁히는 것은 허용합니다. 목표어 자체, 정답 번호, 정답 보기의 고유 문구를 그대로 알려주는 경우는 노출입니다. 피드백과 허용 답안은 답변 이후 정보이므로 노출 판단에서 반드시 제외하세요.',
     '빈칸 주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 목표어와 자연스러운 answerForm은 credit 1이고, 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 문맥의 자연스러운 활용형을 유지하세요.',
     '빠진 자연스러운 대체 답안이나 잘못된 허용 답안은 이 검수 단계에서 수정하세요. naturalAlternativesConsidered와 valid는 반환하는 최종 허용 답안 기준입니다. 객관식의 acceptedAnswers는 빈 배열입니다.',
@@ -321,7 +323,8 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
         }};
         accepted.set(item.id,q);pending.delete(item.id);delete feedback[item.id];
       }else{
-        feedback[item.id]=[...d,...aiIssues,...(!rv?['verification_missing']:[])];
+        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','noBackgroundBurden','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
+        feedback[item.id]=[...new Set([...d,...aiIssues,...(!rv?['verification_missing']:requiredChecks.filter(key=>!rv[key]).map(key=>'review_failed:'+key))])];
       }
     }
   }

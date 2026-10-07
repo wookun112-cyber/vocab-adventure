@@ -127,11 +127,14 @@ back(`item={id:'1',type:'subjective_context',word:'맑다',answerSlot:0,needsCar
  sample={...sample,type:item.type,showTarget:false,answerForm:'맑았다',context:'비가 그치고 구름이 걷혔어요. 오늘 하늘은 맑았다. 멀리 있는 산도 잘 보였어요.',learningCard:{definition:'흐리거나 탁하지 않다',example:'흙이 가라앉자 물이 맑아졌어요.',nonExample:'흙탕물은 탁해서 맑다고 하지 않아요.',structureNote:''},acceptedAnswers:[{text:'맑다',credit:1},{text:'맑았다',credit:1}],hints:['구름이 없는 하늘을 생각해요.','멀리 잘 보이는 까닭을 생각해요.']};
  flags={...flags,valid:true,noAnswerLeak:true,coherentSituation:true,learningCardAccurate:true,issues:[],acceptedAnswers:sample.acceptedAnswers};
  ask=async(prompt,schema,name)=>name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]};`);
+back("flags.acceptedAnswers=[{text:'맑았다',credit:1,rationale:'자연스러운 전체 활용형'}]");
 const inflected=await back('buildValidated([item],[])');
 assert.ok(inflected[0].context.includes('하늘은 ＿＿＿＿.'));
 assert.equal(inflected[0].answerForm,'맑았다');
 assert.equal(inflected[0].learningCard.example,'흙이 가라앉자 물이 맑아졌어요.');
 back('flags.learningCardAccurate=false;');
+const rejectedCard=await back('buildValidated([item],[],{maxAttempts:1,partial:true})');
+assert.ok(rejectedCard.failed[0].issues.includes('review_failed:learningCardAccurate'));
 await assert.rejects(back('buildValidated([item],[])'),/QUESTION_VALIDATION_FAILED/);
 back(`item={...item,type:'subjective_use',word:'협력',needsCard:false};sample={...sample,type:item.type,answerForm:item.word,showTarget:true,prompt:'친구와 함께 한 일을 이 말을 넣어 문장으로 쓰세요.',context:'친구들과 힘을 모아 일을 마친 상황을 떠올려요.',options:[],acceptedAnswers:[]};flags={...flags,learningCardAccurate:true,acceptedAnswers:[]};`);
 const sentence=await back('buildValidated([item],[])');assert.equal(sentence[0].acceptedAnswers.length,0);assert.equal(sentence[0].showTarget,true);
