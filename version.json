@@ -1,5 +1,5 @@
 {
-  "version": "10.9.9",
+  "version": "10.10.0",
   "channel": "production",
   "curriculum": "elementary-to-high-3",
   "accepted_range": [
@@ -47,5 +47,8 @@
   "question_cache": "cloud_per_account_per_learner_single_use",
   "parallel_repeat_prevention": "scenario_reservation_and_sentence_fingerprint_recheck",
   "background_preparation": "on_learning_completion_with_durable_checkpoints_and_scheduled_retry",
-  "lesson_resume": "per_account_per_profile_cloud_and_local_checkpoint"
+  "lesson_resume": "per_account_per_profile_cloud_and_local_checkpoint",
+  "profile_characters": 20,
+  "virtual_competitors": 30,
+  "ranking": "earned_exploration_level_separate_from_difficulty"
 }

@@ -51,6 +51,9 @@ for(let i=0;i<9;i++){
  f.run("applyResult(session.queue[current],'◎','좋아요.','',{credit:1,contextSuccess:true,targetRecall:true,independent:true})");
  if(i<8)await f.run('nextQuestion()');
 }
+f.run("selectCharacter('fox')");
+const earnedXp=f.run('exploration(child()).xp');
+assert.equal(earnedXp,f.run('session.results.reduce((n,r)=>n+r.xp,0)'),"new-profile XP comes only from awarded answers, without double migration credit");
 await f.run('cloudSave()');
 assert.equal(f.run('current'),8,'the ninth feedback is still on screen when the app closes');
 assert.equal(f.run('child().activeLesson.nextIndex'),9,'a graded ninth question resumes at question ten without needing Next');
@@ -61,6 +64,8 @@ await restarted.run('cloudLoad()');
 assert.equal(restarted.node('startDaily').textContent,'이어서 학습 · 10번째 문제');
 await restarted.run('buildSession()');
 assert.equal(restarted.run('current'),9);
+assert.equal(restarted.run('child().characterId'),'fox');
+assert.equal(restarted.run('exploration(child()).xp'),earnedXp,'resuming preserves XP without re-awarding previous answers');
 assert.equal(restarted.node('counter').textContent,'10번째 문제');
 assert.equal(restarted.run('session.results.length'),9);
 assert.ok(restarted.run(stats)===wordStats,'restoring cannot change answer counters or mastery evidence');

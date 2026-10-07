@@ -22,9 +22,14 @@
 <section id="home" class="screen active">
   <div class="card hero"><div class="eyebrow">적응형 한국어 어휘</div><h1 id="hello">오늘의 탐험을 시작해볼까요?</h1><p class="muted">초등 저학년부터 고등 심화까지 선별된 어휘를 바탕으로, 문맥 추론·구별·직접 설명을 확인해 학습 난이도를 자동 조절합니다. 단계는 권장 학습 수준입니다.</p></div>
   <div class="profiles learner-profiles">
-    <button class="profile active" data-profile="ayoung"><div class="avatar">👧</div><strong>아영</strong><small id="ayoungLevel">현재 난이도 2.0</small></button>
-    <button class="profile" data-profile="inseong"><div class="avatar">👦</div><strong>인성</strong><small id="inseongLevel">현재 난이도 2.0</small></button>
-    <button class="profile guest-profile" data-profile="guest"><div class="avatar">🧑</div><strong>게스트</strong><small id="guestLevel">테스트용 · 기록 분리</small></button>
+    <button class="profile active" data-profile="ayoung"><div class="avatar" id="profileAvatar-ayoung">👧</div><strong>아영</strong><small id="ayoungLevel">현재 난이도 2.0</small></button>
+    <button class="profile" data-profile="inseong"><div class="avatar" id="profileAvatar-inseong">👦</div><strong>인성</strong><small id="inseongLevel">현재 난이도 2.0</small></button>
+    <button class="profile guest-profile" data-profile="guest"><div class="avatar" id="profileAvatar-guest">🧑</div><strong>게스트</strong><small id="guestLevel">테스트용 · 기록 분리</small></button>
+  </div>
+  <div class="card explorer-card">
+    <div class="row"><div id="explorerAvatar" class="explorer-avatar"></div><div class="explorer-details"><div class="eyebrow">나의 탐험 레벨</div><h2 id="explorerName"></h2><span id="explorerRank" class="tag"></span></div><button data-go="characters" class="secondary">캐릭터 선택</button></div>
+    <div class="progress xp-track"><div id="xpBar" role="progressbar" aria-label="다음 탐험 레벨 경험치" aria-valuemin="0" aria-valuemax="200"></div></div><small id="xpLabel" class="muted"></small>
+    <p id="rankTarget" class="rank-target"></p><button data-go="ranking" class="primary wide">🏆 탐험 순위표</button>
   </div>
   <div class="card install"><div><strong>태블릿에 앱으로 설치</strong><small class="muted" id="installHint">브라우저 메뉴에서 홈 화면에 추가할 수 있어요.</small></div><button id="installBtn" class="secondary">설치</button></div>
   <div class="grid4">
@@ -74,12 +79,25 @@
   </div>
 </section>
 
+<section id="characters" class="screen">
+  <div class="row between"><h2 id="characterTitle">나의 캐릭터</h2><button data-go="home" class="ghost">홈</button></div>
+  <p class="muted">함께 탐험할 친구를 골라요. 캐릭터는 각 프로필에 따로 저장돼요.</p>
+  <p id="characterStatus" class="character-status" role="status" aria-live="polite"></p><div id="characterGrid" class="character-grid"></div>
+</section>
+<section id="ranking" class="screen">
+  <div class="row between"><div><div class="eyebrow">한 계단씩, 나의 속도로</div><h2>탐험 레벨 순위표</h2></div><button data-go="home" class="ghost">홈</button></div>
+  <p class="league-note">미리 정해진 캐릭터 30명과 도전하는 연습 리그예요. 친구들의 경험치는 고정되어 있어요.</p>
+  <div id="rankPodium" class="rank-podium"></div><div id="rankMySummary" class="card rank-summary" aria-live="polite"></div>
+  <details class="card xp-rules"><summary>탐험 레벨은 어떻게 올라가나요?</summary><p class="muted">문제를 풀면 5 XP, 도움 없이 맞히면 3 XP를 더 받아요. 하루 최대 30문제에 경험치를 지급하고, 그날 첫 학습·복습 완주(20문제 이상) 시 40 XP를 더 받아요. 같은 날 같은 문제를 반복해 풀면 추가 경험치는 없어요. 200 XP마다 레벨이 올라가요. 기존 학습 기록도 반영했어요.</p><p class="muted">탐험 레벨은 꾸준한 학습 기록이에요. 문제의 학습 단계나 성적과는 별개예요. 앞선 친구를 차근차근 따라잡아 보세요!</p></details>
+  <ol id="rankList" class="rank-list" aria-label="탐험 레벨 전체 순위"></ol>
+</section>
+
 <section id="wordbook" class="screen"><div class="row between"><h2>내 단어장</h2><button data-go="home" class="ghost">홈</button></div><div id="wordList" class="list"></div></section>
 <section id="report" class="screen">
   <div class="row between"><h2 id="reportTitle">부모 리포트</h2><button data-go="home" class="ghost">홈</button></div>
   <div class="profiles report-profiles" style="margin:12px 0 16px">
-    <button class="profile report-profile" data-report-profile="ayoung"><div class="avatar">👧</div><strong>아영</strong><small>아영 리포트</small></button>
-    <button class="profile report-profile" data-report-profile="inseong"><div class="avatar">👦</div><strong>인성</strong><small>인성 리포트</small></button>
+    <button class="profile report-profile" data-report-profile="ayoung"><div class="avatar" id="reportAvatar-ayoung">👧</div><strong>아영</strong><small>아영 리포트</small></button>
+    <button class="profile report-profile" data-report-profile="inseong"><div class="avatar" id="reportAvatar-inseong">👦</div><strong>인성</strong><small>인성 리포트</small></button>
   </div>
   <div id="reportBody"></div>
 </section>
@@ -94,7 +112,7 @@
 </div><button id="signOut" class="danger">로그아웃</button></div></div>
 </section>
 </main>
-<nav class="bottom"><button class="nav active" data-go="home">🏠 홈</button><button class="nav" data-go="wordbook">📚 단어장</button><button class="nav" data-go="report">📊 리포트</button><button class="nav" data-go="settings">⚙️ 설정</button></nav>
+<nav class="bottom"><button class="nav active" data-go="home">🏠 홈</button><button class="nav" data-go="wordbook">📚 단어장</button><button class="nav" data-go="report">📊 리포트</button><button class="nav" data-go="ranking">🏆 순위</button><button class="nav" data-go="settings">⚙️ 설정</button></nav>
 </div>
 <script type="module" src="/app.js"></script>
 </body></html>

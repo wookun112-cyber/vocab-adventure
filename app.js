@@ -61,6 +61,102 @@ const hydrateWordState=raw=>{
  x.types=x.types&&typeof x.types==='object'?x.types:{};
  return x;
 };
+
+// Exploration levels reward practice; school-stage difficulty remains independent.
+const CHARACTERS=[
+ ['puppy','구름 강아지','#f2c78e','dog'],['dragon','불꽃 드래곤','#86cba7','horn'],
+ ['cat','달빛 고양이','#baacf0','cat'],['fox','햇살 여우','#f3aa75','cat'],
+ ['bear','꿀곰','#cba580','round'],['panda','대나무 판다','#ecedf4','panda'],
+ ['rabbit','별토끼','#e8bcdf','long'],['wolf','눈꽃 늑대','#9fb9ce','cat'],
+ ['lion','용기 사자','#edc16c','lion'],['tiger','번개 호랑이','#eda875','tiger'],
+ ['frog','초록 개구리','#a1d887','frog'],['slime','젤리 슬라임','#9edbcf','slime'],
+ ['robot','탐험 로봇','#a6c8ed','robot'],['monster','꼬마 몬스터','#b3a6e5','horn'],
+ ['owl','지혜 부엉이','#c6aa8c','owl'],['penguin','얼음 펭귄','#a3b9d3','penguin'],
+ ['chick','콩알 병아리','#f3d37c','chick'],['koala','나무 코알라','#b6c2cc','round'],
+ ['unicorn','꿈빛 유니콘','#d7bce9','unicorn'],['dino','숲속 공룡','#a8cf8a','dino']
+].map(([id,name,color,shape])=>({id,name,color,shape}));
+const DEFAULT_CHARACTERS={ayoung:'puppy',inseong:'dragon',guest:'robot'};
+function characterSvg(id){
+ const a=CHARACTERS.find(x=>x.id===id)||CHARACTERS[0],c=a.color,k=a.shape;
+ let ears='';
+ if(['cat','tiger'].includes(k))ears=`<path d="M24 42 20 17 43 31M56 31 80 17 76 42" fill="${c}" stroke="#39465c" stroke-width="2"/>`;
+ else if(k==='dog')ears=`<ellipse cx="24" cy="46" rx="12" ry="22" fill="#bd8d66"/><ellipse cx="76" cy="46" rx="12" ry="22" fill="#bd8d66"/>`;
+ else if(k==='long')ears=`<ellipse cx="36" cy="26" rx="9" ry="22" fill="${c}"/><ellipse cx="64" cy="26" rx="9" ry="22" fill="${c}"/><path d="M36 11v23M64 11v23" stroke="#f7e5ef" stroke-width="5" stroke-linecap="round"/>`;
+ else if(['horn','unicorn','dino'].includes(k))ears=k==='unicorn'?'<path d="m43 33 7-25 9 25" fill="#f5cd77" stroke="#cda559" stroke-width="2"/>':`<path d="m23 37 3-22 16 17m19 0 13-17 3 22" fill="#f6cf80" stroke="#bb9363" stroke-width="2"/>`;
+ else if(['round','panda'].includes(k))ears=`<circle cx="27" cy="31" r="13" fill="${k==='panda'?'#55617c':c}"/><circle cx="73" cy="31" r="13" fill="${k==='panda'?'#55617c':c}"/>`;
+ else if(k==='robot')ears='<path d="M50 30V15" stroke="#55617c" stroke-width="4"/><circle cx="50" cy="12" r="5" fill="#f5c46d"/><rect x="14" y="44" width="12" height="22" rx="5" fill="#7295bd"/><rect x="74" y="44" width="12" height="22" rx="5" fill="#7295bd"/>';
+ else if(k==='frog')ears=`<circle cx="32" cy="32" r="13" fill="${c}"/><circle cx="68" cy="32" r="13" fill="${c}"/>`;
+ let detail='';
+ if(k==='lion')ears='<circle cx="50" cy="53" r="39" fill="#c79158"/>';
+ if(['panda','owl'].includes(k))detail='<ellipse cx="36" cy="48" rx="11" ry="13" fill="#55617c"/><ellipse cx="64" cy="48" rx="11" ry="13" fill="#55617c"/>';
+ if(k==='penguin')detail='<ellipse cx="50" cy="59" rx="24" ry="28" fill="#f8fbff"/>';
+ if(k==='tiger')detail='<path d="m26 50 9 4-9 4m48-8-9 4 9 4M45 32l5 9 5-9" stroke="#906445" stroke-width="3" fill="none" stroke-linecap="round"/>';
+ if(k==='dino')detail='<path d="m44 32 6-10 6 10" fill="#76a465"/>';
+ const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="15" fill="${c}"/>`:k==='slime'?`<path d="M17 68Q18 24 50 28q31 0 33 40Q50 90 17 68" fill="${c}"/>`:`<ellipse cx="50" cy="55" rx="29" ry="29" fill="${c}"/>`;
+ const mouth=['chick','owl','penguin'].includes(k)?'<path d="m43 60 7 8 7-8" fill="#efaa54"/>':'<path d="M42 64q8 9 16 0" stroke="#39465c" stroke-width="2.5" fill="none" stroke-linecap="round"/>';
+ return `<svg viewBox="0 0 100 100" role="img" aria-label="${a.name}" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="${c}" opacity=".2"/>${ears}${face}${detail}<circle cx="36" cy="49" r="4" fill="#25344d"/><circle cx="64" cy="49" r="4" fill="#25344d"/><circle cx="35" cy="48" r="1.3" fill="white"/><circle cx="63" cy="48" r="1.3" fill="white"/><ellipse cx="30" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/><ellipse cx="70" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/>${mouth}<path d="m80 78 2-5 2 5 5 2-5 2-2 5-2-5-5-2" fill="#e4b956"/></svg>`;
+}
+function exploration(c,profile=state.selected){
+ if(!CHARACTERS.some(a=>a.id===c.characterId))c.characterId=DEFAULT_CHARACTERS[profile]||'puppy';
+ if(c.exploration?.version!==1){
+  const words=Object.values(c.words||{});
+  c.exploration={version:1,xp:words.reduce((n,w)=>n+Math.max(0,Number(w.seen)||0)*5+Math.max(0,Number(w.independentCorrect)||0)*3,0),days:{}};
+ }
+ c.exploration.xp=Math.max(0,Math.floor(Number(c.exploration.xp)||0));
+ c.exploration.days=c.exploration.days&&typeof c.exploration.days==='object'?c.exploration.days:{};
+ return c.exploration;
+}
+const explorationLevel=xp=>1+Math.floor(xp/200);
+function rewardAnswer(q,independent){
+ if(!authUser||!session?.lessonId||session.account!==authUser.id||session.profile!==state.selected)return 0;
+ const game=exploration(child()),date=today(),day=game.days[date]||(game.days[date]={keys:[],bonus:false});
+ const key=session.lessonId+':'+session.results.length;
+ // Same question across lessons on one day counts once; resuming also counts once.
+ const passage=q.signature||[q.w.w,q.type,q.ctx,q.q].join('|');
+ if(day.keys.length>=30||day.keys.some(x=>x.key===key||x.passage===passage))return 0;
+ const xp=5+(independent?3:0);day.keys.push({key,passage});game.xp+=xp;
+ for(const old of Object.keys(game.days).sort().slice(0,-60))delete game.days[old];
+ return xp;
+}
+function rewardCompletion(){
+ if(!authUser||session.account!==authUser.id||session.profile!==state.selected||session.mode==='level'||session.results.length<20)return 0;
+ const game=exploration(child()),day=game.days[today()]||(game.days[today()]={keys:[],bonus:false});
+ if(day.bonus)return 0;day.bonus=true;game.xp+=40;return 40;
+}
+const VIRTUAL_NAMES=['별빛대장','용감한참새','책먹는공룡','우주고양이','초록번개','달토끼','구름기사','문장마법사','호기심곰','바람여우','반짝연필','숲속탐정','젤리전사','파도펭귄','불꽃소년','꿈꾸는별','햇살강아지','나무부엉이','꼬마로봇','은빛늑대','새싹요정','민트구름','복숭아곰','파란혜성','작은용','도토리친구','느긋한코알라','콩알병아리','무지개토끼','첫걸음탐험가'];
+const VIRTUAL_LEVELS=[18,16,14,12,11,10,9,9,8,8,7,7,6,6,5,5,5,4,4,4,3,3,3,2,2,2,1,1,1,1];
+function explorationRanking(c=child(),profile=state.selected){
+ const game=exploration(c,profile),friends=VIRTUAL_NAMES.map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,xp:(VIRTUAL_LEVELS[i]-1)*200+((29-i)*37%160)+20,virtual:true}));
+ const me={id:profile,name:c.name,characterId:c.characterId,xp:game.xp,virtual:false};
+ return [...friends,me].sort((a,b)=>b.xp-a.xp||Number(a.virtual)-Number(b.virtual)||a.id.localeCompare(b.id)).map((x,i)=>({...x,rank:i+1,level:explorationLevel(x.xp)}));
+}
+function selectCharacter(id){
+ if(!authUser||!CHARACTERS.some(a=>a.id===id))return;
+ child().characterId=id;exploration(child());storeLearnerCheckpoint(state.selected);localSave();cloudSave();renderExploration();
+ $('characterStatus').textContent=CHARACTERS.find(a=>a.id===id).name+' 선택 완료';
+}
+function renderExploration(){
+ if($('characterStatus'))$('characterStatus').textContent='';
+ const c=child(),game=exploration(c),rows=explorationRanking(),me=rows.find(x=>!x.virtual),ahead=rows[me.rank-2],remaining=200-game.xp%200;
+ for(const id of ['ayoung','inseong','guest']){
+  const u=state.users[id];exploration(u,id);
+  for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId);
+ }
+ if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId);
+ if($('explorerName'))$('explorerName').textContent=c.name+' · Lv.'+me.level;
+ if($('explorerRank'))$('explorerRank').textContent='현재 '+me.rank+'위 / 31명';
+ if($('xpLabel'))$('xpLabel').textContent='다음 레벨까지 '+remaining+' XP · 누적 '+game.xp+' XP';
+ if($('xpBar')){$('xpBar').style.width=(game.xp%200/2)+'%';$('xpBar').setAttribute?.('aria-valuenow',game.xp%200)}
+ const target=ahead?ahead.name+'까지 '+(ahead.xp-game.xp+1)+' XP! 한 계단 더 올라가 볼까요?':'1위 달성! 새로운 단어를 익히며 기록을 이어가요.';
+ if($('rankTarget'))$('rankTarget').textContent=target;
+ if($('characterTitle'))$('characterTitle').textContent=c.name+'의 캐릭터';
+ if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
+ const card=x=>`<div class="podium-avatar">${characterSvg(x.characterId)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${x.rank}위</span><strong>${escapeHtml(x.name)}</strong><b>Lv.${x.level}</b>${x.virtual?'':'<small>나</small>'}`;
+ if($('rankPodium'))$('rankPodium').innerHTML=[rows[1],rows[0],rows[2]].map(x=>`<div class="podium place-${x.rank}">${card(x)}</div>`).join('');
+ if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId)}</div><div><strong>${escapeHtml(c.name)} · ${me.rank}위</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">Lv.${me.level}</span>`;
+ if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.virtual?'':' rank-me'}"><span class="rank-number">${x.rank}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small>${x.virtual?'':'내 프로필 · '}${x.xp} XP</small></div><span class="level-badge">Lv.${x.level}</span></li>`).join('');
+}
+
 const freshChild=name=>({
  name,difficulty:2,confidence:0,learningDays:0,sessions:[],
  words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),
@@ -111,6 +207,7 @@ function mergeState(raw){
    dst.recentProblems=Array.isArray(childSrc.recentProblems)?childSrc.recentProblems.slice(-60):[];
    dst.words={...dst.words};
    for(const [w,st] of Object.entries(childSrc.words||{}))dst.words[w]={...hydrateWordState(st),__v:2};
+   exploration(dst,id);
  }
  state=base;
  rebuildCatalog();
@@ -724,6 +821,7 @@ function renderQuestion(savedHint=0){
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
 function applyResult(q,result,feedback,normalized='',meta={}){
+ exploration(child());
  rememberQuestion(q);
  const st=wordState(q.w.w);
  let credit=Number.isFinite(meta.credit)?clamp(meta.credit,0,1):resultCredit(result);
@@ -759,6 +857,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  scheduleReview(st,{credit,independent,revealed,hintUsed});
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
  const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,signature:q.signature||''};
+ rec.xp=rewardAnswer(q,independent);
  session.results.push(rec);
  if(q.signature){
    const c=child();c.recentProblems=Array.isArray(c.recentProblems)?c.recentProblems:[];
@@ -788,7 +887,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
- $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(rec.xp?'<br><small class="xp-earned">탐험 경험치 +'+rec.xp+' XP</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  checkpointSession();localSave();cloudSave();
 }
@@ -949,11 +1048,12 @@ function finishSession(){
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
  }
+ const bonus=rewardCompletion();
  c.activeLesson=null;
  c.preparationRevision=(c.preparationRevision||0)+1;
  storeLearnerCheckpoint(session.profile);localSave();
  cloudSave().then(()=>warmDailyQuestions()); renderAll(); show(state.selected==='guest'?'home':'report');
- alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
+ alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(bonus?' · 완주 보너스 +'+bonus+' XP':'')+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
 }
 function renderAll(){
  renderResumeButton();
@@ -963,7 +1063,7 @@ function renderAll(){
  $('guestLevel').textContent='현재 단계 '+bandLabel(state.users.guest.difficulty)+' · '+state.users.guest.difficulty.toFixed(1);
  $('hello').textContent=c.name+'의 오늘 탐험'; $('subtitle').textContent=c.name+' · '+bandLabel(c.difficulty)+' 단계';
  $('statScore').textContent=c.sessions[0]?.score??'-'; $('statWords').textContent=Object.values(c.words).filter(x=>x.seen>0).length; $('statMaster').textContent=Object.values(c.words).filter(x=>x.mastered).length; $('statDay').textContent=Math.max(1,c.learningDays);
- renderWordbook();renderReport();
+ renderWordbook();renderReport();renderExploration();
 }
 function renderWordbook(){
  const c=child(),arr=WORDS.filter(w=>(c.words[w.w]?.seen||0)>0).sort((a,b)=>((c.words[b.w]?.wrong||0)-(c.words[a.w]?.wrong||0))||((c.words[b.w]?.seen||0)-(c.words[a.w]?.seen||0)));
@@ -975,7 +1075,7 @@ function renderReport(){
  document.querySelectorAll('[data-report-profile]').forEach(b=>b.classList.toggle('active',b.dataset.reportProfile===reportId));
  $('reportBody').innerHTML='<div class="grid4"><div class="stat"><strong>'+(c.sessions[0]?.score??'-')+'</strong><span>최근 점수</span></div><div class="stat"><strong>'+studied.length+'</strong><span>학습 단어</span></div><div class="stat"><strong>'+studied.filter(w=>c.words[w.w]?.mastered).length+'</strong><span>숙달</span></div><div class="stat"><strong>'+c.difficulty.toFixed(1)+'</strong><span>현재 난이도</span></div></div><div class="card"><h3>다음 우선순위</h3><div class="list">'+(weak.length?weak.map(w=>'<div class="item"><strong>'+w.w+'</strong> <small>오답 '+c.words[w.w].wrong+'회 · '+w.d+'</small></div>').join(''):'<span class="muted">학습을 시작하면 자동으로 분석됩니다.</span>')+'</div></div><div class="card"><h3>부모용 한줄 요약</h3><p class="muted">'+(weak.length?'현재 '+weak.map(x=>x.w).join(', ')+'을 우선 복습하면 좋습니다. 현재 학습 단계는 '+bandLabel(c.difficulty)+'입니다.'+(conf.length?' 특히 '+conf.join(', ')+'과의 구별을 다시 확인합니다.':''):'아직 충분한 학습 기록이 없습니다.')+'</p></div>';
 }
-function show(id){if(id==='home')renderResumeButton();if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook')renderWordbook();if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
+function show(id){if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home')renderResumeButton();if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook')renderWordbook();if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
 async function login(){setMsg('로그인 중…');const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)setMsg('로그인 실패: 이메일과 비밀번호를 확인해 주세요.',true)}
 async function signup(){const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<6)return setMsg('이메일과 6자 이상의 비밀번호를 입력해 주세요.',true);setMsg('계정을 만드는 중…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg(data.session?'계정이 만들어졌어요.':'확인 메일을 보냈어요. 메일의 확인 링크를 눌러 주세요.')}
 async function resendConfirm(){const email=$('email').value.trim();if(!email)return setMsg('먼저 이메일을 입력해 주세요.',true);setMsg('확인 메일을 다시 보내는 중…');const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg('새 확인 메일을 보냈어요. 가장 최근 메일의 링크를 눌러 주세요.')}
@@ -996,6 +1096,7 @@ function startVoice(){
  r.onresult=e=>{$('answer').value=e.results[0][0].transcript;answerSource='voice'};r.onend=()=>{$('mic').classList.remove('recording');$('mic').textContent='🎤 음성 입력'};r.onerror=()=>{$('mic').classList.remove('recording');$('mic').textContent='🎤 음성 입력'};r.start();
 }
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installHint').textContent='지금 바로 앱으로 설치할 수 있어요.'});
+$('characterGrid').addEventListener('click',e=>{const button=e.target.closest('[data-character]');if(button)selectCharacter(button.dataset.character)});
 $('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null}else alert('브라우저 메뉴에서 “앱 설치” 또는 “홈 화면에 추가”를 눌러주세요.')};
 document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{checkpointSession();if(session?.preparation)session.preparation.cancel();session=null;state.selected=b.dataset.profile;localSave();cloudSave();renderAll();show('home');warmDailyQuestions()});
 document.querySelectorAll('[data-report-profile]').forEach(b=>b.onclick=()=>{reportProfile=b.dataset.reportProfile;renderReport()});
