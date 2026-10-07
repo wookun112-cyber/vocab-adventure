@@ -78,18 +78,23 @@ const CHARACTERS=[
 ].map(([id,name,color,shape])=>({id,name,color,shape}));
 const DEFAULT_CHARACTERS={ayoung:'puppy',inseong:'dragon',guest:'robot'};
 const EVOLUTION_FORMS=[
- ['씨앗','#a5b4ca','첫 탐험'],['새싹','#70bc9b','초록 스카프'],['견습','#66a8d8','별 배지'],
- ['모험가','#6f90de','탐험 망토'],['수호자','#a187da','수호 장비'],['정예','#d580af','정예 갑옷'],
- ['영웅','#e6a16c','빛의 날개'],['별빛','#e3b85d','별빛 오라'],['전설','#d4a44b','전설 왕관'],
- ['궁극','#9174dd','무지개 날개와 왕관']
+ ['씨앗','#a5b4ca','작은 반짝임'],['새싹','#70bc9b','빛나는 스카프'],['견습','#66a8d8','보석 별 배지'],
+ ['모험가','#6f90de','금빛 테두리 망토'],['수호자','#a187da','보석 수호 장비'],['정예','#d580af','빛나는 보석 갑옷'],
+ ['영웅','#e6a16c','겹겹이 펼친 빛의 날개'],['별빛','#e3b85d','별자리와 이중 오라'],['전설','#d4a44b','보석 왕관과 황금 날개'],
+ ['궁극','#9174dd','무지개 날개·왕관·은하 오라']
 ].map(([name,color,feature],i)=>({stage:i+1,name,color,feature,minRank:91-i*10,maxRank:100-i*10}));
 const evolutionForRank=rank=>clamp(11-Math.ceil(clamp(Number(rank)||100,1,100)/10),1,10);
 function evolutionState(c){
  const raw=c.characterEvolution||{},unlockedStage=clamp(Math.floor(Number(raw.unlockedStage)||1),1,10);
  return {version:1,unlockedStage,equippedStage:clamp(Math.floor(Number(raw.equippedStage)||unlockedStage),1,unlockedStage),bestRank:Number.isInteger(raw.bestRank)&&raw.bestRank>=1&&raw.bestRank<=100?raw.bestRank:null,awardedAt:Number.isFinite(Date.parse(raw.awardedAt))?raw.awardedAt:null};
 }
+let characterSvgSequence=0;
 function characterSvg(id,evolution=1){
  const a=CHARACTERS.find(x=>x.id===id)||CHARACTERS[0],c=a.color,k=a.shape,stage=clamp(Math.floor(Number(evolution)||1),1,10),form=EVOLUTION_FORMS[stage-1],accent=form.color;
+ const uid='evo-'+(++characterSvgSequence),power=['horn','dino','robot','lion','tiger'].includes(k)||a.id==='wolf';
+ const tint=(hex,amount)=>'#'+hex.slice(1).match(/../g).map(v=>{const n=parseInt(v,16);return Math.round(amount>=0?n+(255-n)*amount:n*(1+amount)).toString(16).padStart(2,'0')}).join('');
+ const paint=name=>`url(#${uid}-${name})`;
+ const defs=`<defs><radialGradient id="${uid}-skin" cx="35%" cy="25%" r="80%"><stop stop-color="${tint(c,.55)}"/><stop offset=".6" stop-color="${c}"/><stop offset="1" stop-color="${tint(c,-.18)}"/></radialGradient><linearGradient id="${uid}-metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${tint(accent,.65)}"/><stop offset=".38" stop-color="${accent}"/><stop offset=".62" stop-color="${tint(accent,.35)}"/><stop offset="1" stop-color="${tint(accent,-.32)}"/></linearGradient><linearGradient id="${uid}-gold" x1="0" y1="0" x2=".4" y2="1"><stop stop-color="#fff9d2"/><stop offset=".4" stop-color="#ffe495"/><stop offset=".7" stop-color="#eab74a"/><stop offset="1" stop-color="#bd7d27"/></linearGradient><linearGradient id="${uid}-wing" x1="0" y1="0" x2="1" y2="1">${(stage===10?['#a6ebf2','#b8b6ff','#f7b7dd','#fff1a7']:['#fffde9',tint(accent,.58),accent]).map((color,i,arr)=>`<stop offset="${i/(arr.length-1)}" stop-color="${color}"/>`).join('')}</linearGradient><radialGradient id="${uid}-aura"><stop offset=".35" stop-color="${tint(accent,.3)}" stop-opacity="0"/><stop offset=".75" stop-color="${accent}" stop-opacity="${stage>=8?.2:.1}"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient><linearGradient id="${uid}-gem" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7ffff"/><stop offset=".4" stop-color="${stage>=9?'#8be7df':tint(accent,.48)}"/><stop offset="1" stop-color="${stage>=9?'#3b9cc2':tint(accent,-.25)}"/></linearGradient></defs>`;
  let ears='';
  if(['cat','tiger'].includes(k))ears=`<path d="M24 42 20 17 43 31M56 31 80 17 76 42" fill="${c}" stroke="#39465c" stroke-width="2"/>`;
  else if(k==='dog')ears=`<ellipse cx="24" cy="46" rx="12" ry="22" fill="#bd8d66"/><ellipse cx="76" cy="46" rx="12" ry="22" fill="#bd8d66"/>`;
@@ -104,21 +109,37 @@ function characterSvg(id,evolution=1){
  if(k==='penguin')detail='<ellipse cx="50" cy="59" rx="24" ry="28" fill="#f8fbff"/>';
  if(k==='tiger')detail='<path d="m26 50 9 4-9 4m48-8-9 4 9 4M45 32l5 9 5-9" stroke="#906445" stroke-width="3" fill="none" stroke-linecap="round"/>';
  if(k==='dino')detail='<path d="m44 32 6-10 6 10" fill="#76a465"/>';
- const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="15" fill="${c}"/>`:k==='slime'?`<path d="M17 68Q18 24 50 28q31 0 33 40Q50 90 17 68" fill="${c}"/>`:`<ellipse cx="50" cy="55" rx="29" ry="29" fill="${c}"/>`;
+ const face=k==='robot'?`<rect x="24" y="30" width="52" height="49" rx="15" fill="${paint('skin')}" stroke="${tint(c,-.2)}" stroke-width="1"/>`:k==='slime'?`<path d="M17 68Q18 24 50 28q31 0 33 40Q50 90 17 68" fill="${paint('skin')}" stroke="${tint(c,-.2)}" stroke-width="1"/>`:`<ellipse cx="50" cy="55" rx="29" ry="29" fill="${paint('skin')}" stroke="${tint(c,-.2)}" stroke-width="1"/>`;
  const mouth=['chick','owl','penguin'].includes(k)?'<path d="m43 60 7 8 7-8" fill="#efaa54"/>':'<path d="M42 64q8 9 16 0" stroke="#39465c" stroke-width="2.5" fill="none" stroke-linecap="round"/>';
  const star=(x,y,size,color)=>`<path d="M${x} ${y-size}l${size*.3} ${size*.7} ${size*.7} ${size*.3}-${size*.7} ${size*.3}-${size*.3} ${size*.7}-${size*.3}-${size*.7}-${size*.7}-${size*.3} ${size*.7}-${size*.3}Z" fill="${color}"/>`;
- let back='',front='';
- if(stage>=2)front+=`<path d="M27 74q23 10 46 0l-4 10q-19 7-38 0Z" fill="${accent}"/><path d="m59 81 9 15 6-13" fill="${accent}"/>`;
- if(stage>=3)front+=`<circle cx="38" cy="81" r="6" fill="#fff8dc"/>${star(38,81,4,accent)}`;
- if(stage>=4)back+=`<path d="M28 60 11 96q39-9 78 0L72 60Z" fill="${accent}" opacity=".75"/><path d="m25 72-7 17m57-17 7 17" stroke="#fff" stroke-width="2" opacity=".55"/>`;
- if(stage>=5)front+=`<path d="m24 70 10 4-4 14-10-6m56-12-10 4 4 14 10-6" fill="${accent}" stroke="#fff8d8" stroke-width="1.5"/><path d="m46 78 4-5 4 5-4 7Z" fill="#fff5cb"/>`;
- if(stage>=6)front+=`<path d="M31 83q19 9 38 0l-5 12H36Z" fill="${accent}" stroke="#fff3d7" stroke-width="2"/><path d="m41 86 9 6 9-6" fill="none" stroke="#fff" stroke-width="2"/>`;
- if(stage>=7)back+=`<path d="M27 62Q10 42 3 31q-2 23 13 35Q4 64 3 53q-5 23 24 22m46-13q17-20 24-31 2 23-13 35 12-2 13-13 5 23-24 22" fill="${stage===10?'#bcabe9':'#f6da91'}" stroke="${accent}" stroke-width="1.5"/>`;
- if(stage>=8)back+=`<circle cx="50" cy="49" r="47" fill="none" stroke="${accent}" stroke-width="3" opacity=".6"/>${star(12,18,5,'#edc468')}${star(91,18,4,'#edc468')}${star(8,85,4,accent)}`;
- if(stage>=9)front+=`<path d="m36 24-3-14 11 6 6-12 7 12 10-6-3 14Z" fill="#f0ca67" stroke="#c69c48" stroke-width="1.5"/><path d="M37 25h26" stroke="#a787ca" stroke-width="3"/>${star(50,19,3,'#fff6c6')}`;
- if(stage>=10){back+=`<circle cx="50" cy="49" r="51" fill="none" stroke="#a29be6" stroke-width="2" stroke-dasharray="3 5"/>${star(18,7,4,'#b49be5')}${star(86,5,4,'#85c9d3')}`;front+=`<path d="M35 95q15 9 30 0" stroke="#a187db" stroke-width="4" fill="none"/>${star(50,90,6,'#f8dd88')}${star(86,82,6,'#9cbddd')}`;}
- return `<svg viewBox="-5 -7 110 110" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="${c}" opacity=".2"/>${back}${ears}${face}${detail}<circle cx="36" cy="49" r="4" fill="#25344d"/><circle cx="64" cy="49" r="4" fill="#25344d"/><circle cx="35" cy="48" r="1.3" fill="white"/><circle cx="63" cy="48" r="1.3" fill="white"/><ellipse cx="30" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/><ellipse cx="70" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".6"/>${mouth}${front}<path d="m80 78 2-5 2 5 5 2-5 2-2 5-2-5-5-2" fill="#e4b956"/></svg>`;
+ const gem=(x,y,r)=>`<path d="M${x} ${y-r} ${x+r*.75} ${y} ${x} ${y+r} ${x-r*.75} ${y}Z" fill="${paint('gem')}" stroke="#fff6d5" stroke-width=".7"/><path d="M${x} ${y-r}v${r*2}m${-r*.75} ${-r}h${r*1.5}" stroke="#fff" opacity=".6" stroke-width=".6"/>`;
+ let back=`<circle class="evo-aura" cx="50" cy="50" r="57" fill="${paint('aura')}"/>`,front='';
+ if(stage>=4)back+=`<path d="M29 62Q16 75 10 99l18-3 22 6 22-6 18 3Q84 75 71 62Z" fill="${paint('metal')}" stroke="${stage>=6?'#f9dc89':tint(accent,.6)}" stroke-width="1.6"/><path d="M29 72 20 93l30-5 30 5-9-21" fill="none" stroke="#fff4cf" stroke-width="1.5" opacity=".65"/>`;
+ if(stage>=7){
+  const wing=power?'M28 72C10 67 1 55-4 29l14 9L5 17l16 16L19 9l17 28 1 27Z':'M28 74C11 69-1 52 0 29c8 3 14 9 20 17C12 31 11 21 13 13c12 9 21 27 23 50Z';
+  const feather=power?'M27 64 6 36m24 20L12 25m20 23L22 19':'M28 65Q10 49 7 36m24 23Q18 38 18 27m8 43Q9 62 5 54';
+  back+=`<g class="evo-wings" fill="${paint('wing')}" stroke="${stage>=9?'#e7b956':accent}" stroke-width="1.2"><path d="${wing}"/><path d="${wing}" transform="translate(100 0) scale(-1 1)"/><g fill="none" stroke="#fff9e5" stroke-width="1.3" opacity=".8"><path d="${feather}"/><path d="${feather}" transform="translate(100 0) scale(-1 1)"/></g></g>`;
+ }
+ if(stage>=8){
+  back+=`<g class="evo-orbit" fill="none" stroke="${paint('gold')}"><circle cx="50" cy="48" r="48" stroke-width="1.6"/><circle cx="50" cy="48" r="43" stroke-width=".6" stroke-dasharray="7 5" opacity=".8"/></g>`;
+  for(let i=0;i<(stage===10?10:6);i++){const angle=i*Math.PI*2/(stage===10?10:6),x=50+48*Math.cos(angle),y=48+48*Math.sin(angle);back+=`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.8" fill="${i%2?'#fff0af':tint(accent,.45)}"/>`;}
+ }
+ if(stage===10){
+  back+=`<ellipse class="evo-orbit" cx="50" cy="48" rx="56" ry="43" transform="rotate(-27 50 48)" fill="none" stroke="#a4dcf0" stroke-width="1.3" stroke-dasharray="20 5 3 5"/><ellipse cx="50" cy="48" rx="56" ry="43" transform="rotate(27 50 48)" fill="none" stroke="#e6b9f2" stroke-width="1.1" opacity=".85"/>`;
+  front+=`<path d="m23 72-10 12 13-2m51-10 10 12-13-2" fill="${paint('wing')}" stroke="#ffe7a8" stroke-width="1"/>`;
+ }
+ if(stage>=2)front+=`<path d="M27 74q23 10 46 0l-4 10q-19 7-38 0Z" fill="${paint('metal')}" stroke="${tint(accent,.6)}" stroke-width=".8"/><path d="m59 81 9 17 7-15" fill="${paint('metal')}"/><path d="M30 77q20 8 40 0" fill="none" stroke="#fff" stroke-width="1" opacity=".7"/>`;
+ if(stage>=3)front+=`<circle cx="37" cy="81" r="6.5" fill="${paint('gold')}" stroke="#e8bc64" stroke-width=".8"/>${star(37,81,4.5,tint(accent,-.2))}${gem(37,81,2.4)}`;
+ if(stage>=5)front+=`<path d="m24 69 11 5-4 15-12-7m57-13-11 5 4 15 12-7" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="1.8"/><path d="m23 75 9 3m45-3-9 3" stroke="#fff6cd" stroke-width="1"/>${gem(25,78,3.3)}${gem(75,78,3.3)}`;
+ if(stage>=6)front+=`<path d="M33 83q17 8 34 0l-3 14H36Z" fill="${paint('metal')}" stroke="${paint('gold')}" stroke-width="1.6"/><path d="m37 86 13 8 13-8m-26 6 8-3m18 3-8-3" stroke="#fff1c0" stroke-width="1" fill="none"/>${gem(50,88,stage>=9?6:4.5)}`;
+ if(stage>=9)front+=`<path d="m33 24-3-16 11 7L50 1l9 14 11-7-3 16Z" fill="${paint('gold')}" stroke="#c68b38" stroke-width="1"/><path d="M33 24q17 4 34 0v5q-17 4-34 0Z" fill="${paint('metal')}" stroke="#ffe8a4" stroke-width=".8"/>${gem(50,17,5)}${gem(37,23,2.6)}${gem(63,23,2.6)}<circle cx="30" cy="8" r="2" fill="#fff0ab"/><circle cx="50" cy="1" r="2.6" fill="#fff3c2"/><circle cx="70" cy="8" r="2" fill="#fff0ab"/>`;
+ const spots=[[84,77],[15,18],[87,22],[10,82],[90,58],[12,51],[25,5],[77,5],[29,100],[74,98],[50,-4],[50,106]];
+ let sparks='';for(let i=0;i<Math.min(spots.length,1+Math.floor(stage*1.1));i++){const [x,y]=spots[i];sparks+=`<g class="evo-spark" style="--spark-delay:${(i*.23).toFixed(2)}s">${star(x,y,stage>=8?(i%3===0?4.5:2.7):2.2,i%3===1?tint(accent,.25):'#f9d477')}</g>`;}
+ if(stage>=8&&!power)back+=`<path d="M7 73q-7-7 0-10 7 3 0 10m87-30q-7-7 0-10 7 3 0 10" fill="${tint(accent,.25)}" opacity=".8"/>`;
+ const shine=stage>=5?`<path d="M31 37q11-7 21-3" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".4"/>`:'';
+ return `<svg class="evo-character" data-evo-stage="${stage}" viewBox="-12 -14 124 124" role="img" aria-label="${a.name} · 진화 ${stage}단계 ${form.name}" xmlns="http://www.w3.org/2000/svg">${defs}<circle cx="50" cy="51" r="46" fill="${c}" opacity=".12"/><ellipse cx="50" cy="101" rx="28" ry="3" fill="${accent}" opacity=".16"/>${back}${ears}${face}${detail}${shine}<circle cx="36" cy="49" r="4.3" fill="#25344d"/><circle cx="64" cy="49" r="4.3" fill="#25344d"/><circle cx="35" cy="48" r="1.6" fill="white"/><circle cx="63" cy="48" r="1.6" fill="white"/><ellipse cx="30" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".5"/><ellipse cx="70" cy="61" rx="6" ry="3" fill="#e98b96" opacity=".5"/>${mouth}${front}${sparks}</svg>`;
 }
+
 function exploration(c,profile=state.selected){
  if(!CHARACTERS.some(a=>a.id===c.characterId))c.characterId=DEFAULT_CHARACTERS[profile]||'puppy';
  if(c.exploration?.version!==1){
