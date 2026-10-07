@@ -16,3 +16,5 @@ main{padding:18px 18px 100px}.screen{display:none}.screen.active{display:block}.
 
 .rank-family-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}.rank-family-card{display:flex;align-items:center;gap:10px;border:1px solid #c7def3;border-radius:20px;background:#f3f9ff;padding:14px}.rank-family-card.selected{border:2px solid #aa97ed;background:#f6f2ff}.rank-family-card strong,.rank-family-card b,.rank-family-card small{display:block}.rank-family-card b{color:#6754c6;margin:4px 0}.rank-family-card small{font-size:11px;color:#74839a}.rank-family:not(.rank-me){border-color:#9fc2e8;background:#eff7ff}.rank-number{width:30px}
 @media(max-width:420px){.rank-family-card{padding:10px;gap:7px}.rank-family-card .rank-avatar{width:36px;height:36px}.rank-family-card strong{font-size:14px}.rank-family-card small{font-size:10px}}
+
+.rank-daily-update{font-size:12px;color:#74839a;margin:12px 2px}.rank-change.up{color:#278767}.rank-change.down{color:#ad6658}.rank-change.steady{color:#74839a}

@@ -1,5 +1,5 @@
 {
-  "version": "10.10.2",
+  "version": "10.10.3",
   "channel": "production",
   "curriculum": "elementary-to-high-3",
   "accepted_range": [
@@ -56,5 +56,7 @@
     "ayoung",
     "inseong"
   ],
-  "competitor_distribution": "72_lower_20_middle_6_upper"
+  "competitor_distribution": "72_lower_20_middle_6_upper",
+  "competitor_updates": "seoul_daily_bounded_rise_fall_hold",
+  "competitor_daily_change_max": 0.2
 }

@@ -127,23 +127,41 @@ const BASE_RIVAL_NAMES=['별빛대장','용감한참새','책먹는공룡','우�
 const RIVAL_PREFIXES=['푸른','노을','반짝','새벽','봄빛','달빛','초록','은하','바다','햇살'];
 const RIVAL_FRIENDS=['고래','여우','토끼','사자','판다','호랑이','다람쥐','강아지','수달','부엉이'];
 const VIRTUAL_NAMES=[...new Set([...BASE_RIVAL_NAMES,...RIVAL_PREFIXES.flatMap(prefix=>RIVAL_FRIENDS.map(friend=>prefix+friend))])].slice(0,98);
-// 72 lower-stage, 20 middle-stage and 6 upper-stage peers, fixed across visits.
+// Baseline distribution remains stable; daily changes stay inside each group.
 const VIRTUAL_DIFFICULTIES=[9,8.5,8,7.5,7,6.5,
  ...Array.from({length:20},(_,i)=>Math.round((6.2-i*2.5/19)*10)/10),
  ...Array.from({length:71},(_,i)=>Math.round((3.4-i*2.3/70)*10)/10),1];
 const rankingDifficulty=value=>Math.round(clamp(Number.isFinite(Number(value))?Number(value):2,1,9)*10)/10;
+// A Seoul calendar day gives every device the same daily roster without AI calls.
+const LEAGUE_DAY_MS=86400000;
+const leagueDay=(date=new Date())=>Math.floor((date.getTime()+9*3600000)/LEAGUE_DAY_MS);
+const leagueDate=(date=new Date())=>new Date(date.getTime()+9*3600000).toISOString().slice(0,10);
+function dailyRivalDifficulty(index,day=leagueDay()){
+ const base=VIRTUAL_DIFFICULTIES[index];
+ const wave=.18*Math.sin((day+index*17)*2*Math.PI/(10+index%7))+.08*Math.sin((day+index*11)*2*Math.PI/(7+index%5));
+ const [low,high]=index<6?[6.4,9]:index<26?[3.5,6.3]:[1,3.4];
+ return rankingDifficulty(clamp(base+wave,low,high));
+}
+function rivalDailyChange(index,day=leagueDay()){
+ return Math.round((dailyRivalDifficulty(index,day)-dailyRivalDifficulty(index,day-1))*10)/10;
+}
+const dailyChangeLabel=change=>change>0?'▲ '+change.toFixed(1)+' 상승':change<0?'▼ '+Math.abs(change).toFixed(1)+' 하락':'— 변동 없음';
+let renderedLeagueDate='';
 const rankCaption=row=>(row.tied?'공동 ':'')+row.rank+'위';
-function explorationRanking(c=child(),profile=state.selected){
+function explorationRanking(c=child(),profile=state.selected,day=leagueDay()){
  const familyIds=['ayoung','inseong',...(profile==='guest'?['guest']:[])];
  const family=familyIds.map(id=>{
   const learner=id===profile?c:state.users[id];exploration(learner,id);
   return {id,name:learner.name,characterId:learner.characterId,difficulty:rankingDifficulty(learner.difficulty),virtual:false,family:true,isMe:id===profile};
  });
- const friends=VIRTUAL_NAMES.slice(0,100-family.length).map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,difficulty:VIRTUAL_DIFFICULTIES[i],virtual:true,family:false,isMe:false}));
+ const friends=VIRTUAL_NAMES.slice(0,100-family.length).map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,difficulty:dailyRivalDifficulty(i,day),dailyChange:rivalDailyChange(i,day),virtual:true,family:false,isMe:false}));
  const rows=[...friends,...family].sort((a,b)=>b.difficulty-a.difficulty||Number(a.virtual)-Number(b.virtual)||a.id.localeCompare(b.id));
  let rank=0;
  return rows.map((x,i)=>{if(!i||x.difficulty!==rows[i-1].difficulty)rank=i+1;return {...x,rank,tied:rows.some((r,j)=>j!==i&&r.difficulty===x.difficulty)}});
 }
+function refreshDailyLeague(){if(renderedLeagueDate!==leagueDate())renderExploration()}
+const leagueRefreshDelay=(now=Date.now())=>Math.max(1000,(leagueDay(new Date(now))+1)*LEAGUE_DAY_MS-9*3600000-now+50);
+function scheduleDailyLeague(){setTimeout(()=>{refreshDailyLeague();scheduleDailyLeague()},leagueRefreshDelay())}
 function selectCharacter(id){
  if(!authUser||!CHARACTERS.some(a=>a.id===id))return;
  child().characterId=id;exploration(child());storeLearnerCheckpoint(state.selected);localSave();cloudSave();renderExploration();
@@ -151,7 +169,8 @@ function selectCharacter(id){
 }
 function renderExploration(){
  if($('characterStatus'))$('characterStatus').textContent='';
- const c=child(),rows=explorationRanking(),me=rows.find(x=>x.isMe),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
+ const date=new Date();renderedLeagueDate=leagueDate(date);
+ const c=child(),rows=explorationRanking(c,state.selected,leagueDay(date)),me=rows.find(x=>x.isMe),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
  for(const id of ['ayoung','inseong','guest']){
   const u=state.users[id];exploration(u,id);
   for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId);
@@ -162,6 +181,7 @@ function renderExploration(){
  if($('rankDifficultyLabel'))$('rankDifficultyLabel').textContent='현재 난이도 '+me.difficulty.toFixed(1)+' · 초1~고3 권장 학습 단계';
  const nextRank=ahead?1+rows.filter(x=>!x.isMe&&x.difficulty>ahead.difficulty).length:me.rank;
  const target=ahead?'난이도 '+ahead.difficulty.toFixed(1)+'에 도달하면 '+(me.rank-nextRank)+'계단 올라갈 수 있어요! '+ahead.name+'에게 도전해요.':'최상위 등급이에요! 새로운 문맥에서도 이해를 이어가요.';
+ if($('rankDailyUpdate'))$('rankDailyUpdate').textContent=renderedLeagueDate.replaceAll('-','.')+' · 매일 자정에 새 등급 반영';
  if($('rankTarget'))$('rankTarget').textContent=target;
  if($('characterTitle'))$('characterTitle').textContent=c.name+'의 캐릭터';
  if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
@@ -169,7 +189,7 @@ function renderExploration(){
  if($('rankPodium'))$('rankPodium').innerHTML=[rows[1],rows[0],rows[2]].map(x=>`<div class="podium place-${x.rank}">${card(x)}</div>`).join('');
  if($('rankFamilyOverview'))$('rankFamilyOverview').innerHTML=rows.filter(x=>['ayoung','inseong'].includes(x.id)).sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<div class="rank-family-card${x.isMe?' selected':''}"><div class="rank-avatar">${characterSvg(x.characterId)}</div><div><strong>${escapeHtml(x.name)}</strong><b>${rankCaption(x)}</b><small>${bandLabel(x.difficulty)} · 난이도 ${x.difficulty.toFixed(1)}</small></div></div>`).join('');
  if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>난이도 ${me.difficulty.toFixed(1)}</small></span>`;
- if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.family?' rank-family':''}${x.isMe?' rank-me':''}" data-rank-profile="${x.id}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small>${x.isMe?'나 · ':x.family?'가족 · ':''}현재 학습 등급</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
+ if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.family?' rank-family':''}${x.isMe?' rank-me':''}" data-rank-profile="${x.id}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small class="${x.virtual?'rank-change '+(x.dailyChange>0?'up':x.dailyChange<0?'down':'steady'):''}">${x.virtual?dailyChangeLabel(x.dailyChange):(x.isMe?'나 · ':'가족 · ')+'현재 학습 등급'}</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
 }
 
 const freshChild=name=>({
@@ -1111,6 +1131,8 @@ function startVoice(){
  r.onresult=e=>{$('answer').value=e.results[0][0].transcript;answerSource='voice'};r.onend=()=>{$('mic').classList.remove('recording');$('mic').textContent='🎤 음성 입력'};r.onerror=()=>{$('mic').classList.remove('recording');$('mic').textContent='🎤 음성 입력'};r.start();
 }
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installHint').textContent='지금 바로 앱으로 설치할 수 있어요.'});
+scheduleDailyLeague();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshDailyLeague()});
 $('characterGrid')?.addEventListener('click',e=>{const button=e.target.closest('[data-character]');if(button)selectCharacter(button.dataset.character)});
 $('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null}else alert('브라우저 메뉴에서 “앱 설치” 또는 “홈 화면에 추가”를 눌러주세요.')};
 document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{checkpointSession();if(session?.preparation)session.preparation.cancel();session=null;state.selected=b.dataset.profile;localSave();cloudSave();renderAll();show('home');warmDailyQuestions()});
