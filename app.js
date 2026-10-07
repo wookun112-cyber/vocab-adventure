@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -41,7 +41,7 @@ const SEED_WORDS=[
 {w:'기준',d:'판단하거나 비교할 때 바탕이 되는 것',cat:'사고',lv:3},
 {w:'효율',d:'들인 노력이나 시간에 비해 얻는 결과의 정도',cat:'생활',lv:4}
 ].map(x=>({...x,band:x.band||x.lv||3,source:'seed',example:x.example||'',contrast:x.contrast||''}));
-const BAND_NAMES={1:'초1~2',2:'초3~4',3:'초5~6',4:'중1',5:'중2',6:'중3',7:'고1',8:'고2',9:'고3'};
+const BAND_NAMES={1:'기초 1',2:'기초 2',3:'기초 3',4:'확장 4',5:'확장 5',6:'확장 6',7:'심화 7',8:'심화 8',9:'심화 9'};
 const bandLabel=v=>BAND_NAMES[clamp(Math.round(Number(v)||3),1,9)];
 const FIXED_CACHE=new Map();
 let WORDS=[...SEED_WORDS];
@@ -519,6 +519,7 @@ function rebuildCatalog(){
    seen.add(x.w);
    WORDS.push(x);
  }
+ WORDS=WORDS.map(calibratedWord);
 }
 function mergeState(raw){
  const base=initial(); const src=raw&&typeof raw==='object'?raw:{};
@@ -1139,24 +1140,24 @@ function renderQuestion(savedHint=0){
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
   const pending=session.queue[current];
-  if(isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false)break;
+  if(isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(session.mode==='level'||inTargetBand(pending.w,session.difficulty||child().difficulty)))break;
   // Keep the original cursor and answered records. Excluded questions get a
   // checkpoint entry, never a wrong answer, word statistic or reward.
   if(session.results.length!==current)throw Error('학습 순서를 확인하지 못했어요. 기존 답안은 보관되어 있어요.');
-  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,stars:0,xp:0});
+  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
   current++;skipped++;
  }
  if(skipped){checkpointSession();localSave();cloudSave()}
  if(current>=session.queue.length||current>=session.target){finishSession();return}
  if(session.model===LEARNING_MODEL&&!session.introDone&&current>=session.introAt){show('intro');renderIntro();return}
- const q=presentWrittenQuestion(session.queue[current]);rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
+ const q=presentWrittenQuestion({...session.queue[current],w:calibratedWord(session.queue[current].w)});rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
  $('learnType').textContent=STAGE_LABELS[q.stage]||(session.mode==='level'?'시작 수준 확인':session.mode==='review'?'집중 복습':'오늘의 학습');
  if($('learningPath'))$('learningPath').textContent=session.model===LEARNING_MODEL?'지난 단어 복습 → 뜻 익히기 → 상황 이해 → 내 문장':'';
  if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · 20~25분 목표';
  if($('breakNotice')){$('breakNotice').textContent='25분 동안 학습했어요. 오늘은 여기서 마치거나 잠시 쉬어도 괜찮아요.';$('breakNotice').classList.toggle('hidden',activeTime()<25*60000)}
  if($('finishEarly'))$('finishEarly').classList.toggle('hidden',session.results.length<1);
  $('counter').textContent=(session.results.filter(isVocabularyResult).length+1)+'번째 문제'; $('progressBar').style.width=Math.round(current/session.target*100)+'%';
- $('qTag').textContent=q.label; $('difficulty').textContent='어휘 단계 '+child().difficulty.toFixed(1);
+ $('qTag').textContent=q.label; $('difficulty').textContent='학습 등급 '+child().difficulty.toFixed(1)+' · 어휘 '+vocabularyBand(q.w)+'단계';
  $('qWord').textContent=q.showTarget?q.w.w:'';
  $('qWord').classList.toggle('hidden',!q.showTarget);
  $('qText').textContent=q.q;

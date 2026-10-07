@@ -24,7 +24,7 @@ run(`globalThis.item={id:'1',type:'subjective_context',word:'원인',definition:
  globalThis.flags={id:'1',valid:true,sufficientClues:true,oneClearAnswer:true,samePartOfSpeechChoices:true,naturalKorean:true,coherentSituation:true,ageAppropriate:true,factualAccuracy:true,readerLevelFit:true,noBackgroundBurden:true,vocabularyFocus:true,noAnswerLeak:true,naturalAlternativesConsidered:true,notTooSimilarToRecent:true,learningCardAccurate:true,issues:[],acceptedAnswers:sample.acceptedAnswers};
  ask=async(prompt,schema,name)=>name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]};`);
 const accepted=await run('buildValidated([item],[])');assert.equal(accepted[0].validation.checks.factualAccuracy,true);assert.equal(accepted[0].validation.checks.readerLevelFit,true);
-assert.equal(accepted[0].validation.policy,'vocabulary-level-fit-12.8');assert.equal(accepted[0].validation.checks.vocabularyFocus,true);
+assert.equal(accepted[0].validation.policy,'vocabulary-level-fit-12.13');assert.equal(accepted[0].validation.checks.vocabularyFocus,true);
 run('flags.vocabularyFocus=false');let quiz=await run('buildValidated([item],[],{maxAttempts:1,partial:true})');assert.equal(quiz.length,0);assert.ok(quiz.failed[0].issues.includes('review_failed:vocabularyFocus'),'a factually correct knowledge quiz is still rejected');run('flags.vocabularyFocus=true');
 assert.ok(run('deterministic({...sample,context:"민서: 4:6과 6:9가 같아. 도윤: 가운데 6은 4와 9의 ＿＿＿＿이라고 하지?"},item).includes("mathematical_name_quiz")'));
 assert.ok(run('deterministic(sample,{...item,word:"등비중항",domain:"수학·논리"}).includes("specialist_or_context_only_target")'));

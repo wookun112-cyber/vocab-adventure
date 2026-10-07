@@ -34,7 +34,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
  run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);
  run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;
   globalThis.makeRemoteLesson=()=>{
-   const newWords=SEED_WORDS.slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));
+   const newWords=SEED_WORDS.filter(w=>inTargetBand(w,child().difficulty)).slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));
    const ready=plans.map((p,i)=>[i,{w:p.w,type:p.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'기록'+i+'를 읽고 새로운 상황'+i+'의 ＿＿＿＿를 살폈어요.',open:p.type.startsWith('subjective_'),hideWord:true,showTarget:false,
     opts:p.type.startsWith('mc_')?[{t:p.w.w,ok:true},...['가나다','라마바','사아자','차카타'].map(t=>({t,ok:false}))]:[],acceptedAnswers:[p.w.w],hints:['상황의 단서를 살펴보세요.','앞뒤 문장을 함께 살펴보세요.'],feedbackCorrect:'문맥에 맞는 말이에요.',signature:'새 상황'+i,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}}]);
    return {id:'job-'+state.selected,status:'ready',payload:{selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,mode:'daily',snapshot:preparationSnapshot(state.selected),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords:newWords,plans,ready}};
@@ -223,3 +223,26 @@ assert.equal(phraseRestart.run('JSON.stringify(session.results.slice(0,9))'),old
 assert.equal(phraseRestart.run('session.results.at(-1).stars'),0);assert.equal(phraseRestart.run('session.results.at(-1).xp'),0);assert.equal(phraseRestart.calls.generation,0);
 assert.ok(!phraseRestart.node('wordList').innerHTML.includes('상징적 장치'));
 console.log('Excluded-phrase restart verified: an old symbolic-device question is skipped without a wrong answer, points, rewards or regeneration; prior answers/order and raw word history remain, and the phrase is absent from the learning wordbook.');
+
+// The reported 7.4 header must not turn a saved band-2 reservation question
+// into a high-level task. Preserve nine answers and skip only the pending item.
+const lowPaused=fixture();await lowPaused.run('buildSession()');
+for(let i=0;i<9;i++){
+ lowPaused.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1})");
+ if(i<8)await lowPaused.run('nextQuestion()');
+}
+lowPaused.run(`
+ for(const [i,w] of [[9,{w:'예약',d:'참가할 자리를 미리 신청함',band:2,cat:'생활'}],[10,{w:'간주하다',d:'그와 같다고 여기다',band:7,cat:'국어'}]]){
+  const q={...session.queue[i],w,type:'mc_relation',open:false,showTarget:true,hideWord:false,q:'뜻에 맞는 상황을 고르세요.',ctx:'',label:'의미 연결'};
+  session.queue[i]=q;session.preparation.ready.set(i,q);session.preparation.plans[i]={...session.preparation.plans[i],w,type:q.type};
+ }
+ session.difficulty=7.4;child().difficulty=7.4;session.preparation.difficulty=7.4;
+ checkpointSession();localSave();
+`);
+await lowPaused.run('cloudSave()');const lowAnswers=lowPaused.run('JSON.stringify(session.results)'),lowOrder=lowPaused.run('JSON.stringify(savedLesson().plans)');
+const lowRestart=fixture(lowPaused.local,lowPaused.cloud);await lowRestart.run('cloudLoad()');await lowRestart.run('buildSession()');
+assert.equal(lowRestart.run('current'),10);assert.equal(lowRestart.run('JSON.stringify(session.results.slice(0,9))'),lowAnswers);
+assert.equal(lowRestart.run('session.results[9].exclusionReason'),'out_of_target_band');assert.equal(lowRestart.run('session.results[9].credit'),null);
+assert.equal(lowRestart.run('JSON.stringify(savedLesson().plans)'),lowOrder);assert.equal(lowRestart.calls.generation,0);
+assert.equal(lowRestart.node('qWord').textContent,'간주하다');assert.equal(lowRestart.node('difficulty').textContent,'학습 등급 7.4 · 어휘 7단계');
+console.log('Actual 7.4 restart verified: old reservation task skipped without penalty or AI generation, all nine answers and original plans retained, next valid high-band question displayed with separate learner/word levels.');
