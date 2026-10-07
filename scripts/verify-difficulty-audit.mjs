@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {vocabularyBand,calibratedWord,selectLevelReviews,presentWrittenQuestion,buildLearningPlan,updateLearningLevels} from '../lib/learning-model.js';
+import {vocabularyBand,calibratedWord,selectLevelReviews,presentWrittenQuestion,buildLearningPlan,updateLearningLevels,sentenceWritingTask} from '../lib/learning-model.js';
 import {makePreparedPlan} from '../lib/prepared-plan.js';
 import {bankCompatible} from '../lib/question-bank.js';
+for(const word of ['구매력','예약','색','의견'])assert.ok(sentenceWritingTask(word).prompt.includes('’을 넣어'));
+for(const word of ['관찰자','사과'])assert.ok(sentenceWritingTask(word).prompt.includes('’를 넣어'));
 const audit=JSON.parse(fs.readFileSync(new URL('../database/vocabulary-difficulty-audit.json',import.meta.url)));
 assert.equal(audit.entries.length,2754);assert.equal(audit.entries.filter(x=>x.referenceGrade).length,2105);assert.equal(audit.entries.filter(x=>x.band!==x.previousBand).length,480);
 for(const x of audit.entries)assert.equal(vocabularyBand({w:x.word,band:x.previousBand}),x.band);
