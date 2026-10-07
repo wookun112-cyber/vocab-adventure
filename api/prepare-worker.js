@@ -35,7 +35,8 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  try{
   await save(false);
   const ready=new Map(payload.ready||[]),remaining=payload.plans.map((p,i)=>[i,p]).filter(([i])=>!ready.has(i));
-  const groups=[];for(let i=0;i<remaining.length;i+=4)groups.push(remaining.slice(i,i+4));
+  const groupSize=remaining.some(([,p])=>p.taskDemand==='advanced')?2:4;
+  const groups=[];for(let i=0;i<remaining.length;i+=groupSize)groups.push(remaining.slice(i,i+groupSize));
   let cursor=0,duplicates=false;
   const work=async()=>{
    while(cursor<groups.length&&!obsolete){
