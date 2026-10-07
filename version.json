@@ -1,5 +1,5 @@
 {
-  "version": "10.10.0",
+  "version": "10.10.1",
   "channel": "production",
   "curriculum": "elementary-to-high-3",
   "accepted_range": [
@@ -50,5 +50,5 @@
   "lesson_resume": "per_account_per_profile_cloud_and_local_checkpoint",
   "profile_characters": 20,
   "virtual_competitors": 30,
-  "ranking": "earned_exploration_level_separate_from_difficulty"
+  "ranking": "current_adaptive_difficulty_one_decimal_with_shared_ranks"
 }

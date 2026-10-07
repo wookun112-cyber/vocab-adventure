@@ -124,11 +124,16 @@ function rewardCompletion(){
  if(day.bonus)return 0;day.bonus=true;game.xp+=40;return 40;
 }
 const VIRTUAL_NAMES=['별빛대장','용감한참새','책먹는공룡','우주고양이','초록번개','달토끼','구름기사','문장마법사','호기심곰','바람여우','반짝연필','숲속탐정','젤리전사','파도펭귄','불꽃소년','꿈꾸는별','햇살강아지','나무부엉이','꼬마로봇','은빛늑대','새싹요정','민트구름','복숭아곰','파란혜성','작은용','도토리친구','느긋한코알라','콩알병아리','무지개토끼','첫걸음탐험가'];
-const VIRTUAL_LEVELS=[18,16,14,12,11,10,9,9,8,8,7,7,6,6,5,5,5,4,4,4,3,3,3,2,2,2,1,1,1,1];
+const VIRTUAL_DIFFICULTIES=[9,8.7,8.5,8.2,8,7.8,7.5,7.2,7,6.8,6.5,6.2,6,5.8,5.5,5.2,5,4.8,4.5,4.2,4,3.8,3.5,3.2,3,2.8,2.5,2.2,2,1.2];
+const rankingDifficulty=value=>Math.round(clamp(Number.isFinite(Number(value))?Number(value):2,1,9)*10)/10;
+const rankCaption=row=>(row.tied?'공동 ':'')+row.rank+'위';
 function explorationRanking(c=child(),profile=state.selected){
- const game=exploration(c,profile),friends=VIRTUAL_NAMES.map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,xp:(VIRTUAL_LEVELS[i]-1)*200+((29-i)*37%160)+20,virtual:true}));
- const me={id:profile,name:c.name,characterId:c.characterId,xp:game.xp,virtual:false};
- return [...friends,me].sort((a,b)=>b.xp-a.xp||Number(a.virtual)-Number(b.virtual)||a.id.localeCompare(b.id)).map((x,i)=>({...x,rank:i+1,level:explorationLevel(x.xp)}));
+ exploration(c,profile);
+ const friends=VIRTUAL_NAMES.map((name,i)=>({id:'virtual-'+i,name,characterId:CHARACTERS[(i*7+1)%CHARACTERS.length].id,difficulty:VIRTUAL_DIFFICULTIES[i],virtual:true}));
+ const me={id:profile,name:c.name,characterId:c.characterId,difficulty:rankingDifficulty(c.difficulty),virtual:false};
+ const rows=[...friends,me].sort((a,b)=>b.difficulty-a.difficulty||Number(a.virtual)-Number(b.virtual)||a.id.localeCompare(b.id));
+ let rank=0;
+ return rows.map((x,i)=>{if(!i||x.difficulty!==rows[i-1].difficulty)rank=i+1;return {...x,rank,tied:rows.some((r,j)=>j!==i&&r.difficulty===x.difficulty)}});
 }
 function selectCharacter(id){
  if(!authUser||!CHARACTERS.some(a=>a.id===id))return;
@@ -137,24 +142,23 @@ function selectCharacter(id){
 }
 function renderExploration(){
  if($('characterStatus'))$('characterStatus').textContent='';
- const c=child(),game=exploration(c),rows=explorationRanking(),me=rows.find(x=>!x.virtual),ahead=rows[me.rank-2],remaining=200-game.xp%200;
+ const c=child(),rows=explorationRanking(),me=rows.find(x=>!x.virtual),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
  for(const id of ['ayoung','inseong','guest']){
   const u=state.users[id];exploration(u,id);
   for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId);
  }
  if($('explorerAvatar'))$('explorerAvatar').innerHTML=characterSvg(c.characterId);
- if($('explorerName'))$('explorerName').textContent=c.name+' · Lv.'+me.level;
- if($('explorerRank'))$('explorerRank').textContent='현재 '+me.rank+'위 / 31명';
- if($('xpLabel'))$('xpLabel').textContent='다음 레벨까지 '+remaining+' XP · 누적 '+game.xp+' XP';
- if($('xpBar')){$('xpBar').style.width=(game.xp%200/2)+'%';$('xpBar').setAttribute?.('aria-valuenow',game.xp%200)}
- const target=ahead?ahead.name+'까지 '+(ahead.xp-game.xp+1)+' XP! 한 계단 더 올라가 볼까요?':'1위 달성! 새로운 단어를 익히며 기록을 이어가요.';
+ if($('explorerName'))$('explorerName').textContent=c.name+' · '+bandLabel(me.difficulty)+' 단계';
+ if($('explorerRank'))$('explorerRank').textContent='현재 '+rankCaption(me)+' / 31명';
+ if($('rankDifficultyLabel'))$('rankDifficultyLabel').textContent='현재 난이도 '+me.difficulty.toFixed(1)+' · 초1~고3 권장 학습 단계';
+ const target=ahead?ahead.name+'의 난이도 '+ahead.difficulty.toFixed(1)+'에 도전해요! 문맥을 이해하며 한 단계씩 올라가요.':'최상위 등급이에요! 새로운 문맥에서도 이해를 이어가요.';
  if($('rankTarget'))$('rankTarget').textContent=target;
  if($('characterTitle'))$('characterTitle').textContent=c.name+'의 캐릭터';
  if($('characterGrid'))$('characterGrid').innerHTML=CHARACTERS.map(a=>`<button type="button" class="character-choice${a.id===c.characterId?' selected':''}" data-character="${a.id}" aria-pressed="${a.id===c.characterId}">${characterSvg(a.id)}<strong>${a.name}</strong><small>${a.id===c.characterId?'선택됨':'선택하기'}</small></button>`).join('');
- const card=x=>`<div class="podium-avatar">${characterSvg(x.characterId)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${x.rank}위</span><strong>${escapeHtml(x.name)}</strong><b>Lv.${x.level}</b>${x.virtual?'':'<small>나</small>'}`;
+ const card=x=>`<div class="podium-avatar">${characterSvg(x.characterId)}</div><span class="podium-place">${x.rank===1?'🥇':x.rank===2?'🥈':'🥉'} ${rankCaption(x)}</span><strong>${escapeHtml(x.name)}</strong><b>${bandLabel(x.difficulty)}</b><small>난이도 ${x.difficulty.toFixed(1)}</small>${x.virtual?'':'<small>나</small>'}`;
  if($('rankPodium'))$('rankPodium').innerHTML=[rows[1],rows[0],rows[2]].map(x=>`<div class="podium place-${x.rank}">${card(x)}</div>`).join('');
- if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId)}</div><div><strong>${escapeHtml(c.name)} · ${me.rank}위</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">Lv.${me.level}</span>`;
- if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.virtual?'':' rank-me'}"><span class="rank-number">${x.rank}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small>${x.virtual?'':'내 프로필 · '}${x.xp} XP</small></div><span class="level-badge">Lv.${x.level}</span></li>`).join('');
+ if($('rankMySummary'))$('rankMySummary').innerHTML=`<div class="rank-avatar">${characterSvg(c.characterId)}</div><div><strong>${escapeHtml(c.name)} · ${rankCaption(me)}</strong><p>${escapeHtml(target)}</p></div><span class="level-badge">${bandLabel(me.difficulty)}<small>난이도 ${me.difficulty.toFixed(1)}</small></span>`;
+ if($('rankList'))$('rankList').innerHTML=rows.map(x=>`<li class="rank-row${x.virtual?'':' rank-me'}"><span class="rank-number">${x.rank}${x.tied?'<small>공동</small>':''}</span><div class="rank-avatar">${characterSvg(x.characterId)}</div><div class="rank-name"><strong>${escapeHtml(x.name)}</strong><small>${x.virtual?'':'내 프로필 · '}현재 학습 등급</small></div><span class="level-badge">${bandLabel(x.difficulty)}<small>난이도 ${x.difficulty.toFixed(1)}</small></span></li>`).join('');
 }
 
 const freshChild=name=>({
@@ -887,7 +891,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
- $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(rec.xp?'<br><small class="xp-earned">탐험 경험치 +'+rec.xp+' XP</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  checkpointSession();localSave();cloudSave();
 }
@@ -1048,12 +1052,12 @@ function finishSession(){
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
  }
- const bonus=rewardCompletion();
+ rewardCompletion();
  c.activeLesson=null;
  c.preparationRevision=(c.preparationRevision||0)+1;
  storeLearnerCheckpoint(session.profile);localSave();
  cloudSave().then(()=>warmDailyQuestions()); renderAll(); show(state.selected==='guest'?'home':'report');
- alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(bonus?' · 완주 보너스 +'+bonus+' XP':'')+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
+ alert((session.mode==='level'?'레벨 확인':'학습')+' 완료! '+score+'점'+(session.mode==='level'?' · 시작 단계 '+bandLabel(c.difficulty):''));
 }
 function renderAll(){
  renderResumeButton();

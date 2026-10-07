@@ -27,9 +27,9 @@
     <button class="profile guest-profile" data-profile="guest"><div class="avatar" id="profileAvatar-guest">🧑</div><strong>게스트</strong><small id="guestLevel">테스트용 · 기록 분리</small></button>
   </div>
   <div class="card explorer-card">
-    <div class="row"><div id="explorerAvatar" class="explorer-avatar"></div><div class="explorer-details"><div class="eyebrow">나의 탐험 레벨</div><h2 id="explorerName"></h2><span id="explorerRank" class="tag"></span></div><button data-go="characters" class="secondary">캐릭터 선택</button></div>
-    <div class="progress xp-track"><div id="xpBar" role="progressbar" aria-label="다음 탐험 레벨 경험치" aria-valuemin="0" aria-valuemax="200"></div></div><small id="xpLabel" class="muted"></small>
-    <p id="rankTarget" class="rank-target"></p><button data-go="ranking" class="primary wide">🏆 탐험 순위표</button>
+    <div class="row"><div id="explorerAvatar" class="explorer-avatar"></div><div class="explorer-details"><div class="eyebrow">나의 학습 등급</div><h2 id="explorerName"></h2><span id="explorerRank" class="tag"></span></div><button data-go="characters" class="secondary">캐릭터 선택</button></div>
+    <p id="rankDifficultyLabel" class="muted"></p>
+    <p id="rankTarget" class="rank-target"></p><button data-go="ranking" class="primary wide">🏆 학습 등급 순위표</button>
   </div>
   <div class="card install"><div><strong>태블릿에 앱으로 설치</strong><small class="muted" id="installHint">브라우저 메뉴에서 홈 화면에 추가할 수 있어요.</small></div><button id="installBtn" class="secondary">설치</button></div>
   <div class="grid4">
@@ -85,11 +85,11 @@
   <p id="characterStatus" class="character-status" role="status" aria-live="polite"></p><div id="characterGrid" class="character-grid"></div>
 </section>
 <section id="ranking" class="screen">
-  <div class="row between"><div><div class="eyebrow">한 계단씩, 나의 속도로</div><h2>탐험 레벨 순위표</h2></div><button data-go="home" class="ghost">홈</button></div>
-  <p class="league-note">미리 정해진 캐릭터 30명과 도전하는 연습 리그예요. 친구들의 경험치는 고정되어 있어요.</p>
+  <div class="row between"><div><div class="eyebrow">한 계단씩, 나의 속도로</div><h2>학습 등급 순위표</h2></div><button data-go="home" class="ghost">홈</button></div>
+  <p class="league-note">미리 정해진 캐릭터 30명과 도전하는 연습 리그예요. 초등부터 고등 심화까지 다양한 학습 등급의 친구들이 함께해요.</p>
   <div id="rankPodium" class="rank-podium"></div><div id="rankMySummary" class="card rank-summary" aria-live="polite"></div>
-  <details class="card xp-rules"><summary>탐험 레벨은 어떻게 올라가나요?</summary><p class="muted">문제를 풀면 5 XP, 도움 없이 맞히면 3 XP를 더 받아요. 하루 최대 30문제에 경험치를 지급하고, 그날 첫 학습·복습 완주(20문제 이상) 시 40 XP를 더 받아요. 같은 날 같은 문제를 반복해 풀면 추가 경험치는 없어요. 200 XP마다 레벨이 올라가요. 기존 학습 기록도 반영했어요.</p><p class="muted">탐험 레벨은 꾸준한 학습 기록이에요. 문제의 학습 단계나 성적과는 별개예요. 앞선 친구를 차근차근 따라잡아 보세요!</p></details>
-  <ol id="rankList" class="rank-list" aria-label="탐험 레벨 전체 순위"></ol>
+  <details class="card ranking-rules"><summary>순위는 어떻게 정하나요?</summary><p class="muted">현재 자동 조절된 난이도(1.0~9.0)가 높을수록 앞에 표시돼요. 화면에 표시되는 소수 첫째 자리 난이도가 같으면 공동 순위예요.</p><p class="muted">등급은 초1~고3의 권장 학습 수준이에요. 실제 학년을 뜻하지 않아요. 레벨 확인과 학습 중 이해도에 따라 등급이 달라질 수 있어요.</p></details>
+  <ol id="rankList" class="rank-list" aria-label="현재 학습 난이도 전체 순위"></ol>
 </section>
 
 <section id="wordbook" class="screen"><div class="row between"><h2>내 단어장</h2><button data-go="home" class="ghost">홈</button></div><div id="wordList" class="list"></div></section>
