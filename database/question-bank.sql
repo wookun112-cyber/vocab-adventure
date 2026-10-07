@@ -38,13 +38,13 @@ $$;
 create or replace function vocab_private.cache_packet(p_user uuid,p_payload jsonb) returns integer language plpgsql security definer set search_path='' as $$
 declare r jsonb; q jsonb; plan jsonb; n integer:=0;
 begin
- if p_payload->>'questionPolicy' is distinct from 'vocabulary-depth-12.6' then return 0; end if;
+ if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' then return 0; end if;
  for r in select value from jsonb_array_elements(coalesce(p_payload->'ready','[]')) loop
   q:=r->1;plan:=p_payload->'plans'->((r->>0)::integer);
-  if q#>>'{validation,policy}'='vocabulary-depth-12.6' and q#>>'{validation,aiVerified}'='true' and q#>>'{validation,deterministic}'='true'
-   and q#>>'{validation,checks,coherentSituation}'='true' and q#>>'{validation,checks,vocabularyFocus}'='true' then
+  if q#>>'{validation,policy}'='vocabulary-level-fit-12.8' and q#>>'{validation,aiVerified}'='true' and q#>>'{validation,deterministic}'='true'
+   and q#>>'{validation,checks,coherentSituation}'='true' and q#>>'{validation,checks,vocabularyFocus}'='true' and q#>>'{validation,checks,levelDemandFit}'='true' then
    insert into vocab_private.question_bank(user_id,fingerprint,word,task_type,reader_level,support_level,policy,question)
-    values(p_user,vocab_private.question_fingerprint(q),q#>>'{w,w}',q->>'type',coalesce((q->>'bankReaderLevel')::numeric,(p_payload->>'difficulty')::numeric,2),coalesce((q->>'bankSupportLevel')::integer,(plan->>'supportLevel')::integer,0),'vocabulary-depth-12.6',q)
+    values(p_user,vocab_private.question_fingerprint(q),q#>>'{w,w}',q->>'type',coalesce((q->>'bankReaderLevel')::numeric,(p_payload->>'difficulty')::numeric,2),coalesce((q->>'bankSupportLevel')::integer,(plan->>'supportLevel')::integer,0),'vocabulary-level-fit-12.8',q)
     on conflict(user_id,fingerprint) do nothing;
    n:=n+1;
   end if;
@@ -54,7 +54,7 @@ end $$;
 
 create or replace function vocab_private.bank_candidates(p_user uuid,p_level numeric) returns jsonb language sql stable security definer set search_path='' as $$
  select coalesce(jsonb_agg(jsonb_build_object('question',b.question,'readerLevel',b.reader_level,'supportLevel',b.support_level)),'[]') from (
- select * from vocab_private.question_bank where user_id=p_user and policy='vocabulary-depth-12.6' and reader_level between p_level-.35 and p_level+.35 order by created_at desc limit 800
+ select * from vocab_private.question_bank where user_id=p_user and policy='vocabulary-level-fit-12.8' and reader_level between p_level-.35 and p_level+.35 order by created_at desc limit 800
  ) b;
 $$;
 
@@ -83,7 +83,7 @@ begin
  for i in 1..1 loop
   insert into vocab_private.lesson_reserves(user_id,profile,slot) values(p_user,p_profile,i) on conflict(user_id,profile,slot) do nothing;
   update vocab_private.lesson_reserves set id=gen_random_uuid(),capability=gen_random_uuid(),lease=null,status='pending',payload=null,attempts=0,next_attempt=now(),updated_at=now()
-   where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-depth-12.6' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
+   where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='ready' and (payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
  perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
 end $$;
@@ -117,14 +117,15 @@ create or replace function public.save_reserve_preparation(p_id uuid,p_key uuid,
 create or replace function vocab_private.reserve_usable(p_payload jsonb,l jsonb) returns boolean language plpgsql stable security definer set search_path='' as $$
 declare r jsonb; q jsonb; st jsonb; h jsonb; used text[];
 begin
- if p_payload->>'questionPolicy' is distinct from 'vocabulary-depth-12.6' or jsonb_array_length(coalesce(p_payload->'ready','[]'))<>20 or jsonb_array_length(coalesce(p_payload->'plans','[]'))<>20
+ if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.8' or jsonb_array_length(coalesce(p_payload->'ready','[]'))<>20 or jsonb_array_length(coalesce(p_payload->'plans','[]'))<>20
   or abs(coalesce((p_payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35 then return false;end if;
+ if exists(select 1 from jsonb_array_elements(p_payload->'plans') x where coalesce((x#>>'{w,band}')::numeric,3)>=greatest(1,floor(coalesce((l->>'difficulty')::numeric,2))-1)) and (select count(*) from jsonb_array_elements(p_payload->'plans') x where coalesce((x#>>'{w,band}')::numeric,3)<greatest(1,floor(coalesce((l->>'difficulty')::numeric,2))-1))>4 then return false;end if;
  for r in select value from jsonb_array_elements(p_payload->'ready') loop
   q:=r->1;st:=l#>array['words',q#>>'{w,w}'];
   if st is null or (coalesce((st->>'seen')::integer,0)=0 and st->>'introducedAt' is null)
-   or q#>>'{validation,policy}' is distinct from 'vocabulary-depth-12.6' or q#>>'{validation,aiVerified}' is distinct from 'true'
+   or q#>>'{validation,policy}' is distinct from 'vocabulary-level-fit-12.8' or q#>>'{validation,aiVerified}' is distinct from 'true'
    or q#>>'{validation,deterministic}' is distinct from 'true' or q#>>'{validation,checks,coherentSituation}' is distinct from 'true'
-   or q#>>'{validation,checks,vocabularyFocus}' is distinct from 'true'
+   or q#>>'{validation,checks,vocabularyFocus}' is distinct from 'true' or q#>>'{validation,checks,levelDemandFit}' is distinct from 'true'
    or coalesce((p_payload->'plans'->((r->>0)::integer)->>'supportLevel')::integer,0)<coalesce((st->>'supportLevel')::integer,0)
    or exists(select 1 from public.curriculum_words where word=q#>>'{w,w}' and quality_status='rejected') then return false;end if;
   if coalesce(q->'bankPassageKeys','[]') ?| array(select jsonb_array_elements_text(coalesce(st->'usedPassageKeys','[]'))) then return false;end if;

@@ -24,7 +24,7 @@ run(`globalThis.item={id:'1',type:'subjective_context',word:'원인',definition:
  globalThis.flags={id:'1',valid:true,sufficientClues:true,oneClearAnswer:true,samePartOfSpeechChoices:true,naturalKorean:true,coherentSituation:true,ageAppropriate:true,factualAccuracy:true,readerLevelFit:true,noBackgroundBurden:true,vocabularyFocus:true,noAnswerLeak:true,naturalAlternativesConsidered:true,notTooSimilarToRecent:true,learningCardAccurate:true,issues:[],acceptedAnswers:sample.acceptedAnswers};
  ask=async(prompt,schema,name)=>name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]};`);
 const accepted=await run('buildValidated([item],[])');assert.equal(accepted[0].validation.checks.factualAccuracy,true);assert.equal(accepted[0].validation.checks.readerLevelFit,true);
-assert.equal(accepted[0].validation.policy,'vocabulary-depth-12.6');assert.equal(accepted[0].validation.checks.vocabularyFocus,true);
+assert.equal(accepted[0].validation.policy,'vocabulary-level-fit-12.8');assert.equal(accepted[0].validation.checks.vocabularyFocus,true);
 run('flags.vocabularyFocus=false');let quiz=await run('buildValidated([item],[],{maxAttempts:1,partial:true})');assert.equal(quiz.length,0);assert.ok(quiz.failed[0].issues.includes('review_failed:vocabularyFocus'),'a factually correct knowledge quiz is still rejected');run('flags.vocabularyFocus=true');
 assert.ok(run('deterministic({...sample,context:"민서: 4:6과 6:9가 같아. 도윤: 가운데 6은 4와 9의 ＿＿＿＿이라고 하지?"},item).includes("mathematical_name_quiz")'));
 assert.ok(run('deterministic(sample,{...item,word:"등비중항",domain:"수학·논리"}).includes("specialist_or_context_only_target")'));
@@ -40,3 +40,11 @@ assert.ok(run('deterministic({...sample,type:"mc_usage",showTarget:true,context:
 assert.ok(prompt.includes('일반 수량 어휘'));
 
 assert.ok(run('deterministic({...sample,context:"사람들은 받은 돈의 차이를 살폈어요. 이 일을 ＿＿＿＿의 관점에서 생각했어요."},item).includes("ambiguous_label_blank")'));
+
+// Readability alone cannot certify the semantic demand of an advanced item.
+run("sample.context='지구가 스스로 돌면 태양 빛을 받는 곳이 달라져요. 지구의 회전은 낮과 밤이 바뀌는 ＿＿＿＿이에요.';flags.readerLevelFit=true;flags.levelDemandFit=false;item.taskDemand='advanced';item.readerLevel=7.4");
+const easyAdvanced=await run('buildValidated([item],[],{maxAttempts:1,partial:true})');
+assert.equal(easyAdvanced.length,0);assert.ok(easyAdvanced.failed[0].issues.includes('review_failed:levelDemandFit'));
+run('flags.levelDemandFit=true');const matchedAdvanced=await run('buildValidated([item],[],{maxAttempts:1,partial:true})');
+assert.equal(matchedAdvanced.length,1);assert.equal(matchedAdvanced[0].validation.checks.levelDemandFit,true);
+console.log('Semantic demand verified: advanced questions fail independently when they are readable but too easy; alternate answers remain independently accepted.');

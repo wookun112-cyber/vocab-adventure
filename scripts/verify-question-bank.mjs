@@ -7,7 +7,7 @@ const learner={difficulty:2,words:{근거:{seen:3,correct:2,wrong:1,streak:1,sup
 const original=JSON.stringify(learner);
 const packet=makePreparedPlan(learner,{},[],'family','ayoung',{reviewOnly:true});
 assert.equal(packet.plans.length,20);assert.equal(packet.newWords.length,0);assert.equal(packet.budget.newCount,0);
-const entries=packet.plans.map((p,i)=>({readerLevel:2,supportLevel:p.supportLevel||0,question:{w:p.w,type:p.type,ctx:`도서관 자료 ${i}번을 꼼꼼히 살펴보고 생각을 뒷받침하는 자료를 골랐어요.`,opts:p.type.startsWith('mc_')?Array.from({length:5},(_,k)=>({t:`${i}번 이야기의 보기 ${k}에는 자료를 살펴보는 서로 다른 행동이 담겨 있어요.`,ok:k===2})):[],validation:{policy:QUESTION_POLICY,deterministic:true,aiVerified:true,checks:{coherentSituation:true,vocabularyFocus:true}}}}));
+const entries=packet.plans.map((p,i)=>({readerLevel:2,supportLevel:p.supportLevel||0,question:{w:p.w,type:p.type,taskDemand:p.taskDemand,ctx:`도서관 자료 ${i}번을 꼼꼼히 살펴보고 생각을 뒷받침하는 자료를 골랐어요.`,opts:p.type.startsWith('mc_')?Array.from({length:5},(_,k)=>({t:`${i}번 이야기의 보기 ${k}에는 자료를 살펴보는 서로 다른 행동이 담겨 있어요.`,ok:k===2})):[],validation:{policy:QUESTION_POLICY,deterministic:true,aiVerified:true,checks:{coherentSituation:true,vocabularyFocus:true,levelDemandFit:true}}}}));
 const plan=packet.plans[0],entry=entries[0];
 assert.equal(bankCompatible(entry,plan,learner),true);
 for(const invalid of [{...entry,readerLevel:3},{...entry,question:{...entry.question,validation:{...entry.question.validation,aiVerified:false}}},{...entry,question:{...entry.question,validation:{...entry.question.validation,checks:{coherentSituation:false,vocabularyFocus:true}}}}])assert.equal(bankCompatible(invalid,plan,learner),false);

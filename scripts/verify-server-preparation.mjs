@@ -25,7 +25,7 @@ assert.equal(guestPlan.snapshot,learnerSnapshot(guestLearner));
 assert.equal(guestPlan.plans.length,20);
 assert.ok(guestPlan.plans.some(p=>p.w.band===7));
 let inFlight=0,maxFlight=0,calls=0;
-const answer=item=>({id:item.id,type:item.type,learningCard:{definition:item.definition,example:'이 어휘를 자연스러운 새 예문에 사용했어요.',nonExample:'다른 상황에서는 쓰지 않아요.',structureNote:''},prompt:'빈칸을 채우세요.',context:'탐험'+item.id+'의 기록을 다시 살펴본 뒤 탐험'+item.id+'의 ＿＿＿＿를 찾았어요.',options:[],acceptedAnswers:[],hints:[],feedbackCorrect:'좋아요.',signature:'새로운 상황'+item.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
+const answer=item=>({id:item.id,type:item.type,learningCard:{definition:item.definition,example:'이 어휘를 자연스러운 새 예문에 사용했어요.',nonExample:'다른 상황에서는 쓰지 않아요.',structureNote:''},prompt:'빈칸을 채우세요.',context:'탐험'+item.id+'의 기록을 다시 살펴본 뒤 탐험'+item.id+'의 ＿＿＿＿를 찾았어요.',options:[],acceptedAnswers:[],hints:[],feedbackCorrect:'좋아요.',signature:'새로운 상황'+item.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true,levelDemandFit:true}}});
 const generate=async items=>{
  inFlight++;maxFlight=Math.max(maxFlight,inFlight);calls++;
  await new Promise(r=>setTimeout(r,0));inFlight--;

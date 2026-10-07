@@ -214,7 +214,7 @@ function verifySchema(items){
         samePartOfSpeechChoices:{type:'boolean'},
         naturalKorean:{type:'boolean'},
         coherentSituation:{type:'boolean'},
-        ageAppropriate:{type:'boolean'},factualAccuracy:{type:'boolean'},readerLevelFit:{type:'boolean'},
+        ageAppropriate:{type:'boolean'},factualAccuracy:{type:'boolean'},readerLevelFit:{type:'boolean'},levelDemandFit:{type:'boolean'},
         noBackgroundBurden:{type:'boolean'},vocabularyFocus:{type:'boolean'},
         noAnswerLeak:{type:'boolean'},
         naturalAlternativesConsidered:{type:'boolean'},
@@ -224,7 +224,7 @@ function verifySchema(items){
         },required:['text','credit','rationale'],additionalProperties:false}},
         issues:{type:'array',items:{type:'string'}}
       },
-      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','vocabularyFocus','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
+      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','levelDemandFit','noBackgroundBurden','vocabularyFocus','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
       additionalProperties:false
     }}},required:['reviews'],additionalProperties:false
   };
@@ -237,6 +237,9 @@ function generationPrompt(items,recent,feedback={}){
     '- 검사하는 능력은 목표 어휘의 의미, 문맥에 맞는 선택, 자연스러운 쓰임입니다. 수학 계산, 공식 적용, 전문 개념이나 사실의 명칭 회상, 역사 인물·연도·과학 상식 맞히기는 금지합니다. 대화 빈칸으로 포장해도 같은 금지 규칙을 적용합니다.',
     '- 지문의 지식은 어휘를 사용할 배경이지 정답 자체가 아닙니다. 필요한 사실은 글 안에 먼저 제공하고, 그 사실을 바탕으로 인물의 행동·원인·결과·관점에서 목표어가 필요한 문장을 만드세요. 목표어를 빼고 보았을 때도 수학/과학/역사 퀴즈로 남는 문제는 다시 설계하세요.',
     '- 일반 수량 어휘 배·비율·차이·평균은 생활 속 변화나 느낌을 표현하는 문맥으로 출제할 수 있습니다. 수학 공식이나 계산 관계의 이름을 묻지 마세요. 기본 교과 어휘도 사전 정의를 준 뒤 그 이름만 채우게 하지 말고, 관찰·행동·결과에서 그 어휘의 역할과 쓰임을 이해하도록 설계하세요.',
+    '- taskDemand=advanced는 글 길이보다 어휘 의미의 세밀한 구별과 쓰임 판단을 어렵게 하세요. 가까운 상황들이 모두 그럴듯하지만 목적·조건·의도·결과 중 목표어의 핵심 차이로 정답 하나를 가를 수 있게 하세요. 단어 하나를 단순한 정의와 연결하거나 엉뚱한 보기 네 개로 답을 드러내면 안 됩니다. 전문지식이나 트릭으로 어렵게 하지 마세요.',
+    '- advanced의 subjective_use는 목표어를 사용해 인물의 판단·이유·조건 또는 행동의 결과가 드러나는 문장 하나를 만들게 합니다. 목표어 뜻을 다시 쓰거나 제시 문장을 베끼게 하지 마세요. 상황 단서는 짧고 질문은 하나입니다. foundation-review는 소수의 낮은 단계 기억 확인이고 initial-practice는 새 뜻을 배운 직후의 연습입니다.',
+    '- advanced 빈칸에서 열심히·좋다·문제·생각 같은 넓고 쉬운 표현만으로 목표어의 핵심 의미 차이를 쓰지 않고도 충분히 해결되면 문항을 다시 설계하세요. 자연스러운 유의어를 일부러 오답으로 처리하거나 허용 답안을 좁혀 어렵게 하지 마세요. 같은 의미를 온전히 담은 자연스러운 답은 계속 인정합니다.',
     '- 난이도는 어휘의 추상성, 문맥 단서의 직접성, 가까운 의미의 구별, 문장과 관점의 복잡성으로 조절합니다. 더 높은 수준이라고 전문 용어·숫자·공식을 늘리지 마세요. 단서를 숨겨 맞힐 수 없게 만드는 방식도 금지합니다.',
     '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 빈칸과 사전 정의를 외워 서술시키는 문제는 금지합니다. 의미 연결 문제도 목표는 한 단어이며 비교 단어 각각에 별도 답을 요구하지 않습니다.',
     '- 지문은 학년이 아니라 readingDesign의 현재 어휘력 수준에 맞춥니다. 문장 수·길이·문장 구조의 안내를 따르고 maxCharacters를 넘기지 마세요. subjective_use는 1~2문장, 대화는 2~4발화, mc_usage는 각 보기를 짧게 쓰는 유형 규칙이 우선합니다.',
@@ -303,6 +306,7 @@ async function aiVerify(items,questions,recent){
     '수량과 관계 있다는 이유만으로 일반 어휘를 배제하지 마세요. 배, 비율, 차이, 평균 등을 일상의 변화·비교·감정 표현에 알맞게 쓰는 문항은 어휘 학습입니다. 예를 들어 기쁨이 두 배가 된다는 자연스러운 쓰임은 등비중항 같은 전문 명칭 퀴즈에 해당하지 않습니다. 세포, 전지 같은 기본 교과 어휘도 생활·관찰 맥락에서 역할과 의미를 이해해야 하는 문항은 허용하되, 정의를 준 뒤 개념 이름만 묻는 문항은 반려하세요.',
     '유형 규칙표: subjective_context와 subjective_dialogue는 목표어를 숨긴 빈칸 하나를 채우는 과제입니다. 빈칸이 있다는 이유로 반려하지 마세요. subjective_use만 목표어를 보여주고 자신의 완성 문장 하나를 만드는 과제입니다. 이 세 유형을 혼동하지 마세요.',
     'factualAccuracy는 실제 사실의 정확성을 검사합니다. knowledgeSeed는 선택용 소재입니다. 지문이 다른 분야를 다뤄도 실제 내용이 정확하면 true이며, seed와 주제가 다르거나 null이라는 이유만으로 반려하지 마세요. 인물의 허구 업적·실제 인물에게 붙인 가짜 발언·잘못된 날짜·공전과 자전의 혼동·태양까지의 거리로 계절을 설명하는 오류는 탈락입니다. 생활 장면도 객관적인 사실을 잘못 말하면 false입니다.',
+    'levelDemandFit는 읽기 길이와 별개로 taskDemand의 의미 판단 수준을 검사합니다. advanced인데 넓고 쉬운 낱말만으로 핵심 의미를 구별하지 않고 빈칸이 해결되거나, 객관식 오답들이 엉뚱해 하나만 눈에 띄거나, subjective_use가 단순 예문 복사이면 false와 valid=false입니다. 자연스러운 대체 답을 삭제해서 난이도를 높이지 말고 문항을 재설계하게 하세요. foundation-review와 initial-practice는 기본 기억/첫 뜻 연습을 허용하며 더 높은 난이도의 숙달 검사라고 해석하지 않습니다. standard는 읽기 수준에 맞는 기본 의미와 쓰임을 검사합니다.',
     'readerLevelFit는 학년이나 목표어 band가 아니라 readingDesign의 어휘력 수준·문장 구조로 검사합니다. lengthGuide는 권장 길이이며 최소 글자 수가 아닙니다. 짧아도 완결된 상황과 충분한 단서가 있으면 통과하고 maxCharacters 초과는 탈락입니다. 목표어 외 용어가 너무 어렵거나 많고 쉬운 설명이 없으면 false입니다. 지문 안의 정보만으로 풀 수 있어야 하며 사전 역사·과학 지식을 요구하면 noBackgroundBurden=false입니다. subjective_use와 대화 및 mc_usage는 해당 유형의 짧은 형식이 우선합니다.',
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
@@ -376,17 +380,17 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
       const objective=item.type.startsWith('mc_');
       const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&
         (!objective||rv.oneClearAnswer)&&(!objective||rv.samePartOfSpeechChoices)&&
-        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.factualAccuracy&&rv.readerLevelFit&&rv.noBackgroundBurden&&rv.vocabularyFocus&&rv.noAnswerLeak&&
+        rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.factualAccuracy&&rv.readerLevelFit&&(!item.taskDemand||rv.levelDemandFit)&&rv.noBackgroundBurden&&rv.vocabularyFocus&&rv.noAnswerLeak&&
         (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent&&(!item.needsCard||rv.learningCardAccurate);
       if(pass){
         q.validation={policy:QUESTION_POLICY,deterministic:true,aiVerified:true,checks:{
           sufficientClues:rv.sufficientClues,oneClearAnswer:rv.oneClearAnswer,samePartOfSpeechChoices:rv.samePartOfSpeechChoices,
-          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,factualAccuracy:rv.factualAccuracy,readerLevelFit:rv.readerLevelFit,noBackgroundBurden:rv.noBackgroundBurden,vocabularyFocus:rv.vocabularyFocus,
+          naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,factualAccuracy:rv.factualAccuracy,readerLevelFit:rv.readerLevelFit,levelDemandFit:!item.taskDemand||rv.levelDemandFit===true,noBackgroundBurden:rv.noBackgroundBurden,vocabularyFocus:rv.vocabularyFocus,
           noAnswerLeak:rv.noAnswerLeak,naturalAlternativesConsidered:rv.naturalAlternativesConsidered,notTooSimilarToRecent:rv.notTooSimilarToRecent,learningCardAccurate:rv.learningCardAccurate
         }};
         accepted.set(item.id,q);pending.delete(item.id);delete feedback[item.id];
       }else{
-        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','noBackgroundBurden','vocabularyFocus','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
+        const requiredChecks=['valid','sufficientClues','naturalKorean','coherentSituation','ageAppropriate','factualAccuracy','readerLevelFit','levelDemandFit','noBackgroundBurden','vocabularyFocus','noAnswerLeak','notTooSimilarToRecent',...(objective?['oneClearAnswer','samePartOfSpeechChoices']:['naturalAlternativesConsidered']),...(item.needsCard?['learningCardAccurate']:[])];
         feedback[item.id]=[...new Set([...d,...aiIssues,...(!rv?['verification_missing']:requiredChecks.filter(key=>!rv[key]).map(key=>'review_failed:'+key))])];
       }
     }
@@ -416,7 +420,7 @@ export default async function handler(req,res){
       answerSlot:Math.max(0,Math.min(4,Number(x.answerSlot)||0)),
       supportLevel:Math.max(0,Math.min(3,Number(x.supportLevel)||0)),
       successStreak:Math.max(0,Number(x.successStreak)||0),
-      firstLearning:Boolean(x.firstLearning),needsCard:Boolean(x.needsCard),structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),
+      firstLearning:Boolean(x.firstLearning),needsCard:Boolean(x.needsCard),structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),taskDemand:['foundation-review','initial-practice','advanced','standard'].includes(x.taskDemand)?x.taskDemand:'standard',
       previousContexts:Array.isArray(x.previousContexts)?x.previousContexts.filter(p=>p&&typeof p==='object').slice(-8).map(p=>({context:String(p.context||'').slice(0,1600),options:Array.isArray(p.options)?p.options.slice(0,5).map(o=>String(o).slice(0,500)):[]})):[],
       usedPassageKeys:Array.isArray(x.usedPassageKeys)?x.usedPassageKeys.filter(k=>typeof k==='string').slice(-2000):[]
     })).filter(x=>x.word&&x.definition);

@@ -1,5 +1,5 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,summarizeEvidence,isLearningTarget} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,summarizeEvidence,isLearningTarget,selectLevelReviews} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -731,20 +731,8 @@ function chooseNew(n=5){
    .map(w=>({w,score:Math.abs((w.band||3)-target)*5+(w.source==='fixed'?-3:2)+Math.random()*4}))
    .sort((a,b)=>a.score-b.score).slice(0,n).map(x=>x.w);
 }
-function chooseReview(n=15){
- const seen=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&(child().words[w.w]?.seen||child().words[w.w]?.introducedAt));
- const due=seen.filter(w=>isDue(wordState(w.w).nextReviewAt)).sort((a,b)=>scorePriority(b)-scorePriority(a));
- const active=seen.filter(w=>{
-   const st=wordState(w.w);
-   return !isDue(st.nextReviewAt)&&st.streak<5&&!st.mastered;
- }).sort((a,b)=>scorePriority(b)-scorePriority(a));
- const out=[];
- for(const w of [...due,...active]){
-   if(out.some(x=>x.w===w.w))continue;
-   out.push(w);if(out.length>=n)break;
- }
- return out.length?out:seen.sort((a,b)=>scorePriority(b)-scorePriority(a)).slice(0,n);
-}
+function chooseReview(n=15){return selectLevelReviews(WORDS,child(),n,today())}
+
 function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={}){
  if(credit>=1&&!independent&&!revealed&&!hintUsed)return;
  let days=1;
@@ -847,7 +835,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
      return ({
      id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,readerLevel:Number(state.users[profile].difficulty)||2,domain:apiDomain(p.w.cat),
      example:p.w.example||'',contextSeed:p.contextSeed||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
-     successStreak:p.successStreak,firstLearning:p.firstLearning,needsCard:!!p.needsCard,structureNote:p.structureNote||'',stage:p.stage||'',
+     successStreak:p.successStreak,firstLearning:p.firstLearning,needsCard:!!p.needsCard,structureNote:p.structureNote||'',stage:p.stage||'',taskDemand:p.taskDemand||'standard',
      previousContexts:[...(st.problemHistory||[]),...queued].slice(-4),
      usedPassageKeys:[...new Set([...(st.usedPassageKeys||[]),...queued.flatMap(q=>passageKeys(q.context,q.options))])]
    })}),
@@ -864,7 +852,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
  return j.questions.map(q=>{
    const p=planMap.get(String(q.id)); if(!p)throw new Error('문제 연결 오류');
    return {
-     w:p.w,type:q.type,stage:p.stage,needsCard:p.needsCard,practiceOnly:!!p.practiceOnly,learningCard:q.learningCard,answerForm:q.answerForm||p.w.w,label:TYPE_LABELS[q.type]||'문맥',q:q.prompt,ctx:q.context||'',
+     w:p.w,type:q.type,stage:p.stage,taskDemand:p.taskDemand,needsCard:p.needsCard,practiceOnly:!!p.practiceOnly,learningCard:q.learningCard,answerForm:q.answerForm||p.w.w,label:TYPE_LABELS[q.type]||'문맥',q:q.prompt,ctx:q.context||'',
      showTarget:!!q.showTarget,open:q.type.startsWith('subjective_'),hideWord:!q.showTarget,
      opts:(q.options||[]).map(o=>({t:o.text,ok:!!o.correct,reason:o.reason||''})),
      acceptedAnswers:q.acceptedAnswers||[],hints:q.hints||[],feedbackCorrect:q.feedbackCorrect||'',
@@ -1051,8 +1039,9 @@ async function getPreparation(mode='daily',retry=false){
      else{const budget=studyBudget(child());newWords=chooseNew(budget.newCount);reviewWords=chooseReview(20-newWords.length)}
      const baseWords=[...newWords,...reviewWords];
      if(!baseWords.length)throw new Error(mode==='review'?'아직 복습할 기록이 충분하지 않아요. 오늘의 학습을 먼저 진행해 주세요.':'출제할 어휘를 준비하지 못했습니다.');
-     meta={key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,questionPolicy:QUESTION_POLICY,model:LEARNING_MODEL,target:20,introAt:mode==='daily'?Math.min(6,reviewWords.length):0,plans:assignScenarios(buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w)))};
+     meta={key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,questionPolicy:QUESTION_POLICY,model:LEARNING_MODEL,target:20,introAt:mode==='daily'?Math.min(6,reviewWords.length):0,plans:assignScenarios(buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w),{level:child().difficulty}))};
    }
+   if(!restored&&mode==='daily')meta.introAt=meta.plans.filter(p=>p.stage==='check').length;
    const p=createPreparation(meta,restored?saved.ready||[]:[]);
    preparations.set(key,p);p.pump();return p;
  })();
@@ -1304,7 +1293,7 @@ async function gradeCurrent(dontKnow){
      method:'POST',
      headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
      body:JSON.stringify({
-       taskType:q.type==='subjective_use'?'sentence_use':'context_answer',
+       taskType:q.type==='subjective_use'?'sentence_use':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
        question:q.q+'\n지문: '+q.ctx,
        targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,
        acceptedAnswers:q.acceptedAnswers||[],answer,source:answerSource

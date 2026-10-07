@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {selectLevelReviews,buildLearningPlan,learningDay,reviewFloor} from '../lib/learning-model.js';
+import {makePreparedPlan,generationItems} from '../lib/prepared-plan.js';
+const day=learningDay(),words=Array.from({length:30},(_,i)=>({w:'복습어'+i,d:'배운 말의 의미',band:i<24?2:6+i%2,cat:'국어'}));
+const learner={difficulty:7.4,words:Object.fromEntries(words.map(w=>[w.w,{seen:3,wrong:0,streak:2,nextReviewAt:w.band===2?'2026-01-01':'2099-01-01'}]))};
+const snapshot=JSON.stringify(learner),chosen=selectLevelReviews(words,learner,17,day);
+assert.equal(reviewFloor(7.4),6);assert.ok(chosen.filter(w=>w.band<6).length<=2);
+assert.ok(chosen.some(w=>w.band===7),'upcoming near-level practice is retained instead of twenty overdue easy words');
+const fresh=[0,1,2].map(i=>({w:'새어휘'+i,d:'새롭게 배우는 뜻',band:7,cat:'국어'}));
+const plans=buildLearningPlan(fresh,chosen,20,'daily',w=>learner.words[w]||{},{level:7.4});
+assert.equal(plans.length,20);assert.ok(plans.filter(p=>p.w.band<6).length<=4);assert.equal(plans.filter(p=>p.type.startsWith('mc_')).length,10);assert.equal(plans.filter(p=>p.type.startsWith('subjective_')).length,10);
+assert.ok(plans.filter(p=>p.stage==='check'&&p.w.band<6).length<=2);
+assert.ok(plans.filter(p=>p.w.band>=6&&!p.needsCard).every(p=>p.taskDemand==='advanced'));
+assert.ok(plans.filter(p=>p.w.band>=6&&learner.words[p.w.w]?.nextReviewAt>'2090').every(p=>p.practiceOnly));
+for(const w of fresh)assert.ok(plans.some(p=>p.w.w===w.w&&p.type==='subjective_use'));
+const reserve=buildLearningPlan([],chosen,20,'daily',w=>learner.words[w]||{},{level:7.4});assert.ok(reserve.filter(p=>p.w.band<6).length<=4);
+assert.equal(JSON.stringify(learner),snapshot);
+// A learner with only basic studied words gets deep use, never extra untaught words.
+const narrow=buildLearningPlan([],words.slice(0,2),20,'daily',()=>({seen:1}),{level:7.4});
+assert.equal(narrow.length,20);assert.equal(narrow.filter(p=>p.stage==='check').length,2);assert.ok(narrow.slice(2).every(p=>p.taskDemand==='advanced'));
+const curriculum=[...words,...fresh].map(w=>({word:w.w,definition:w.d,band:w.band,domain:w.cat}));
+const packet=makePreparedPlan(learner,{},curriculum,'family','guest',{reviewOnly:true});
+assert.equal(packet.newWords.length,0);assert.ok(packet.plans.filter(p=>p.w.band<6).length<=4);assert.equal(packet.introAt,packet.plans.filter(p=>p.stage==='check').length);
+assert.ok(generationItems(packet.plans,learner).every(i=>i.readerLevel===7.4&&i.taskDemand));
+console.log('Level selection verified: at most four low-band items and two basic recall probes, upcoming near-level practice without false recall credit, ten choices/ten written tasks, three daily new words, unchanged records, and deep-use fallback without extra new words.');
