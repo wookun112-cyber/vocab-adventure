@@ -7,8 +7,8 @@ const curriculum=Array.from({length:30},(_,i)=>({word:'어휘'+i,definition:'상
 const job={id:'test',lease:'lease',account:'family',profile:'inseong',learner,curriculum,catalog:{}};
 const plan=makePreparedPlan(learner,{},curriculum,'family','inseong');
 assert.equal(plan.plans.length,20);
-assert.equal(plan.plans.filter(p=>p.type.startsWith('mc_')).length,10);
-assert.equal(new Set(plan.plans.map(p=>p.type)).size,4);
+assert.equal(plan.target,16);assert.equal(plan.newWords.length,2);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
+assert.ok(new Set(plan.plans.map(p=>p.type)).size>=5);
 assert.equal(plan.snapshot,learnerSnapshot(learner));
 assert.equal(JSON.stringify(learner),before);
 for(const word of plan.newWords){
@@ -24,7 +24,7 @@ assert.equal(guestPlan.snapshot,learnerSnapshot(guestLearner));
 assert.equal(guestPlan.plans.length,20);
 assert.ok(guestPlan.plans.some(p=>p.w.band===7));
 let inFlight=0,maxFlight=0,calls=0;
-const answer=item=>({id:item.id,type:item.type,prompt:'빈칸을 채우세요.',context:'탐험'+item.id+'의 기록을 다시 살펴본 뒤 탐험'+item.id+'의 ＿＿＿＿를 찾았어요.',options:[],acceptedAnswers:[],hints:[],feedbackCorrect:'좋아요.',signature:'새로운 상황'+item.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
+const answer=item=>({id:item.id,type:item.type,learningCard:{definition:item.definition,example:'이 어휘를 자연스러운 새 예문에 사용했어요.',nonExample:'다른 상황에서는 쓰지 않아요.',structureNote:''},prompt:'빈칸을 채우세요.',context:'탐험'+item.id+'의 기록을 다시 살펴본 뒤 탐험'+item.id+'의 ＿＿＿＿를 찾았어요.',options:[],acceptedAnswers:[],hints:[],feedbackCorrect:'좋아요.',signature:'새로운 상황'+item.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
 const generate=async items=>{
  inFlight++;maxFlight=Math.max(maxFlight,inFlight);calls++;
  await new Promise(r=>setTimeout(r,0));inFlight--;
@@ -76,7 +76,7 @@ for(const word of withheld.newWords){
   for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key));seen.add(key)}
  }
 }
-console.log('Server preparation verified: personalized 20-question plans, 50:50 mix, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
+console.log('Server preparation verified: personalized 20-question packets, 16-activity learning targets, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
 
 // Recovery preserves original plans and accepted peers even after an answer
 // changes the learner snapshot. It must not create an unrelated new lesson.

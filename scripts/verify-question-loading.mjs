@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'').split("window.addEventListener('beforeinstallprompt'")[0];
+const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const storage=new Map();
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(seed,account='family',shared=storage,server=false){
@@ -13,7 +13,7 @@ function fixture(seed,account='family',shared=storage,server=false){
    alert:m=>alerts.push(m),fetch:()=>{throw Error('Unexpected network')},
    createClient:()=>({rpc:async()=>({data:null,error:null}),auth:{getSession:async()=>({data:{session:{access_token:'test'}}})}})
  });
- vm.runInContext(source,ctx);
+ vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),ctx);vm.runInContext(source,ctx);
  const run=code=>vm.runInContext(code,ctx);
  if(seed)run(`state=${JSON.stringify(seed)};rebuildCatalog()`);
  run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};
@@ -24,7 +24,7 @@ function fixture(seed,account='family',shared=storage,server=false){
    globalThis.answerFor=plan=>({w:plan.w,type:plan.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'탐험'+plan.id+'에서 새로운 기록을 찾아 자세히 살폈어요. 탐험'+plan.id+'의 기록이 생각을 뒷받침하는 ＿＿＿＿가 되었어요.',opts:[],signature:'시나리오'+plan.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
    fetchValidatedQuestions=(plans,recent,known,profile)=>new Promise((resolve,reject)=>requests.push({plans,recent,known,profile,resolve:()=>resolve(plans.map(answerFor)),reject}));
  `);
- if(!server)run("const actualGetPreparation=getPreparation,actualBuildSession=buildSession;getPreparation=mode=>actualGetPreparation(mode==='level'?'level':'review');buildSession=mode=>actualBuildSession(mode==='level'?'level':'review')");
+ if(!server)run("const actualGetPreparation=getPreparation,actualBuildSession=buildSession;getPreparation=mode=>actualGetPreparation(mode==='level'?'level':'review').then(p=>{p.model=undefined;return p});buildSession=mode=>actualBuildSession(mode==='level'?'level':'review')");
  return {run,nodes,node,alerts,ctx};
 }
 const f=fixture();
@@ -67,7 +67,7 @@ f.run('requests[4].resolve();requests[5].resolve()');await flush();
 assert.equal(f.run('session.queue.length'),20);
 assert.equal(f.run('session.pendingPlans.length'),0);
 assert.equal(f.run('session.queue.map(q=>q.signature).join(",")'),Array.from({length:20},(_,i)=>'시나리오'+i).join(','));
-assert.equal(f.run('session.queue.filter(q=>q.type.startsWith("mc_")).length'),10);
+assert.ok(f.run('session.queue.some(q=>q.type.startsWith("mc_"))'));assert.ok(f.run('session.queue.some(q=>q.type.startsWith("subjective_"))'));
 // Adaptive extensions still get their own plans and can prepare before question 20.
 f.run('session.target=26;prefetchQuestions()');await flush();
 assert.equal(f.run('requests.length'),9);

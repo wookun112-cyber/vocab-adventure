@@ -1,3 +1,4 @@
+import {LEARNING_MODEL} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
@@ -12,7 +13,7 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=(recovering||job.payload?.snapshot===learnerSnapshot(job.learner))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
+ let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.snapshot===learnerSnapshot(job.learner)))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile);
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));

@@ -1,6 +1,8 @@
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
-const TYPES=['mc_context','mc_usage','subjective_context','subjective_dialogue'];
+import {LEARNING_TYPES} from '../lib/learning-model.js';
+const TYPES=LEARNING_TYPES;
+const SHOWN_TYPES=['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'];
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
 
 async function verifyUser(auth){
@@ -47,17 +49,17 @@ function completeContext(context,word){
 }
 function blankParticle(context){return String(context||'').match(/＿＿＿＿(이라고|이라는|이라|라고|라는|라|으로|로|이|가|은|는|을|를|과|와)(?=\s|[,.!?“”"'():;]|$)/)?.[1]||''}
 function normalizeCandidate(q,item){
-  q={...q};
+  q={...q,answerForm:String(q.answerForm||item.word).trim()};
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)){
     let c=String(q.context||'');
     c=c.replace(/＿{2,}|_{3,}|□{2,}|○{2,}|\[\s*빈칸\s*\]|\(\s*빈칸\s*\)|<\s*빈칸\s*>/g,'＿＿＿＿');
-    if(blankCount(c)===0&&c.includes(item.word))c=c.replace(item.word,'＿＿＿＿');
+    if(blankCount(c)===0&&c.includes(q.answerForm))c=c.replace(q.answerForm,'＿＿＿＿');
     const particle=blankParticle(c);
-    if(particle)c=c.replace('＿＿＿＿'+particle,'＿＿＿＿'+expectedParticle(item.word,particle));
+    if(particle)c=c.replace('＿＿＿＿'+particle,'＿＿＿＿'+expectedParticle(q.answerForm,particle));
     q.context=c;
   }
-  if(item.type==='mc_usage')q.context=String(q.context||'').replace(/＿{2,}|_{3,}/g,'');
-  q.showTarget=item.type==='mc_usage';
+  if(SHOWN_TYPES.includes(item.type))q.context=String(q.context||'').replace(/＿{2,}|_{3,}/g,'');
+  q.showTarget=SHOWN_TYPES.includes(item.type);
   if(item.type.startsWith('mc_')&&Array.isArray(q.options)){
     const opts=q.options.map(x=>({...x}));
     const idx=opts.findIndex(x=>x.correct);
@@ -98,13 +100,13 @@ function deterministic(q,item){
   const previous=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(p=>passageKeys(p.context,p.options||[]))]);
   if(passageKeys(q.context,(q.options||[]).map(o=>o.text)).some(k=>previous.has(k)))issues.push('previous_sentence_reused');
   if(q.type!==item.type)issues.push('requested_type_mismatch');
-  if(hasCompare(q.prompt))issues.push('comparison_question');
+  if(!['mc_relation','mc_structure'].includes(item.type)&&hasCompare(q.prompt))issues.push('comparison_question');
   if(hasDefinePrompt(q.prompt))issues.push('definition_explanation_prompt');
-  const hidden=item.type!=='mc_usage';
+  const hidden=!SHOWN_TYPES.includes(item.type);
   if(hidden&&q.showTarget)issues.push('hidden_type_showTarget_true');
-  if(item.type==='mc_usage'&&!q.showTarget)issues.push('usage_type_showTarget_false');
-  if(hidden&&(String(q.prompt).includes(item.word)||String(q.context).includes(item.word)))issues.push('target_leaked_before_answer');
-  if(item.type==='mc_usage'&&blankCount(q.context)!==0)issues.push('usage_question_has_blank');
+  if(SHOWN_TYPES.includes(item.type)&&!q.showTarget)issues.push('usage_type_showTarget_false');
+  if(hidden&&(String(q.prompt).includes(item.word)||String(q.context).includes(item.word)||String(q.prompt).includes(q.answerForm||item.word)||String(q.context).includes(q.answerForm||item.word)))issues.push('target_leaked_before_answer');
+  if(SHOWN_TYPES.includes(item.type)&&blankCount(q.context)!==0)issues.push('usage_question_has_blank');
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)&&blankCount(q.context)!==1)issues.push('blank_count_not_one');
   if(item.type==='subjective_dialogue'&&!/[“”"':：]|\n/.test(q.context))issues.push('dialogue_not_clear');
   if(['mc_context','subjective_context','subjective_dialogue'].includes(item.type)&&sentenceCount(q.context)<2)issues.push('context_too_short');
@@ -119,14 +121,17 @@ function deterministic(q,item){
       const particle=blankParticle(q.context);
       if(particle&&(q.options||[]).some(o=>expectedParticle(o.text,particle)!==particle))issues.push('choice_particle_mismatch');
     }
-    if(item.type==='mc_context'&&!correct.some(x=>norm(x.text)===norm(item.word)))issues.push('target_not_correct_choice');
+    if(item.type==='mc_context'&&!correct.some(x=>norm(x.text)===norm(q.answerForm||item.word)))issues.push('target_not_correct_choice');
     if(item.type==='mc_usage'&&hasCompare((q.options||[]).map(x=>x.text).join(' ')))issues.push('usage_choices_compare_words');
   }else{
     if((q.options||[]).length)issues.push('subjective_has_choices');
     const full=(q.acceptedAnswers||[]).some(x=>norm(x.text)===norm(item.word)&&Number(x.credit)===1);
-    if(!full)issues.push('target_missing_from_accepted_answers');
+    if(item.type==='subjective_use'&&(q.acceptedAnswers||[]).length)issues.push('sentence_use_has_fixed_answers');
+    if(item.type!=='subjective_use'&&!full)issues.push('target_missing_from_accepted_answers');
   }
   if(!Array.isArray(q.hints)||q.hints.length!==2)issues.push('hints_not_two_steps');
+  if(item.needsCard&&(!q.learningCard?.definition?.trim()||!q.learningCard?.example?.trim()||!q.learningCard?.nonExample?.trim()))issues.push('missing_learning_card');
+  if(!String(q.answerForm||item.word).trim())issues.push('missing_answer_form');
   if(!String(q.signature||'').trim())issues.push('missing_signature');
   return issues;
 }
@@ -139,6 +144,8 @@ function questionSchema(items){
         prompt:{type:'string'},
         context:{type:'string'},
         showTarget:{type:'boolean'},
+        answerForm:{type:'string'},
+        learningCard:{type:'object',properties:{definition:{type:'string'},example:{type:'string'},nonExample:{type:'string'},structureNote:{type:'string'}},required:['definition','example','nonExample','structureNote'],additionalProperties:false},
         partOfSpeech:{type:'string',enum:['명사','동사','형용사','부사','기타']},
         options:{type:'array',minItems:0,maxItems:5,items:{type:'object',properties:{
           text:{type:'string'},correct:{type:'boolean'},reason:{type:'string'}
@@ -149,7 +156,7 @@ function questionSchema(items){
         hints:{type:'array',minItems:2,maxItems:2,items:{type:'string'}},
         feedbackCorrect:{type:'string'},
         signature:{type:'string'}
-      },required:['id','type','prompt','context','showTarget','partOfSpeech','options','acceptedAnswers','hints','feedbackCorrect','signature'],
+      },required:['id','type','prompt','context','showTarget','answerForm','learningCard','partOfSpeech','options','acceptedAnswers','hints','feedbackCorrect','signature'],
       additionalProperties:false
     }}},required:['questions'],additionalProperties:false
   };
@@ -169,13 +176,13 @@ function verifySchema(items){
         noBackgroundBurden:{type:'boolean'},
         noAnswerLeak:{type:'boolean'},
         naturalAlternativesConsidered:{type:'boolean'},
-        notTooSimilarToRecent:{type:'boolean'},
+        notTooSimilarToRecent:{type:'boolean'},learningCardAccurate:{type:'boolean'},
         acceptedAnswers:{type:'array',minItems:0,maxItems:7,items:{type:'object',properties:{
           text:{type:'string'},credit:{type:'number',enum:[1,0.5]},rationale:{type:'string'}
         },required:['text','credit','rationale'],additionalProperties:false}},
         issues:{type:'array',items:{type:'string'}}
       },
-      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','acceptedAnswers','issues'],
+      required:['id','valid','sufficientClues','oneClearAnswer','samePartOfSpeechChoices','naturalKorean','coherentSituation','ageAppropriate','noBackgroundBurden','noAnswerLeak','naturalAlternativesConsidered','notTooSimilarToRecent','learningCardAccurate','acceptedAnswers','issues'],
       additionalProperties:false
     }}},required:['reviews'],additionalProperties:false
   };
@@ -185,7 +192,7 @@ function generationPrompt(items,recent,feedback={}){
     '한국어 어휘 학습 앱용 문제를 만드세요. 목표는 사전 정의 암기가 아니라 문맥에서 뜻을 이해하고 필요한 어휘를 떠올려 사용하는 능력입니다.',
     '',
     '공통 규칙:',
-    '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 단어 비교, 두 빈칸, 정의를 서술시키는 문제는 금지합니다.',
+    '- 각 문제는 목표 어휘 하나와 질문 하나만 다룹니다. 두 빈칸과 사전 정의를 외워 서술시키는 문제는 금지합니다. 의미 연결 문제도 목표는 한 단어이며 비교 단어 각각에 별도 답을 요구하지 않습니다.',
     '- 지문은 쉬운 2~4문장으로 쓰고 누가 무엇을 했는지, 왜 그런지, 결과가 무엇인지 중 필요한 단서를 넣습니다.',
     '- 단순히 길게 늘리지 말고 정답 판단에 필요한 의미 있는 단서를 2개 이상 제공합니다.',
     '- 목표 어휘 외 표현은 해당 학습 단계보다 쉽게 씁니다. 어려운 배경지식·복잡한 추론이 핵심이 되면 안 됩니다.',
@@ -196,15 +203,15 @@ function generationPrompt(items,recent,feedback={}){
     '- 한 장면 안에서 인물, 시간, 행동, 이유, 결과가 일관되게 이어져야 합니다. 이유 없는 행동, 갑자기 등장하는 사건, 앞 문장과 무관한 결론은 금지합니다.',
     '- 정답을 억지로 넣기 위해 같은 설명을 반복하거나 \"이것은 X이다\"라는 정의 문장을 덧붙이지 마세요. 단서가 사건 속에서 드러나는 간결하고 완결된 문장으로 씁니다.',
     '- 대화는 실제 아이들이 말할 법한 짧은 발화로 작성하고, 앞사람의 말에 자연스럽게 응답하세요. 설명문을 따옴표 안에 넣은 가짜 대화는 금지합니다.',
-    '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 목표 어휘를 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. 목표 어휘를 두 번 이상 쓰지 마세요.',
-    '- 목표어가 동사·형용사의 기본형이면 철자를 활용형으로 바꾸거나 어간 일부만 빈칸으로 만들지 마세요. 기본형 전체가 자연스럽게 들어가는 관찰 기록이나 실제 활동의 직접 인용을 활용하세요. 예: 관찰표에 ‘하늘이 맑다’라고 적었다. 목표어를 억지로 끼운 문장이나 정의를 묻는 문항은 금지합니다.',
+    '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 answerForm을 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. answerForm을 두 번 이상 쓰지 마세요.',
+    '- answerForm에는 빈칸에 실제로 들어가는 자연스러운 형태를 쓰세요. 명사는 목표어 자체, 동사·형용사는 맑은, 맑았다처럼 목표어의 전체 활용형을 허용합니다. context에는 answerForm을 정확히 한 번 넣고 서버가 전체를 빈칸으로 바꿉니다. 어간 일부만 지우지 마세요. 기본형을 강제하려고 관찰표나 인용문으로 우회하지 마세요. 객관식 단어 보기의 활용과 품사도 동일하게 맞추세요.',
     '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
     '- 빈칸 다음의 조사(이/가, 은/는, 을/를, 과/와, 으로/로)는 목표어의 받침에 맞아야 합니다. mc_context는 보기 5개를 각각 넣어도 조사가 맞아야 하므로, 가능하면 받침에 무관한 ‘에’, ‘의’ 등의 표현을 쓰고, 받침에 따라 달라지는 조사를 쓴다면 보기의 받침 조건을 모두 맞추세요. 보기에 받침이 섞이면 빈칸 다음에 ‘(이/가)’, ‘(을/를)’처럼 두 조사를 병기할 수 있습니다.',
     '- mc_context 보기 5개는 목표어와 같은 품사의 관련 어휘로 만듭니다. 모든 보기가 문법적으로 빈칸에 들어갈 수 있어야 하고 의미 단서로만 정답이 갈려야 합니다.',
     '- mc_usage는 길이와 문장 형태가 비슷한 자연스러운 상황 5개로 만듭니다. 정답 상황 하나만 목표 어휘의 핵심 의미와 정확히 맞고, 나머지는 관련은 있지만 핵심 행동·의도·결과가 달라야 합니다.',
     '- 오답은 관련성은 있으나 핵심 단서와 맞지 않게 만듭니다. 억지 오답·명백한 품사 불일치 금지입니다.',
-    '- 주관식 acceptedAnswers에는 목표어 자체를 credit 1로 반드시 넣고, 다른 표현도 문맥상 완전히 자연스러우면 credit 1, 일부만 맞으면 credit 0.5로 넣습니다. 유의어라는 이유만으로 넣지 않습니다.',
+    '- 빈칸 주관식 acceptedAnswers에는 목표어 자체와 문맥에 자연스러운 answerForm을 credit 1로 넣고, 다른 표현도 문맥상 완전히 자연스러우면 credit 1, 일부만 맞으면 credit 0.5로 넣습니다. 유의어라는 이유만으로 넣지 않습니다.',
     '- supportLevel이 1 이상이면 문장을 더 짧고 쉽게 쓰고, 2~3이면 핵심 단서를 더 분명하게 제시합니다.',
     '- successStreak가 3 이상이면 같은 뜻을 학교 밖, 자연, 탐험, 과학 등 덜 익숙한 새 상황에도 적용하도록 배경을 바꿉니다.',
     '- firstLearning=true인 첫 객관식 문제는 특히 쉬운 상황과 분명한 단서를 사용합니다.',
@@ -212,11 +219,18 @@ function generationPrompt(items,recent,feedback={}){
     '- feedbackCorrect는 문맥 단서와 어휘 의미를 연결한 1~2문장입니다.',
     '- signature는 최근 문제와 중복을 피하기 위한 짧은 상황 요약입니다.',
     '',
+    '학습 자료:',
+    '- needsCard=true인 문제에는 learningCard를 작성하세요: 아이 눈높이의 짧은 definition, 목표어의 자연스러운 예문 example, 그 단어로 부르기 어려운 상황과 이유를 담은 nonExample. structureNote는 제공된 검토된 structureNote가 있는 경우에만 사용하세요. 단어를 억지로 한자나 형태소로 나누지 마세요. needsCard=false이면 네 필드 모두 빈 문자열입니다. 학습 카드는 별도 익히기 화면에서만 나오며 문제 지문과는 다른 사건을 사용합니다.',
+    '- mc_structure는 제공된 structureNote의 정확한 의미만 다룹니다. 분해가 부적합한 단어는 요청되지 않습니다.',
     '유형 정의:',
-    'mc_context: 2~4문장 상황에 목표 어휘를 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 5개 중 고르게 합니다.',
+    'mc_context: 2~4문장 상황에 answerForm을 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 5개 중 고르게 합니다.',
     'mc_usage: 목표 단어를 질문에 제시하고, 그 단어를 쓰기에 가장 알맞은 상황 하나를 5개의 평행한 상황 보기 중 고릅니다. 빈칸은 쓰지 않습니다.',
-    'subjective_context: 2~4문장 상황에 목표 어휘를 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 보기 없이 입력하게 합니다.',
-    'subjective_dialogue: 2~4개의 짧은 대화 흐름에 목표 어휘를 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꿉니다.',
+    'subjective_context: 2~4문장 상황에 answerForm을 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꾼 뒤 보기 없이 입력하게 합니다.',
+    'mc_relation: 목표어를 보여주고 이 말과 의미상 잘 연결되는 상황, 상위 범주, 반대 상황, 자연스러운 결합 중 한 가지를 5개의 보기에서 고르게 합니다. 질문 하나이며 정답은 하나입니다.',
+    'mc_structure: 목표어와 structureNote의 구성 단서를 제시하고 구성 요소가 전체 뜻에 어떻게 기여하는지 하나의 질문으로 묻습니다. 보기 5개, 정답 하나입니다.',
+    'mc_reading: 목표어를 보여주고 처음 보는 자연스러운 짧은 글 3~4문장을 읽게 합니다. 글에서 목표어의 뜻이나 쓰임을 이해했는지 하나의 질문과 5개 보기로 확인합니다. 빈칸은 없습니다.',
+    'subjective_use: 목표어를 보여주고 실제로 있을 법한 상황 단서를 간단히 준 뒤 이 어휘를 사용한 자신의 문장 하나를 쓰도록 요청합니다. 정답 문장이나 복사할 예문은 지문에 제시하지 않습니다. context는 빈칸 없이 1~2문장, options와 acceptedAnswers는 빈 배열입니다. 힌트는 생각할 상황과 말할 목적을 제안하되 완성 문장을 주지 않습니다.',
+    'subjective_dialogue: 2~4개의 짧은 대화 흐름에 answerForm을 정확히 한 번 자연스럽게 넣으세요. 서버가 그 자리를 빈칸으로 바꿉니다.',
     '',
     '최근 문제 서명(비슷한 상황/구조 피하기): '+JSON.stringify(recent||[]),
     '이전 생성 실패 사유가 있으면 반드시 고치기: '+JSON.stringify(feedback||{}),
@@ -233,6 +247,9 @@ async function aiVerify(items,questions,recent){
     '검증 항목: 문맥 단서 충분성, 객관식 정답 유일성, mc_context의 5개 단어 보기 품사/형태 일관성, mc_usage의 5개 상황 보기 형식 일관성, 자연스러운 한국어, 학습 단계 적합성, 과도한 배경지식 여부, 힌트·제목의 정답 노출 여부, 주관식의 다른 자연스러운 답 고려 여부, 최근 문제와 과도한 유사성.',
     '객관식의 oneClearAnswer와 samePartOfSpeechChoices는 엄격히 검사하세요. 주관식은 자연스러운 복수 정답을 허용하므로 oneClearAnswer는 필수 조건이 아니며, 대신 naturalAlternativesConsidered를 엄격히 검사하세요.',
     'completedContext는 목표 정답을 넣은 실제 완성 문장입니다. 이 문장은 문법과 의미가 모두 자연스러워야 합니다. 목표어를 넣었을 때 조사·활용·서술어가 틀리면 naturalKorean=false입니다.',
+    'subjective_use의 naturalAlternativesConsidered는 다양한 적절한 문장을 허용하는 과제인지로 검사하고, 적절한 열린 과제이면 true입니다. 완성 문장 정답을 만들지 말고 acceptedAnswers는 빈 배열을 유지하세요.',
+    'mc_relation, mc_structure, mc_reading은 목표어를 보여주는 객관식입니다. 보기의 동일 품사는 해당 없음으로 true, 정답 유일성과 상황/의미의 타당성을 검사하세요. subjective_use는 목표어를 보여주고 문장 하나를 만드는 과제입니다. 빈칸이나 고정 정답이 필요하지 않고 acceptedAnswers는 빈 배열입니다. 목표어 표시 자체는 답안 노출이 아닙니다. 모든 유형의 answerForm은 목표어와 동일한 어휘의 자연스러운 활용형인지 검사하세요.',
+    'learningCardAccurate는 needsCard=true일 때 쉬운 뜻, 예문, 비예와 이유가 실제 어휘 의미에 맞는지, 예문이 문제 문장과 겹치지 않는지, structureNote가 제공된 검토 문구와 맞는지 검사합니다. needsCard=false는 해당 없음으로 true입니다. 틀린 학습 자료가 있으면 valid=false입니다.',
     'mc_usage의 completedContext는 정답 상황 보기입니다. 이 유형은 빈칸이나 목표어를 삽입하는 문장이 없는 것이 정상입니다. 정답 상황 보기의 자연스러움과 목표어의 의미에 맞는 행동을 검사하세요.',
     'choiceContexts의 오답은 형식 문법(품사, 조사, 활용, 문장 구조)만 검사하세요. 오답을 넣어 내용이 틀리거나 뜻이 어색해지고, 어휘의 통상적 의미 결합·연어가 맞지 않는 것은 문맥 어휘 문제의 의도한 오답이므로 허용합니다. 이를 문법 오류나 자연성 오류로 오판하여 valid=false로 하지 마세요. 예: 정답이 ‘영향’인 ‘미치는 빈칸’에 같은 품사의 ‘원인’이 들어가 의미 결합이 틀리는 것은 오답으로 정상입니다. 품사가 다르거나 조사가 틀리는 경우만 samePartOfSpeechChoices=false입니다.',
     'coherentSituation은 인물·시간·행동·이유·결과의 앞뒤 연결과 목표어를 넣은 완성 문장의 조사·서술어 호응을 검사합니다. 어색한 번역투, 불필요한 반복, 갑작스러운 결론, 일상적으로 성립하지 않는 상황, 설명문을 옮긴 가짜 대화는 통과시키지 마세요.',
@@ -242,7 +259,7 @@ async function aiVerify(items,questions,recent){
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
     '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
     '힌트는 학습자가 요청한 뒤에만 나타나는 단계적 도움입니다. 현재 상황의 의미 단서를 가리키거나 의미 범위를 좁히는 것은 허용합니다. 목표어 자체, 정답 번호, 정답 보기의 고유 문구를 그대로 알려주는 경우는 노출입니다. 피드백과 허용 답안은 답변 이후 정보이므로 노출 판단에서 반드시 제외하세요.',
-    '주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 목표어는 반드시 credit 1이고, 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 기본형 중심으로 적으세요.',
+    '빈칸 주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 목표어와 자연스러운 answerForm은 credit 1이고, 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 문맥의 자연스러운 활용형을 유지하세요.',
     '빠진 자연스러운 대체 답안이나 잘못된 허용 답안은 이 검수 단계에서 수정하세요. naturalAlternativesConsidered와 valid는 반환하는 최종 허용 답안 기준입니다. 객관식의 acceptedAnswers는 빈 배열입니다.',
     '주관식에서 다른 자연스러운 표현이 가능하다는 사실만으로 valid=false로 하지 마세요. 그 표현을 최종 acceptedAnswers에 포함했다면 그 문제는 해결된 것입니다. 상황과 정답 문장 자체의 자연스러움은 계속 엄격히 검사하세요.',
     '허용 답안 목록만 수정할 수 있습니다. 문맥, 보기, 힌트 등 문제 자체의 결함은 수정한 것으로 간주하지 말고 valid=false와 구체적인 issues로 반환하세요.',
@@ -251,7 +268,7 @@ async function aiVerify(items,questions,recent){
     '최근 서명: '+JSON.stringify(recent||[]),
     '후보 문제: '+JSON.stringify(questions.map(q=>{
       const item=items.find(x=>x.id===q.id);
-      return {...q,completedContext:q.type==='mc_usage'?(q.options||[]).find(o=>o.correct)?.text||'':completeContext(q.context,item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>completeContext(q.context,o.text)):[]};
+      return {...q,completedContext:SHOWN_TYPES.includes(q.type)?(q.options||[]).find(o=>o.correct)?.text||'':completeContext(q.context,q.answerForm||item?.word||''),choiceContexts:q.type==='mc_context'?(q.options||[]).map(o=>completeContext(q.context,o.text)):[]};
     }))
   ].join('\n');
   const out=await ask(prompt,verifySchema(items),'vocab_question_review',9000);
@@ -295,12 +312,12 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
       const pass=q&&!d.length&&rv&&rv.valid&&rv.sufficientClues&&
         (!objective||rv.oneClearAnswer)&&(!objective||rv.samePartOfSpeechChoices)&&
         rv.naturalKorean&&rv.coherentSituation&&rv.ageAppropriate&&rv.noBackgroundBurden&&rv.noAnswerLeak&&
-        (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent;
+        (objective||rv.naturalAlternativesConsidered)&&rv.notTooSimilarToRecent&&(!item.needsCard||rv.learningCardAccurate);
       if(pass){
         q.validation={deterministic:true,aiVerified:true,checks:{
           sufficientClues:rv.sufficientClues,oneClearAnswer:rv.oneClearAnswer,samePartOfSpeechChoices:rv.samePartOfSpeechChoices,
           naturalKorean:rv.naturalKorean,coherentSituation:rv.coherentSituation,ageAppropriate:rv.ageAppropriate,noBackgroundBurden:rv.noBackgroundBurden,
-          noAnswerLeak:rv.noAnswerLeak,naturalAlternativesConsidered:rv.naturalAlternativesConsidered,notTooSimilarToRecent:rv.notTooSimilarToRecent
+          noAnswerLeak:rv.noAnswerLeak,naturalAlternativesConsidered:rv.naturalAlternativesConsidered,notTooSimilarToRecent:rv.notTooSimilarToRecent,learningCardAccurate:rv.learningCardAccurate
         }};
         accepted.set(item.id,q);pending.delete(item.id);delete feedback[item.id];
       }else{
@@ -333,7 +350,7 @@ export default async function handler(req,res){
       answerSlot:Math.max(0,Math.min(4,Number(x.answerSlot)||0)),
       supportLevel:Math.max(0,Math.min(3,Number(x.supportLevel)||0)),
       successStreak:Math.max(0,Number(x.successStreak)||0),
-      firstLearning:Boolean(x.firstLearning),
+      firstLearning:Boolean(x.firstLearning),needsCard:Boolean(x.needsCard),structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),
       previousContexts:Array.isArray(x.previousContexts)?x.previousContexts.filter(p=>p&&typeof p==='object').slice(-8).map(p=>({context:String(p.context||'').slice(0,1600),options:Array.isArray(p.options)?p.options.slice(0,5).map(o=>String(o).slice(0,500)):[]})):[],
       usedPassageKeys:Array.isArray(x.usedPassageKeys)?x.usedPassageKeys.filter(k=>typeof k==='string').slice(-2000):[]
     })).filter(x=>x.word&&x.definition);

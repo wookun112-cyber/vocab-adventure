@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'').split("window.addEventListener('beforeinstallprompt'")[0];
+const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const clone=value=>JSON.parse(JSON.stringify(value));
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(local=new Map(),cloud=new Map(),account='family'){
@@ -31,7 +31,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
    }
   })
  });
- run=code=>vm.runInContext(code,ctx);run(source);
+ run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);
  run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};
   globalThis.makeRemoteLesson=()=>{
    const newWords=SEED_WORDS.slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));

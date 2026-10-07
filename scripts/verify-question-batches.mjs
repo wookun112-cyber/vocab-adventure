@@ -9,9 +9,9 @@ const ctx=vm.createContext({console,setTimeout,clearTimeout,Map,Set,Date,Math,Pr
  localStorage:{setItem(){}},alert:m=>alerts.push(m),fetch:()=>{throw new Error('unexpected network')},
  createClient:()=>({auth:{getSession:async()=>({data:{session:{access_token:'test'}}})}})
 });
-let source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'');
+let source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'');
 source=source.slice(0,source.indexOf("window.addEventListener('beforeinstallprompt'"));
-vm.runInContext(source,ctx);
+vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),ctx);vm.runInContext(source,ctx);
 const run=code=>vm.runInContext(code,ctx);
 // Existing learning data must retain its meaning while loading changes.
 run(`state.selected='guest';authUser={id:'test'};state.users.guest.words['근거'].seen=7;
@@ -41,9 +41,9 @@ console.log('Curriculum verified: cached words avoid network wait; depleted band
 // A comparison situation is valid; asking learners to compare two target words is not.
 const backend=vm.createContext({console,process,Map,Set});
 const api=fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8')
- .replace('export async function buildValidated','async function buildValidated')
+ .replace(/^import[^\n]+\n/gm,'').replace('export async function buildValidated','async function buildValidated')
  .replace('export default async function handler','async function handler');
-vm.runInContext(api,backend);
+vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),backend);vm.runInContext(api,backend);
 const compare=s=>vm.runInContext(`hasCompare(${JSON.stringify(s)})`,backend);
 assert.equal(compare('차이점이라는 말을 쓰기에 알맞은 상황을 고르세요.'),false);
 assert.equal(compare('두 단어의 차이를 설명하세요.'),true);
@@ -120,4 +120,28 @@ run(`wordState('새표제어').lastFeedbackDate=dayOffset(-1);session.results=[]
  applyResult(q,'◎','다른 문맥 해설','',{credit:1,contextSuccess:true,targetRecall:true,independent:true})`);
 assert.equal(run("wordState('새표제어').independentCorrect"),2);
 assert.equal(run("wordState('새표제어').streak"),2);
-console.log('Learning flow verified: no pre-answer definition; same-day repetitions preserve scores without inflating mastery or review intervals.');
+console.log('Legacy flow verified: no pre-answer definition; same-day repetitions preserve scores without inflating mastery or review intervals.');
+
+// New learning types retain strict pre-publication checks and accept whole inflected forms.
+back(`item={id:'1',type:'subjective_context',word:'맑다',answerSlot:0,needsCard:true};
+ sample={...sample,type:item.type,showTarget:false,answerForm:'맑았다',context:'비가 그치고 구름이 걷혔어요. 오늘 하늘은 맑았다. 멀리 있는 산도 잘 보였어요.',learningCard:{definition:'흐리거나 탁하지 않다',example:'흙이 가라앉자 물이 맑아졌어요.',nonExample:'흙탕물은 탁해서 맑다고 하지 않아요.',structureNote:''},acceptedAnswers:[{text:'맑다',credit:1},{text:'맑았다',credit:1}],hints:['구름이 없는 하늘을 생각해요.','멀리 잘 보이는 까닭을 생각해요.']};
+ flags={...flags,valid:true,noAnswerLeak:true,coherentSituation:true,learningCardAccurate:true,issues:[],acceptedAnswers:sample.acceptedAnswers};
+ ask=async(prompt,schema,name)=>name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]};`);
+const inflected=await back('buildValidated([item],[])');
+assert.ok(inflected[0].context.includes('하늘은 ＿＿＿＿.'));
+assert.equal(inflected[0].answerForm,'맑았다');
+assert.equal(inflected[0].learningCard.example,'흙이 가라앉자 물이 맑아졌어요.');
+back('flags.learningCardAccurate=false;');
+await assert.rejects(back('buildValidated([item],[])'),/QUESTION_VALIDATION_FAILED/);
+back(`item={...item,type:'subjective_use',word:'협력',needsCard:false};sample={...sample,type:item.type,answerForm:item.word,showTarget:true,prompt:'친구와 함께 한 일을 이 말을 넣어 문장으로 쓰세요.',context:'친구들과 힘을 모아 일을 마친 상황을 떠올려요.',options:[],acceptedAnswers:[]};flags={...flags,learningCardAccurate:true,acceptedAnswers:[]};`);
+const sentence=await back('buildValidated([item],[])');assert.equal(sentence[0].acceptedAnswers.length,0);assert.equal(sentence[0].showTarget,true);
+back("flags.acceptedAnswers=[{text:'협력',credit:1}]");
+await assert.rejects(back('buildValidated([item],[])'),/sentence_use_has_fixed_answers/);
+console.log('New materials verified: whole inflected Korean forms, teaching-card verification gates, open sentence-use tasks, no fixed word-only sentence answers.');
+// The server enforces the distinction even if the model accidentally reports recall.
+let sentPrompt='';
+const grader=vm.createContext({process:{env:{}},fetch:async(url,options)=>{sentPrompt=JSON.parse(options.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({score:.5,result:'△',normalizedAnswer:'협력',contextSuccess:true,targetRecall:true,feedback:'문장으로 써 보세요.',correctionApplied:false,correctionNote:''})})}}});
+vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace('export async function runGrade','async function runGrade').replace('export default async function handler','async function handler'),grader);
+const sentenceGrade=await vm.runInContext("runGrade({question:'내 문장을 써요.',answer:'협력',targetWord:'협력',definition:'힘을 합침',taskType:'sentence_use'})",grader);
+assert.equal(sentenceGrade.targetRecall,false);assert.equal(sentenceGrade.contextSuccess,false);assert.ok(sentPrompt.includes('단어만 썼으면 0'));
+console.log('Sentence grading verified: target exposure never counts as recall, partial use cannot become full context success, word-only answers explicitly rejected.');
