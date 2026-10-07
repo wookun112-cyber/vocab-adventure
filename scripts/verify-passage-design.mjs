@@ -34,3 +34,5 @@ run('sample.context="가".repeat(221)');assert.ok(run('deterministic(sample,item
 const prompt=run('generationPrompt([item],[])');assert.ok(prompt.includes('학년이 아니라'));assert.ok(prompt.includes('knowledgeSeed'));assert.ok(prompt.includes('이름만 바꾸면 안'));
 assert.ok(prompt.includes('전문 개념이나 사실의 명칭 회상'));assert.ok(prompt.includes('어휘의 추상성'));
 console.log('Passages verified: factual anchor sources, diverse topics, learner ability passed from preparation, scaffolded text complexity, hard length limit, fact and level-fit review gates, and generation instructions for meaningful knowledge and fresh review contexts.');
+
+assert.ok(run('deterministic({...sample,type:"mc_usage",showTarget:true,context:"",options:[{text:"새 상황의 원인을 찾았다",correct:true}]},{...item,type:"mc_usage"}).includes("usage_choice_repeats_target")'));

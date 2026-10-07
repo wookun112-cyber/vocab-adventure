@@ -163,6 +163,7 @@ function deterministic(q,item){
     }
     if(item.type==='mc_context'&&!correct.some(x=>norm(x.text)===norm(q.answerForm||item.word)))issues.push('target_not_correct_choice');
     if(item.type==='mc_usage'&&hasCompare((q.options||[]).map(x=>x.text).join(' ')))issues.push('usage_choices_compare_words');
+    if(item.type==='mc_usage'&&(q.options||[]).some(o=>[item.word,q.answerForm].filter(Boolean).some(w=>norm(o.text).includes(norm(w)))))issues.push('usage_choice_repeats_target');
   }else{
     if((q.options||[]).length)issues.push('subjective_has_choices');
     const full=(q.acceptedAnswers||[]).some(x=>norm(x.text)===norm(q.answerForm||item.word)&&Number(x.credit)===1);
@@ -254,7 +255,7 @@ function generationPrompt(items,recent,feedback={}){
     '- 대화는 실제 아이들이 말할 법한 짧은 발화로 작성하고, 앞사람의 말에 자연스럽게 응답하세요. 설명문을 따옴표 안에 넣은 가짜 대화는 금지합니다.',
     '- mc_context, subjective_context, subjective_dialogue의 context는 생성 단계 내부용으로 answerForm을 정확히 한 번 포함한 완성 문장으로 작성하세요. 서버가 그 한 곳을 빈칸으로 바꿔 학생에게 보여줍니다. answerForm을 두 번 이상 쓰지 마세요.',
     '- answerForm에는 빈칸에 실제로 들어가는 자연스러운 형태를 쓰세요. 명사는 목표어 자체, 동사·형용사는 맑은, 맑았다처럼 목표어의 전체 활용형을 허용합니다. context에는 answerForm을 정확히 한 번 넣고 서버가 전체를 빈칸으로 바꿉니다. 어간 일부만 지우지 마세요. 기본형을 강제하려고 관찰표나 인용문으로 우회하지 마세요. 객관식 단어 보기의 활용과 품사도 동일하게 맞추세요.',
-    '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 목표 어휘를 보기마다 억지로 반복해서 넣지 마세요.',
+    '- mc_usage에서는 목표 어휘를 질문에 보여주고, 보기 5개는 그 어휘가 가장 알맞은 서로 다른 상황으로 만듭니다. 보기에는 목표어와 answerForm을 쓰지 마세요. 목표어 이름이 들어간 보기를 찾는 방식으로 답할 수 없어야 합니다. 이름 대신 구체적인 행동·의도·결과를 묘사하세요.',
     '- 객관식은 정확히 5지선다이며 정답은 지정된 answerSlot 위치에 정확히 하나만 둡니다.',
     '- 빈칸 다음의 조사(이/가, 은/는, 을/를, 과/와, 으로/로)는 목표어의 받침에 맞아야 합니다. mc_context는 보기 5개를 각각 넣어도 조사가 맞아야 하므로, 가능하면 받침에 무관한 ‘에’, ‘의’ 등의 표현을 쓰고, 받침에 따라 달라지는 조사를 쓴다면 보기의 받침 조건을 모두 맞추세요. 보기에 받침이 섞이면 빈칸 다음에 ‘(이/가)’, ‘(을/를)’처럼 두 조사를 병기할 수 있습니다.',
     '- mc_context 보기 5개는 목표어와 같은 품사의 관련 어휘로 만듭니다. 모든 보기가 문법적으로 빈칸에 들어갈 수 있어야 하고 의미 단서로만 정답이 갈려야 합니다.',
@@ -312,7 +313,7 @@ async function aiVerify(items,questions,recent){
     '목표어의 핵심 의미는 복습에서도 같아야 하지만 사건·목적·관점·문장 구조는 바꾸세요. 기존 문장을 그대로 복사하거나 이름·숫자만 교체하면 탈락입니다. 수학·과학·문법의 명칭 퀴즈는 다른 장면으로 바꾸어도 vocabularyFocus=false입니다.',
     'notTooSimilarToRecent는 최근 서명뿐 아니라 각 목표의 previousContexts 실제 지문/보기와 후보 배치 내부도 비교합니다. 이름이나 사물만 바꾼 같은 사건·문장 틀은 중복입니다. 질문 안내 문구의 반복은 허용합니다.',
     '주관식에는 보기가 없으므로 samePartOfSpeechChoices는 해당 없음으로 true 처리해도 됩니다.',
-    '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. options의 정답 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상이며 노출 오류가 아닙니다.',
+    '정답 노출은 학생이 답하기 전에 보는 prompt/context/hints를 검사합니다. mc_context의 단어 보기, acceptedAnswers, feedbackCorrect에 목표어가 있는 것은 정상입니다. mc_usage는 질문에 목표어가 보이지만 상황 보기에는 목표어를 반복하지 않습니다. 목표어 이름이나 활용형이 정답 보기에만 나타나 문자 일치로 고를 수 있으면 noAnswerLeak=false, vocabularyFocus=false입니다.',
     '힌트의 뜻 풀이가 사전 정의와 비슷하다는 이유만으로 noAnswerLeak=false로 하지 마세요. 목표어 철자나 정답 번호/고유 보기 문구를 직접 제시하는 것만 힌트 노출 오류입니다. 힌트 사용은 이후 독립 회상으로 채점되지 않습니다.',
     '힌트는 학습자가 요청한 뒤에만 나타나는 단계적 도움입니다. 현재 상황의 의미 단서를 가리키거나 의미 범위를 좁히는 것은 허용합니다. 목표어 자체, 정답 번호, 정답 보기의 고유 문구를 그대로 알려주는 경우는 노출입니다. 피드백과 허용 답안은 답변 이후 정보이므로 노출 판단에서 반드시 제외하세요.',
     '빈칸 주관식은 검수자가 허용 답안을 독립적으로 확정하여 acceptedAnswers에 반환하세요. 빈칸에 자연스럽게 들어가는 answerForm은 credit 1입니다. 문맥에 맞지 않는 목표어 기본형은 제외하세요. 빈칸에 문법과 의미가 모두 자연스러운 다른 표현은 credit 1, 핵심 의미가 일부만 맞으면 0.5입니다. 어색한 사전식 유의어는 제외하고 문맥의 자연스러운 활용형을 유지하세요.',
