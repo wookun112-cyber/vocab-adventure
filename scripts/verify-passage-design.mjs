@@ -36,3 +36,5 @@ assert.ok(prompt.includes('전문 개념이나 사실의 명칭 회상'));assert
 console.log('Passages verified: factual anchor sources, diverse topics, learner ability passed from preparation, scaffolded text complexity, hard length limit, fact and level-fit review gates, and generation instructions for meaningful knowledge and fresh review contexts.');
 
 assert.ok(run('deterministic({...sample,type:"mc_usage",showTarget:true,context:"",options:[{text:"새 상황의 원인을 찾았다",correct:true}]},{...item,type:"mc_usage"}).includes("usage_choice_repeats_target")'));
+
+assert.ok(prompt.includes('일반 수량 어휘'));
