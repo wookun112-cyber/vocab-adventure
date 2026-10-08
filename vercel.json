@@ -54,6 +54,6 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "node scripts/verify-all.mjs",
-  "outputDirectory": "."
+  "buildCommand": "node scripts/build-public.mjs",
+  "outputDirectory": "public"
 }
