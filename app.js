@@ -599,7 +599,7 @@ function checkpointSession(){
   model:active.model,introAt:active.introAt,introWords:active.introWords,introCursor:active.introCursor,introDone:active.introDone,activeMs:activeTime(active),
   reviewPolicy:active.reviewPolicy||null,deferredReview:active.deferredReview||null,
   hintLevel:current===nextIndex?hintLevel:0,
-  pendingAnswer:current===nextIndex&&active.queue[current]?.open&&renderedAnswerAt?.id===active.lessonId&&renderedAnswerAt.index===current&&renderedAnswerAt.word===active.queue[current]?.w.w?String($('answer').value||''):''
+  pendingAnswer:current===nextIndex&&active.queue[current]?.open&&renderedAnswerAt?.id===active.lessonId&&renderedAnswerAt.index===current&&renderedAnswerAt.word===active.queue[current]?.w.w?String($('answer').value||''):current===nextIndex&&active.restoredDraft?.index===nextIndex?active.restoredDraft.value:''
  };
  // Serialize immediately: a close before the cloud write completes still has
  // both the last result and its corresponding word statistics on this device.
@@ -662,12 +662,22 @@ let needsRecovery=saved.mode==='daily'&&Array.from({length:saved.baseCount||save
  const eligibleCursor=(saved.introWords||[]).slice(0,saved.introCursor||0).filter(w=>isLearningTarget(w)).length;
  session={reviewPolicy:saved.reviewPolicy,deferredReview:saved.deferredReview,engine:saved.engine,model:saved.model,introAt:saved.introAt||0,introWords:eligibleIntro,introCursor:eligibleCursor,introDone:saved.introDone!==false||eligibleCursor>=eligibleIntro.length,activeMs:saved.activeMs||0,clockStarted:Date.now(),mode:saved.mode,queue:p.queue,preparation:p,results:saved.results.slice(),target:saved.target,max:saved.mode==='level'?(saved.max||30):null,completionPolicy:saved.mode==='level'?null:(saved.completionPolicy||null),difficulty:saved.difficulty,ability:saved.ability,intros:[],newWords:saved.newWords,baseWords:saved.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:saved.id};
  Object.defineProperty(session,'pendingPlans',{get:()=>p.plans.slice(p.queue.length)});
+ session.restoredDraft={index:saved.nextIndex,value:String(saved.pendingAnswer||'')};
  if(migrated)state.users[profile].activeLesson=saved;
  current=saved.nextIndex;introIndex=0;hintLevel=0;$('next').disabled=false;
  if(current>=session.target){ensureUsageContinuation(session);if(current>=session.target){finishSession();return}}
  prepareExtensions(session);
  await withDeadline(needsRecovery?Promise.all(Array.from({length:p.baseCount},(_,i)=>p.waitFor(i,true))):p.waitFor(current,true),QUESTION_WAIT_MS,'이어서 풀 문제를 서버에서 준비 중이에요. 채점 기록은 유지됩니다. 잠시 뒤 다시 눌러 주세요.');
  if(state.selected!==profile||authUser?.id!==account||session.preparation!==p)return;
+ if(needsRecovery){
+  const recovered={...saved,ready:[...p.ready]},policyRecovered=applyPendingReviewPolicy(recovered,child());
+  if(policyRecovered!==recovered){
+   // Recovery may finish after the first migration check. Apply the policy to
+   // the complete checkpoint before showing a question or allowing completion.
+   p.cancel();session=null;state.users[profile].activeLesson=policyRecovered;
+   return resumeLesson(policyRecovered);
+  }
+ }
  show('learn');renderQuestion(saved.hintLevel||0);
 }
 
@@ -765,7 +775,7 @@ function chooseNew(n=5){
    .map(w=>({w,score:Math.abs((w.band||3)-target)*5+(w.source==='fixed'?-3:2)+Math.random()*4}))
    .sort((a,b)=>a.score-b.score).slice(0,n).map(x=>x.w);
 }
-function chooseReview(n=15){return selectLevelReviews(WORDS,child(),n,today())}
+function chooseReview(n=10,includeNotDue=false){return selectLevelReviews(WORDS,child(),n,today(),{includeNotDue})}
 
 function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={}){
  if(credit>=1&&!independent&&!revealed&&!hintUsed)return;
@@ -1037,7 +1047,7 @@ async function getPreparation(mode='daily',retry=false){
  const profile=state.selected,account=authUser?.id,key=preparationKey(mode,profile,account);
  if(!account)throw new Error('로그인이 필요합니다.');
  const snapshot=preparationSnapshot(profile),existing=preparations.get(key);
- if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&existing.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy==='daily-5-new-20-review-use-unlimited-12.15')&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
+ if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&existing.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy===DAILY_POLICY)&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
  if(preparationLoads.has(key))return preparationLoads.get(key);
  if(existing)existing.cancel();
  const loading=(async()=>{
@@ -1079,8 +1089,8 @@ async function getPreparation(mode='daily',retry=false){
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
      let newWords=[],reviewWords=[];
      if(mode==='level')reviewWords=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&!(child().words[w.w]?.seen)&&!child().words[w.w]?.introducedAt).sort(()=>Math.random()-.5).slice(0,30);
-     else if(mode==='review')reviewWords=chooseReview(20);
-     else{const budget=studyBudget(child());newWords=chooseNew(budget.newCount);reviewWords=chooseReview(20)}
+     else if(mode==='review')reviewWords=chooseReview(10,true);
+     else{const budget=studyBudget(child());newWords=chooseNew(budget.newCount);reviewWords=chooseReview(budget.reviewCount,child().lastDate===today())}
      const baseWords=[...newWords,...reviewWords];
      if(!baseWords.length)throw new Error(mode==='review'?'아직 복습할 기록이 충분하지 않아요. 오늘의 학습을 먼저 진행해 주세요.':'출제할 어휘를 준비하지 못했습니다.');
      meta={reviewPolicy:REVIEW_POLICY,key,account,profile,mode,snapshot:preparationSnapshot(profile),created:Date.now(),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,model:LEARNING_MODEL,completionPolicy:mode==='level'?null:DAILY_POLICY,target:mode==='level'?20:baseWords.length,introAt:0,plans:assignScenarios(mode==='level'?buildLearningPlan(newWords,reviewWords,20,mode,w=>wordState(w),{level:child().difficulty,strictBand:false}):buildDailyPlan(newWords,reviewWords,w=>wordState(w),child().difficulty))};
@@ -1194,6 +1204,7 @@ function renderQuestion(savedHint=0){
  const draft=state.users[session.profile].activeLesson;
  renderedAnswerAt={id:session.lessonId,index:current,word:q.w.w};
  $('answer').value=q.open&&draft?.id===session.lessonId&&draft.nextIndex===current?String(draft.pendingAnswer||''):'';
+ session.restoredDraft=null;
  $('options').innerHTML='';
  $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
  $('answer').placeholder=q.type==='subjective_use'?'이 단어를 넣어 나만의 문장을 써 보세요.':'설명에 해당하는 단어를 써 보세요.';
@@ -1391,7 +1402,11 @@ function sessionUsageComplete(active){return usageLessonComplete(active.baseWord
 function ensureUsageContinuation(active){
  if(active.completionPolicy!==DAILY_POLICY||sessionUsageComplete(active))return;
  const pending=new Set(active.preparation.plans.slice(active.results.length).map(p=>p.w.w));
- for(const w of active.baseWords){
+ const lastAttempt=w=>active.results.findLastIndex(r=>r.word===w.w);
+ // Queue other unfinished targets before retrying the most recently attempted
+ // word. With several targets this creates spacing without adding new words.
+ const remaining=active.baseWords.slice().sort((a,b)=>lastAttempt(a)-lastAttempt(b));
+ for(const w of remaining){
   if(pending.has(w.w)||usageCompleted(active.results).has(w.w)||!isLearningTarget(w.w,w.cat,w.band))continue;
   const original=active.preparation.plans.find(p=>p.w.w===w.w);
   const plan=nextUsagePlan(original,active.results,active.preparation.plans.length,wordState(w.w));
@@ -1490,9 +1505,9 @@ function renderAll(){
 }
 function renderStudySummary(){
  const c=child(),budget=studyBudget(c),saved=savedLesson(),summary=summarizeEvidence(c);
- if($('dailyTitle'))$('dailyTitle').textContent=budget.newCount?'새 단어 '+budget.newCount+'개 + 수준별 복습':'오늘은 배운 단어를 단단하게';
- if($('dailyDescription'))$('dailyDescription').textContent='하루 새 단어 5개 + 현재 수준 복습 최대 20개 · 확인된 기초 약점은 소량';
- if($('dailyBudget'))$('dailyBudget').textContent=(c.lastDate===today()&&!saved?'오늘 기본 학습 완료 · 원하는 만큼 계속 학습할 수 있어요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개 · 현재 수준 후보가 부족하면 가능한 분량부터 학습';
+ if($('dailyTitle'))$('dailyTitle').textContent=budget.newCount?'새 단어 '+budget.newCount+'개 + 복습 최대 '+budget.reviewCount+'개':'오늘은 배운 단어를 단단하게';
+ if($('dailyDescription'))$('dailyDescription').textContent='하루 새 단어 5개 + 복습 단어 최대 10개 · 모든 단어로 문장을 만들면 완료';
+ if($('dailyBudget'))$('dailyBudget').textContent=(c.lastDate===today()&&!saved?'오늘 기본 학습 완료 · 원하는 만큼 계속 학습할 수 있어요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개 · 복습 시점이 된 단어부터 확인 · 부족하면 가능한 분량부터 학습';
  if($('learningEvidenceHome'))$('learningEvidenceHome').textContent='장기 확인 '+summary.mastered+'개 · '+(summary.retention7.attempts?'7일 이상 회상 '+summary.retention7.percent+'%':'7일 뒤 기억을 확인할 기록을 모으고 있어요.');
  if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';
 }
@@ -1509,7 +1524,7 @@ function renderReport(){
  $('reportBody').innerHTML=`<div class="grid4"><div class="stat"><strong>${studied.length}</strong><span>학습 단어</span></div><div class="stat"><strong>${stats.mastered}</strong><span>장기 확인 단어</span></div><div class="stat"><strong>${c.difficulty.toFixed(1)}</strong><span>출제 난이도</span></div><div class="stat"><strong>${Number(c.leagueLevel??c.difficulty).toFixed(1)}</strong><span>리그 등급</span></div></div>
  <div class="card"><div class="eyebrow">맞히는 방식과 기억을 따로 확인</div><h3>어휘 학습의 네 가지 모습</h3><div class="evidence-grid">${metric('보기로 알아보기',stats.recognition,'첫 답 기준')}${metric('다른 날 직접 회상',stats.recall,'보기·힌트 없이')}${metric('새 글 이해',stats.transfer,'처음 보는 글의 뜻과 쓰임')}${metric('내 문장에 사용',stats.use,'목표어를 보여준 사용 활동')}</div></div>
  <div class="card"><h3>시간이 지나도 기억하나요?</h3><div class="evidence-grid">${metric('7일 이상 뒤 회상',stats.retention7,'마지막 노출 후 7~29일')}${metric('30일 이상 뒤 회상',stats.retention30,'마지막 노출 후 30일 이상')}</div><p class="muted">장기 확인은 3일 이상 직접 회상, 7일 이상 뒤 성공, 내 문장 사용을 모두 확인한 단어예요. 기존 정오답·숙달 기록은 단어장에 보관하고 새 확인 기록과 구분합니다. 도움 없이 회상하기 전 뜻이나 보기를 본 단어는 지연 회상 검사에 넣지 않아요.</p></div>
- <div class="card"><h3>오늘의 적정 분량</h3><p>새 단어 ${budget.newCount}개 · 복습 예정 ${budget.due}개 · 20~25분</p><p class="muted">하루 새 단어 5개와 복습 단어 20개가 기준입니다. 현재 수준의 복습 후보가 부족하면 가능한 분량만 준비하며, 낮은 단계는 확인된 약점만 소량 복습합니다. 문제 수 제한 없이 모든 단어로 뜻과 쓰임이 드러나는 문장을 만들 때까지 진행합니다. 오답은 다른 유형으로 연습한 뒤 문장 사용을 다시 확인하며, 중간에 쉬어도 이어서 할 수 있어요.</p><small class="muted">최근 학습 시간: ${c.sessions[0]?.activeMinutes!=null?c.sessions[0].activeMinutes+'분':'개편 후 기록 대기'}</small></div>
+ <div class="card"><h3>오늘의 적정 분량</h3><p>새 단어 ${budget.newCount}개 · 복습 예정 ${budget.due}개 · 20~25분</p><p class="muted">하루 새 단어 5개와 복습 단어 10개가 기준입니다. 현재 수준에서 복습 예정일과 최근 약점을 우선하며, 낮은 단계의 확인된 약점은 최대 2개·실제 복습 단어의 20% 이하로 제한합니다. 후보가 부족하면 가능한 분량만 준비합니다. 문제 수 제한 없이 모든 단어로 뜻과 쓰임이 드러나는 문장을 만들 때까지 진행합니다. 오답은 다른 유형으로 연습한 뒤 문장 사용을 다시 확인하며, 중간에 쉬어도 이어서 할 수 있어요.</p><small class="muted">최근 학습 시간: ${c.sessions[0]?.activeMinutes!=null?c.sessions[0].activeMinutes+'분':'개편 후 기록 대기'}</small></div>
  <div class="card"><h3>다음 우선순위</h3><div class="list">${weak.length?weak.map(w=>`<div class="item"><strong>${escapeHtml(w.w)}</strong> <small>${escapeHtml(w.d)} · 다음 복습 ${escapeHtml(c.words[w.w].nextReviewAt||'곧 확인')}</small></div>`).join(''):'<p class="muted">학습 기록이 쌓이면 개인별 복습을 안내해요.</p>'}</div></div>
  <div class="card"><h3>매 회차 등급 조정</h3><p>${escapeHtml(levelAdjustmentLabel(c)||'다음 학습을 마치면 이 회차의 등급 변화를 보여 드려요.')}</p><p class="muted">현재 수준에 맞는 어휘 문항의 부분 점수까지 반영해, 학습을 마칠 때마다 출제 난이도와 순위 등급을 함께 조정해요. 하루에 여러 번 학습해도 매번 적용됩니다. 20개 평가 문항 기준: 90% 이상 +0.2, 80~89% +0.1, 60~79% 유지, 40~59% −0.1, 40% 미만 −0.2. 짧게 마친 회차는 활동 수에 비례해 반영하며, 힌트는 부분 점수로 계산해요. 이 등급은 게임용 학습 추정값이며 공인 어휘력 점수나 실제 학년 점수가 아닙니다.</p></div>`;
 }

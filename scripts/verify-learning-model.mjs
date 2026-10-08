@@ -7,6 +7,7 @@ const day='2026-10-07',word={w:'협력',d:'같은 일을 위해 힘을 합침',b
 assert.equal(learningDay(new Date('2026-10-06T15:00:00Z')),day);
 assert.equal(daysBetween('2026-09-30',day),7);
 assert.equal(studyBudget({words:{}},day).newCount,5);
+assert.equal(studyBudget({words:{}},day).reviewCount,10);assert.equal(studyBudget({words:{}},day).target,15);assert.equal(studyBudget({words:{}},day).limit,null);
 assert.equal(studyBudget({words:{a:{introducedAt:day},b:{introducedAt:day},c:{introducedAt:day},d:{introducedAt:day},e:{introducedAt:day}}},day).newCount,0);
 assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:10},(_,i)=>[i,{seen:1,introducedAt:'2026-10-03',nextReviewAt:'2026-10-20'}]))},day).newCount,5);
 assert.equal(studyBudget({words:Object.fromEntries(Array.from({length:12},(_,i)=>[i,{seen:1,nextReviewAt:day}]))},day).newCount,5);
@@ -51,7 +52,7 @@ st={introducedAt:day,lastExposureAt:day};evidence=recordLearningEvidence(learner
 const futureLearner={difficulty:2,levelTestCompleted:true,lastDate:learningDay(),words:{}};
 for(let i=0;i<8;i++)futureLearner.words['복습'+i]={seen:1,introducedAt:learningDay(),nextReviewAt:'2099-01-01'};
 const future=makePreparedPlan(futureLearner,{},reviews.map(w=>({word:w.w,definition:w.d,band:2,domain:'국어'})),'family','guest');
-assert.equal(future.plannedFor,learningDay());assert.equal(future.newWords.length,0);assert.ok(future.plans.every(p=>p.w.w.startsWith('복습')&&p.practiceOnly),'early practice is allowed without delayed-recall credit');
+assert.equal(future.plans.length,8);assert.equal(future.budget.additionalPractice,true);assert.equal(future.plannedFor,learningDay());assert.equal(future.newWords.length,0);assert.ok(future.plans.every(p=>p.w.w.startsWith('복습')&&p.practiceOnly),'early practice is allowed without delayed-recall credit');
 assert.deepEqual([studyBudget({words:{}},day).minutes,studyBudget({words:{}},day).maxMinutes],[20,25]);
 console.log('Learning rules verified: Seoul dates, daily/weekly/overdue/performance budgets, spaced new-word plan, recognition/use separated from recall, 7/30-day checks, independent mastery, separate retention evidence and session-based league changes.');
 

@@ -44,17 +44,17 @@ for(const difficulty of [1,2,3,7.4,8]){
  assert.ok(packet.plans.every(p=>p.w.band>=Math.max(1,Math.ceil(difficulty-1))&&p.w.band<=Math.min(9,Math.floor(difficulty+1))));
 }
 // A high-priority, currently unsupplied review stays in the learner record;
-// supplied reviews keep their existing due/weakness ordering and all 20 slots.
+// supplied reviews keep their existing due/weakness ordering and up to 10 slots.
 const supplied=authoredCurriculum(AUTHORED_OWNER).filter(r=>isLearningTarget(r.word,r.domain,r.band)).slice(0,30);
 const withGap={difficulty:2,levelTestCompleted:true,words:Object.fromEntries(supplied.map((r,i)=>[r.word,{seen:1,wrong:i%3,correct:0,streak:0,introducedAt:'2026-09-01',nextReviewAt:'2026-09-01'}]))};
 withGap.words['전제']={seen:7,wrong:99,correct:2,streak:0,introducedAt:'2026-09-01'};
 const frozen=JSON.stringify(withGap),availability=authoredAvailability(withGap,AUTHORED_OWNER);
 assert.ok(availability.review.size>=20);assert.ok(!availability.review.has('전제'));
 const reserve=await prepare({id:'review-supply',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:withGap,curriculum:[{word:'전제',definition:'추론의 바탕',band:5,domain:'국어'}],catalog:{}},'local',async()=>{throw Error('Unexpected quota-dependent review')},async()=>true);
-assert.equal(reserve.ready.length,20);assert.equal(reserve.plans.length,20);assert.equal(reserve.newWords.length,0);assert.ok(reserve.plans.every(p=>availability.review.has(p.w.w)));assert.equal(JSON.stringify(withGap),frozen);
+assert.equal(reserve.ready.length,10);assert.equal(reserve.plans.length,10);assert.equal(reserve.newWords.length,0);assert.ok(reserve.plans.every(p=>availability.review.has(p.w.w)));assert.equal(JSON.stringify(withGap),frozen);
 const held=reserve.ready.map(([,q])=>q);
 const refill=await prepare({id:'latest-level',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:{...withGap,difficulty:2.2},curriculum:[],catalog:{},reserved:held},'local',async()=>{throw Error('Unexpected repeat or missing task')},async()=>true);
-assert.equal(refill.ready.length,refill.plans.length);assert.equal(refill.budget.waitingForReviews,refill.plans.length===0);assert.ok(refill.ready.length<20);assert.ok(refill.plans.filter(p=>p.w.band<2).length<=Math.floor(refill.plans.filter(p=>p.w.band>=2).length/4));assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
+assert.equal(refill.ready.length,refill.plans.length);assert.equal(refill.budget.waitingForReviews,refill.plans.length===0);assert.ok(refill.ready.length<10);assert.ok(refill.plans.filter(p=>p.w.band<2).length<=Math.floor(refill.plans.filter(p=>p.w.band>=2).length/4));assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
 console.log(`Authored bank verified: ${rows.length} words, 18,540 canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);

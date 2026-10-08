@@ -2,6 +2,7 @@ import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {DAILY_POLICY} from '../lib/daily-practice.js';
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const clone=value=>JSON.parse(JSON.stringify(value));
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
@@ -189,6 +190,22 @@ const missing=fixture();missing.run("sb.rpc=async()=>({data:null,error:null});en
 await missing.run('buildSession()');
 assert.equal(missing.run('session'),null);assert.equal(missing.calls.generation,0);assert.equal(missing.node('startDaily').disabled,false);
 console.log('Reported failure regression verified: eight-question partial lesson repaired from the cloud, first result kept, resumes at question two without re-consumption or live generation; missing stored lessons cannot fall back.');
+
+// An old usage-completion checkpoint can still be partial during the first
+// server read. Convert its policy after the original questions finish loading.
+const legacyPartial=fixture(broken.local,broken.cloud);await legacyPartial.run('cloudLoad()');
+legacyPartial.run("child().activeLesson.completionPolicy='daily-5-new-20-review-use-unlimited-12.15';child().activeLesson.reviewPolicy='review-window-12.16.3';child().activeLesson.baseCount=20;child().activeLesson.ready=child().activeLesson.ready.filter(([i])=>i===0||i>=13);child().activeLesson.pendingAnswer='입력하던 문장';globalThis.recoveryReads=0");
+legacyPartial.run(`globalThis.legacyFull=${JSON.stringify({id:'late-recovery',status:'ready',payload:{...fullLesson,resumeId:fullLesson.id}})};sb.rpc=async()=>({data:++recoveryReads===1?{...legacyFull,status:'working',payload:{...legacyFull.payload,ready:legacyFull.payload.ready.slice(0,8)}}:legacyFull,error:null})`);
+legacyPartial.run("const draftPlan=child().activeLesson.plans[1];draftPlan.type='subjective_use';legacyFull.payload.plans[1].type='subjective_use';const draftQuestion=legacyFull.payload.ready.find(([i])=>i===1)[1];Object.assign(draftQuestion,{type:'subjective_use',open:true,showTarget:true,hideWord:false,opts:[],ctx:'',q:'이 단어로 문장을 만드세요.'});");
+await legacyPartial.run('buildSession()');
+assert.ok(legacyPartial.run('session'),legacyPartial.alerts.join(' | '));
+assert.equal(legacyPartial.run('session.completionPolicy'),DAILY_POLICY);
+assert.equal(legacyPartial.run('current'),1);assert.equal(legacyPartial.node('counter').textContent,'2번째 문제');
+assert.deepEqual(JSON.parse(legacyPartial.run('JSON.stringify(session.results)')),fullLesson.results);
+assert.equal(legacyPartial.run('child().activeLesson.pendingAnswer'),'입력하던 문장');
+legacyPartial.run('finishSession()');assert.equal(legacyPartial.run('child().sessions.length'),0);assert.ok(legacyPartial.run('child().activeLesson'));
+assert.equal(legacyPartial.calls.consumes,0);assert.equal(legacyPartial.calls.generation,0);legacyPartial.run('session.preparation.cancel()');
+console.log('Late legacy recovery verified: partial old packets migrate after server hydration, retain answers/current draft, and require all own sentences before completion.');
 
 // The reported tide blank is upgraded only for presentation and grading. Stored
 // question order/validation stays compatible with an interrupted old lesson.

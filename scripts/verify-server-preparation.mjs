@@ -7,8 +7,8 @@ const before=JSON.stringify(learner);
 const curriculum=[...Array.from({length:30},(_,i)=>({word:'어휘'+i,definition:'상황의 뜻을 나타내는 말',band:2,domain:'국어',example:''})),...Array.from({length:20},(_,i)=>({word:'복습기존'+i,definition:'이미 학습한 말의 뜻',band:2,domain:'국어'}))];
 const job={id:'test',lease:'lease',account:'family',profile:'inseong',learner,curriculum,catalog:{}};
 const plan=makePreparedPlan(learner,{},curriculum,'family','inseong');
-assert.equal(plan.plans.length,25);
-assert.equal(plan.target,25);assert.equal(plan.newWords.length,5);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
+assert.equal(plan.plans.length,15);
+assert.equal(plan.target,15);assert.equal(plan.newWords.length,5);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
 assert.ok(new Set(plan.plans.map(p=>p.type)).size>=3);
 assert.equal(plan.snapshot,learnerSnapshot(learner));
 assert.equal(JSON.stringify(learner),before);
@@ -22,7 +22,7 @@ const guestPlan=makePreparedPlan(guestLearner,{},guestCurriculum,'family','guest
 assert.equal(guestPlan.profile,'guest');
 assert.equal(guestPlan.difficulty,7.4);
 assert.equal(guestPlan.snapshot,learnerSnapshot(guestLearner));
-assert.equal(guestPlan.plans.length,25);
+assert.equal(guestPlan.plans.length,15);
 assert.ok(guestPlan.plans.some(p=>p.w.band===7));
 let inFlight=0,maxFlight=0,calls=0;
 const answer=item=>({id:item.id,type:item.type,learningCard:{definition:item.definition,example:'이 어휘를 자연스러운 새 예문에 사용했어요.',nonExample:'다른 상황에서는 쓰지 않아요.',structureNote:''},prompt:'빈칸을 채우세요.',context:'탐험'+item.id+'의 기록을 다시 살펴본 뒤 탐험'+item.id+'의 ＿＿＿＿를 찾았어요.',options:[],acceptedAnswers:[],hints:[],feedbackCorrect:'좋아요.',signature:'새로운 상황'+item.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true,levelDemandFit:true}}});
@@ -34,11 +34,11 @@ const generate=async items=>{
 const checkpoints=[];
 const store=async(name,args)=>{assert.equal(name,'save_preparation');checkpoints.push(structuredClone(args));return true};
 const ready=await prepare(job,'key',generate,store);
-assert.equal(ready.ready.length,25);
+assert.equal(ready.ready.length,15);
 assert.equal(maxFlight,3);
-assert.equal(calls,7);
+assert.equal(calls,4);
 assert.equal(JSON.stringify(learner),before);
-assert.equal(checkpoints.at(-1).p_payload.ready.length,25);
+assert.equal(checkpoints.at(-1).p_payload.ready.length,15);
 assert.ok(checkpoints.every(c=>!c.p_failed));
 // Repair rejected IDs inside the same run instead of waiting another cron cycle.
 let rejectedOnce=false,repairIds=[];
@@ -47,30 +47,30 @@ const immediate=await prepare(job,'key',async items=>{
  if(items.some(x=>x.id==='2')&&!rejectedOnce){rejectedOnce=true;const out=items.filter(x=>x.id!=='2').map(answer);out.failed=[{id:'2',issues:['coherentSituation']}];return out}
  return items.map(answer);
 },store);
-assert.equal(immediate.ready.length,25);assert.ok(repairIds.some(ids=>ids.length===1&&ids[0]==='2'));
+assert.equal(immediate.ready.length,15);assert.ok(repairIds.some(ids=>ids.length===1&&ids[0]==='2'));
 // Ready output resumes without any AI call; partial output generates only missing indices.
 calls=0;
 await prepare({...job,payload:ready},'key',generate,store);
 assert.equal(calls,0);
 const partial={...ready,ready:ready.ready.slice(0,8)};
 const resumed=await prepare({...job,payload:partial},'key',generate,store);
-assert.equal(resumed.ready.length,25);
-assert.equal(calls,5);
+assert.equal(resumed.ready.length,15);
+assert.equal(calls,2);
 // A single rejected question does not discard the three validated peers.
 await assert.rejects(prepare(job,'key',async items=>items.filter(i=>i.id!=='2').map(answer),store),/Incomplete validated preparation/);
 const almostReady=checkpoints.at(-1).p_payload;
-assert.equal(almostReady.ready.length,24);
+assert.equal(almostReady.ready.length,14);
 let retriedIds=[];
 const completed=await prepare({...job,payload:almostReady},'key',async items=>{retriedIds=items.map(i=>i.id);return items.map(answer)},store);
 assert.deepEqual(retriedIds,['2']);
-assert.equal(completed.ready.length,25);
+assert.equal(completed.ready.length,15);
 // One failed group leaves good peer groups durable and marks the job retryable.
 let failed=false;
 const failOnce=async items=>{if(!failed){failed=true;throw Error('Temporary AI failure')}return generate(items)};
 await assert.rejects(prepare(job,'key',failOnce,store),/Temporary AI failure/);
 const failedSave=checkpoints.at(-1);
 assert.equal(failedSave.p_failed,true);
-assert.ok(failedSave.p_payload.ready.length>0&&failedSave.p_payload.ready.length<25);
+assert.ok(failedSave.p_payload.ready.length>0&&failedSave.p_payload.ready.length<15);
 // A stale lease cannot overwrite a newer lesson.
 let staleCalls=0;
 await assert.rejects(prepare(job,'key',async()=>{staleCalls++;return []},async()=>false),/superseded/);
@@ -85,7 +85,7 @@ for(const word of withheld.newWords){
   for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key));seen.add(key)}
  }
 }
-console.log('Server preparation verified: personalized 5-new/20-review packets with 25 distinct targets, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
+console.log('Server preparation verified: personalized 5-new/10-review packets with 15 distinct targets, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
 
 // Recovery preserves original plans and accepted peers even after an answer
 // changes the learner snapshot. It must not create an unrelated new lesson.
@@ -96,10 +96,10 @@ let recoveryIds=[];
 const repaired=await prepare({...job,learner:interruptedLearner,payload:interrupted},'key',async items=>{recoveryIds.push(...items.map(i=>i.id));return items.map(answer)},store);
 assert.equal(JSON.stringify(repaired.plans),frozenPlans);
 assert.equal(JSON.stringify(repaired.ready.slice(0,8)),firstEight);
-assert.equal(repaired.ready.length,25);
-assert.equal(recoveryIds.length,17);assert.ok(recoveryIds.every(id=>Number(id)>=8));
+assert.equal(repaired.ready.length,15);
+assert.equal(recoveryIds.length,7);assert.ok(recoveryIds.every(id=>Number(id)>=8));
 assert.equal(repaired.snapshot,learnerSnapshot(interruptedLearner));
-console.log('Recovery worker verified: original plans and eight accepted questions retained across changed progress; only seventeen missing IDs generated.');
+console.log('Recovery worker verified: original plans and eight accepted questions retained across changed progress; only seven missing IDs generated.');
 
 for(const phrase of CONTEXT_ONLY_EXPRESSIONS){
  assert.equal(isLearningTarget(phrase),false);assert.equal(isLearningTarget(phrase.replaceAll(' ','')),false);

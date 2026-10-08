@@ -15,7 +15,26 @@ assert.equal(selectLevelReviews(low,learner,20).length,0,'near zero never backfi
 assert.equal(confirmedReviewWeakness({wrong:8,streak:0},{activeLesson:{results:[{word:'기초어0',type:'subjective_use',credit:1,contextSuccess:true}]}},'기초어0'),false);
 assert.equal(confirmedReviewWeakness({assisted:1,streak:0},{},'기초어0'),true);
 assert.equal(confirmedReviewWeakness({wrong:0,streak:0},{},'기초어0'),false);
-for(const difficulty of [1.7,1.8]){const w=low.slice(0,20).map((x,i)=>({...x,band:i%2?2:1}));assert.equal(selectLevelReviews(w,{difficulty,words:Object.fromEntries(w.map(x=>[x.w,{seen:1,wrong:0}]))},20).length,20)}
+for(const difficulty of [1.7,1.8]){const w=low.slice(0,20).map((x,i)=>({...x,band:i%2?2:1}));assert.equal(selectLevelReviews(w,{difficulty,words:Object.fromEntries(w.map(x=>[x.w,{seen:1,wrong:0}]))},10).length,10)}
+// Due dates and actual recent need outrank convenient bank availability.
+const rankingWords=['오래된약점','최근약점','뜻만아는말','문장도아는말','아직복습전'].map(w=>word(w,7));
+const rankingLearner={difficulty:7.4,words:{
+ '오래된약점':{seen:3,wrong:1,streak:0,nextReviewAt:'2026-10-01'},
+ '최근약점':{seen:3,wrong:99,streak:0,nextReviewAt:'2026-10-08'},
+ '뜻만아는말':{seen:3,wrong:0,nextReviewAt:'2026-10-08'},
+ '문장도아는말':{seen:3,wrong:0,nextReviewAt:'2026-10-08',useDays:['2026-10-01'],independentRecallDays:['2026-10-01']},
+ '아직복습전':{seen:3,wrong:0,nextReviewAt:'2026-10-15'}
+},learningEvidence:[{word:'문장도아는말',kind:'use',success:true,date:'2026-10-01'}]};
+const ranked=selectLevelReviews(rankingWords,rankingLearner,10,'2026-10-08',{available:new Set(['문장도아는말'])});
+assert.deepEqual(ranked.map(w=>w.w),['오래된약점','최근약점','뜻만아는말','문장도아는말']);
+assert.equal(selectLevelReviews(rankingWords,rankingLearner,10,'2026-10-08',{includeNotDue:true}).at(-1).w,'아직복습전');
+for(const difficulty of [1,1.7,2,2.5,3,3.8,4,4.9,5,5.5,6,6.9,7.4,8,8.8,9]){
+ const range=targetBandRange(difficulty),pool=Array.from({length:15},(_,i)=>word('수준어'+i,range.min));
+ if(range.min>1)pool.push(...Array.from({length:8},(_,i)=>word('약점어'+i,1)));
+ const c={difficulty,words:Object.fromEntries(pool.map(w=>[w.w,{seen:1,wrong:1,streak:0,nextReviewAt:'2026-10-08'}]))};
+ const picked=selectLevelReviews(pool,c,30,'2026-10-08'),lower=picked.filter(w=>w.band<range.min);
+ assert.equal(picked.length,10);assert.ok(lower.length<=2&&lower.length*5<=picked.length);
+}
 const daily=buildDailyPlan([],selected,w=>learner.words[w],7.4);assert.ok(daily.filter(p=>p.w.band===1).every(p=>p.taskDemand==='foundation-review'));assert.ok(daily.filter(p=>p.w.band===7).every(p=>p.taskDemand==='advanced'));
 const plans=Array.from({length:89},(_,i)=>{const w=i%5===0?near[i%6]:low[i%19];return {id:String(i),w,type:'subjective_use',review:true,taskDemand:'advanced'}}),ready=plans.map((p,i)=>[i,{w:p.w,type:p.type,q:'자신의 문장을 만드세요.',ctx:'',open:true,opts:[]}]);
 for(const index of [0,1,19,64]){
@@ -28,15 +47,19 @@ for(const index of [0,1,19,64]){
  if(plans[index].w.band===1){assert.ok(!next.baseWords.some(w=>w.w===plans[index].w.w));assert.ok(!next.plans.slice(index+1).some(p=>p.w.w===plans[index].w.w));assert.equal(next.deferredReview.carriedCurrent.oneTime,true)}
  assert.deepEqual(next.deferredReview.originalBaseWords,saved.baseWords);assert.equal(next.plans.length+next.deferredReview.items.length,saved.plans.length);assert.equal(applyPendingReviewPolicy(next,learner),next);
  const incomplete={...saved,ready:saved.ready.filter(([i])=>i!==Math.min(24,index+1))};assert.equal(applyPendingReviewPolicy(incomplete,learner),incomplete,'recover old indexes before trimming');
+ const legacy={...saved,completionPolicy:'daily-5-new-20-review-use-unlimited-12.15',reviewPolicy:'review-window-12.16.3',deferredReview:{originalTarget:100,originalBaseWords:saved.baseWords,items:[{originalIndex:99,reason:'prior_deferred'}]}};
+ const migrated=applyPendingReviewPolicy(legacy,learner);
+ assert.equal(migrated.completionPolicy,DAILY_POLICY);assert.equal(migrated.reviewPolicy,REVIEW_POLICY);assert.deepEqual(migrated.results,legacy.results);assert.deepEqual(new Map(migrated.ready).get(index),ready[index][1]);assert.equal(migrated.pendingAnswer,legacy.pendingAnswer);
+ assert.equal(migrated.deferredReview.items[0].reason,'prior_deferred');assert.equal(migrated.deferredReview.originalTarget,100);assert.ok(migrated.baseWords.filter(w=>!migrated.newWords.includes(w.w)).length<=10);assert.equal(applyPendingReviewPolicy(migrated,learner),migrated);
 }
 const authored=authoredCurriculum(AUTHORED_OWNER),simple=authored.filter(w=>w.band===1).slice(0,22),high=authored.filter(w=>calibratedWord({w:w.word,band:w.band}).band===7&&isLearningTarget(w.word,w.domain,w.band)).slice(0,6);
 const beginner={difficulty:1.8,words:Object.fromEntries(simple.map(w=>[w.word,{seen:1,wrong:0,streak:0}]))};
-const novice=await prepare({id:'low',account:AUTHORED_OWNER,profile:'test',learner:beginner,curriculum:[],catalog:{},kind:'reserve',slot:1},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(novice.plans.length,20);assert.equal(novice.ready.length,20);
+const novice=await prepare({id:'low',account:AUTHORED_OWNER,profile:'test',learner:beginner,curriculum:[],catalog:{},kind:'reserve',slot:1},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(novice.plans.length,10);assert.equal(novice.ready.length,10);
 const advanced={difficulty:7.4,words:Object.fromEntries([...simple,...high].map(w=>[w.word,{seen:1,wrong:w.band===1?2:0,streak:0}]))};
-const packet=await prepare({id:'short',account:AUTHORED_OWNER,profile:'test',learner:advanced,curriculum:[],catalog:{},kind:'reserve',slot:1},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(packet.plans.length,7);assert.equal(packet.ready.length,7);assert.equal(packet.budget.reviewShortfall,13);assert.equal(packet.reserveSlot,1);assert.equal(packet.plans.filter(p=>p.w.band<7).length,1);
+const packet=await prepare({id:'short',account:AUTHORED_OWNER,profile:'test',learner:advanced,curriculum:[],catalog:{},kind:'reserve',slot:1},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(packet.plans.length,7);assert.equal(packet.ready.length,7);assert.equal(packet.budget.reviewShortfall,3);assert.equal(packet.reserveSlot,1);assert.equal(packet.plans.filter(p=>p.w.band<7).length,1);
 const empty={difficulty:7.4,words:Object.fromEntries(simple.map(w=>[w.word,{seen:1,wrong:9,streak:0}]))};
 const newOnly=await prepare({id:'new',account:AUTHORED_OWNER,profile:'test',learner:empty,curriculum:[],catalog:{}},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(newOnly.newWords.length,5);assert.equal(newOnly.plans.length,5);assert.equal(newOnly.ready.length,5);assert.ok(newOnly.plans.every(p=>!p.review&&p.w.band>=7));
 const zero=await prepare({id:'waiting',account:AUTHORED_OWNER,profile:'test',learner:empty,curriculum:[],catalog:{},kind:'reserve',slot:1},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(zero.plans.length,0);assert.equal(zero.budget.waitingForReviews,true);
 const lowResult=updateLearningLevels({difficulty:7.4},low.map(w=>({word:w.w,band:1,credit:1,type:'subjective_use',taskDemand:'advanced',bankReaderLevel:7.4})));assert.equal(lowResult.samples,0);assert.equal(lowResult.change,0);
-const sql=fs.readFileSync(new URL('../database/review-window-runtime.sql',import.meta.url),'utf8');assert.ok(sql.includes("lower_count*4<=near_count"));assert.ok(sql.includes("then 'waiting'"));assert.ok(!/update public\.app_state/i.test(sql));
-console.log('Review window verified: same-level priority, confirmed weakness/recovery, maximum four and 20% basic reviews, no artificial 20-slot wait, low profiles, five genuine new targets, short/empty reserve, immutable prefix/current/draft/deferred checkpoint and real-band grade calculation.');
+const sql=fs.readFileSync(new URL('../database/due-review-5-10-runtime.sql',import.meta.url),'utf8');assert.ok(sql.includes("lower_count*4<=near_count"));assert.ok(sql.includes("then 'waiting'"));assert.ok(!/update public\.app_state/i.test(sql));
+console.log('Review window verified: same-level priority, confirmed weakness/recovery, maximum two and 20% basic reviews, no artificial 20-slot wait, low profiles, five genuine new targets, short/empty reserve, immutable prefix/current/draft/deferred checkpoint and real-band grade calculation.');

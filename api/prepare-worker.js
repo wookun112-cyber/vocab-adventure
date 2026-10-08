@@ -34,7 +34,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
  payload.bankRevision=AUTHORED_REVISION;
  if(!recovering)payload.reviewPolicy=REVIEW_POLICY;
- payload.supplySelection='bank-supply-12.16.3';
+ payload.supplySelection='due-first-bank-ties-12.16.4';
  if(payload.budget?.waitingForReviews)payload.budget.waitingStudiedTotal=Object.values(job.learner.words||{}).filter(s=>s.seen||s.introducedAt).length;
  const authored=[];
  for(const [i,plan] of payload.plans.entries()){

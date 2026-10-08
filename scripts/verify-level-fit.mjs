@@ -3,8 +3,9 @@ import {selectLevelReviews,buildLearningPlan,learningDay,reviewFloor} from '../l
 import {makePreparedPlan,generationItems} from '../lib/prepared-plan.js';
 const day=learningDay(),words=Array.from({length:30},(_,i)=>({w:'복습어'+i,d:'배운 말의 의미',band:i<24?2:6+i%2,cat:'국어'}));
 const learner={difficulty:7.4,words:Object.fromEntries(words.map(w=>[w.w,{seen:3,wrong:0,streak:2,nextReviewAt:w.band===2?'2026-01-01':'2099-01-01'}]))};
-const snapshot=JSON.stringify(learner),chosen=selectLevelReviews(words,learner,17,day);
-assert.equal(reviewFloor(7.4),7);assert.ok(chosen.every(w=>w.band>=7),'remote easy due words without negative evidence do not fill review slots');
+const snapshot=JSON.stringify(learner),chosen=selectLevelReviews(words,learner,10,day,{includeNotDue:true});
+assert.equal(selectLevelReviews(words,learner,10,day).length,0,'future reviews enter additional practice only');
+assert.equal(chosen.length,3);assert.equal(reviewFloor(7.4),7);assert.ok(chosen.every(w=>w.band>=7),'remote easy due words without negative evidence do not fill review slots');
 assert.ok(chosen.every(w=>learner.words[w.w].seen>0),'lower studied vocabulary remains eligible for due reviews');
 const fresh=[0,1,2].map(i=>({w:'새어휘'+i,d:'새롭게 배우는 뜻',band:7,cat:'국어'}));
 const plans=buildLearningPlan(fresh,chosen,20,'daily',w=>learner.words[w]||{},{level:7.4,strictBand:true});
