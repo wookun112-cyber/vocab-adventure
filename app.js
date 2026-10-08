@@ -586,6 +586,7 @@ function storeLearnerCheckpoint(profile){
  c.lessonCheckpointAt=Math.max(Date.now(),(c.lessonCheckpointAt||0)+1);
  try{localStorage.setItem(learnerCheckpointKey(profile),JSON.stringify({account:authUser.id,profile,savedAt:c.lessonCheckpointAt,learner:c,catalog:state.catalog}))}catch{}
 }
+let renderedAnswerAt=null;
 function checkpointSession(){
  const active=session,p=active?.preparation;
  if(!authUser||!p||active.completed||active.account!==authUser.id||active.profile!==state.selected)return false;
@@ -596,7 +597,8 @@ function checkpointSession(){
   target:active.target,max:active.max,baseCount:p.baseCount,completionPolicy:active.completionPolicy,newWords:active.newWords,baseWords:active.baseWords,
   plans:p.plans,ready:[...p.ready],results:active.results,nextIndex,
   model:active.model,introAt:active.introAt,introWords:active.introWords,introCursor:active.introCursor,introDone:active.introDone,activeMs:activeTime(active),
-  hintLevel:current===nextIndex?hintLevel:0
+  hintLevel:current===nextIndex?hintLevel:0,
+  pendingAnswer:current===nextIndex&&active.queue[current]?.open&&renderedAnswerAt?.id===active.lessonId&&renderedAnswerAt.index===current&&renderedAnswerAt.word===active.queue[current]?.w.w?String($('answer').value||''):''
  };
  // Serialize immediately: a close before the cloud write completes still has
  // both the last result and its corresponding word statistics on this device.
@@ -843,7 +845,7 @@ function rememberQuestion(q){
 const QUESTION_BATCH_SIZE=4;
 const FIRST_QUESTION_COUNT=1;
 let preparationBlock=null;
-const creditMessage='문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 시작 버튼으로 다시 준비할 수 있어요. 기존 학습 기록은 유지됩니다.';
+const creditMessage='문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 다시 시도해 주세요. 학습 기록은 유지됩니다.';
 function serverPreparationError(remote){return remote?.payload?.preparationBlocked==='ai_credit_exhausted'||/credit_balance_exhausted|insufficient_quota/.test(remote?.payload?.preparationError||'')?Object.assign(new Error(creditMessage),{code:'ai_credit_exhausted'}):null}
 let preparingSession=false;
 const QUESTION_WAIT_MS=15000;
@@ -894,7 +896,7 @@ const SCENARIOS=['집에서 가족과 계획을 세우는 일','학교에서 친
 function preparationSnapshot(profile){
  const c=state.users[profile];
  const words=Object.entries(c.words||{}).filter(([,s])=>s.seen>0||s.introducedAt).sort(([a],[b])=>a.localeCompare(b)).map(([w,s])=>[w,s.seen,s.correct,s.wrong,s.streak,s.supportLevel,s.nextReviewAt,s.lastFeedbackDate,(s.usedPassageKeys||[]).length,s.introducedAt||null]);
- return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,AUTHORED_REVISION]);
+ return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,AUTHORED_REVISION+':supply-12.16.1']);
 }
 function preparationKey(mode,profile=state.selected,account=authUser?.id){return 'vocab-prepared-'+account+'-'+profile+'-'+mode}
 function assignScenarios(plans){
@@ -1175,7 +1177,10 @@ function renderQuestion(savedHint=0){
  $('qText').textContent=q.q;
  $('qContext').classList.toggle('hidden',!q.ctx); $('qContext').textContent=q.ctx||'';
  $('feedback').className='feedback hidden'; $('hintBox').className='feedback hidden'; $('hintBox').textContent='';
- $('next').classList.add('hidden'); $('answer').value='';
+ $('next').classList.add('hidden');
+ const draft=state.users[session.profile].activeLesson;
+ renderedAnswerAt={id:session.lessonId,index:current,word:q.w.w};
+ $('answer').value=q.open&&draft?.id===session.lessonId&&draft.nextIndex===current?String(draft.pendingAnswer||''):'';
  $('options').innerHTML='';
  $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
  $('answer').placeholder=q.type==='subjective_use'?'이 단어를 넣어 나만의 문장을 써 보세요.':'설명에 해당하는 단어를 써 보세요.';
@@ -1340,7 +1345,7 @@ async function gradeCurrent(dontKnow){
      independent:credit===1&&!hintUsed,hintUsed,revealed:false
    });
  }catch(e){
-   if(session===active&&state.selected===active.profile)alert(e.code==='ai_credit_exhausted'?creditMessage+' 입력한 문장은 화면에 남아 있습니다.':'채점을 완료하지 못했어요. 답은 기록하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 채점해 주세요.');
+   if(session===active&&state.selected===active.profile){if(checkpointSession()){localSave();cloudSave()}alert(e.code==='ai_credit_exhausted'?creditMessage+' 입력한 문장은 화면에 남아 있습니다.':'채점을 완료하지 못했어요. 답은 기록하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 채점해 주세요.');}
  }finally{
    if(session===active){$('submit').disabled=false;$('submit').textContent='채점하기'}
  }

@@ -4,7 +4,7 @@ import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
 import {hydrateFromBank,withReservedHistory} from '../lib/question-bank.js';
-import {authoredCurriculum,authoredEntry} from './authored-bank.js';
+import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-bank.js';
 import {AUTHORED_REVISION} from '../lib/authored-policy.js';
 const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
@@ -17,10 +17,11 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=recovering?job.payload:((job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,[...(job.curriculum||[]),...authoredCurriculum(job.account)],job.account,job.profile,{reviewOnly:job.kind==='reserve'}));
+ let payload=recovering?job.payload:((job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,[...(job.curriculum||[]),...authoredCurriculum(job.account)],job.account,job.profile,{reviewOnly:job.kind==='reserve',supplyPreference:authoredAvailability(job.learner,job.account,job.reserved||[])}));
  const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
  payload.bankRevision=AUTHORED_REVISION;
+ payload.supplySelection='bank-supply-12.16.1';
  const authored=[];
  for(const [i,plan] of payload.plans.entries()){
   if((payload.ready||[]).some(([at])=>at===i))continue;

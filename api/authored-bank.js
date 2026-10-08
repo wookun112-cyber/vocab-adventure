@@ -61,6 +61,20 @@ export function authoredQuestion(item,account,extra=[]){
  }
  return null;
 }
+export function authoredAvailability(learner,account,reserved=[]){
+ const review=new Set(),fresh=new Set();
+ if(account!==AUTHORED_OWNER)return {review,fresh};
+ const held=reserved.map(q=>({authored:q.authored,context:q.ctx,options:(q.opts||[]).map(o=>({text:o.t}))}));
+ for(const row of rows){
+  const st=learner.words?.[row.word]||{},studied=!!(st.seen||st.introducedAt);
+  const item={id:'availability',word:row.word,readerLevel:learner.difficulty,review:studied,firstLearning:!studied,usedPassageKeys:st.usedPassageKeys||[],previousContexts:st.problemHistory||[]};
+  if(studied){
+   // All daily review roles must have a fresh task, including the first recall check.
+   if(['mc_usage','subjective_recall','subjective_use'].every(type=>authoredQuestion({...item,type},account,held)))review.add(row.word);
+  }else if(authoredQuestion({...item,type:'mc_usage'},account,held))fresh.add(row.word);
+ }
+ return {review,fresh};
+}
 export function authoredEntry(plan,learner,account,reserved=[]){
  const st=learner.words?.[plan.w.w]||{};
  const raw=authoredQuestion({id:plan.id,type:plan.type,word:plan.w.w,readerLevel:learner.difficulty,review:!!plan.review,firstLearning:!!plan.firstLearning,needsCard:!!plan.needsCard,answerSlot:plan.answerSlot,usedPassageKeys:st.usedPassageKeys||[],previousContexts:st.problemHistory||[]},account,reserved.map(q=>({authored:q.authored,context:q.ctx,options:(q.opts||[]).map(o=>({text:o.t}))})));

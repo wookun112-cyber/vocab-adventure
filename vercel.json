@@ -42,6 +42,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/authored-bank-data.js",
+      "destination": "/api/authored-bank-data"
+    },
+    {
+      "source": "/api/authored-bank.js",
+      "destination": "/api/authored-bank"
+    },
+    {
       "source": "/",
       "destination": "/index.html"
     }
