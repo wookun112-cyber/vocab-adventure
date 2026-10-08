@@ -1,9 +1,9 @@
 import {DAILY_POLICY} from '../lib/daily-practice.js';
-import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand} from '../lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand,REVIEW_POLICY,reviewFloor,calibratedWord} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
-import {hydrateFromBank,withReservedHistory} from '../lib/question-bank.js';
+import {hydrateFromBank,withReservedHistory,bankCompatible} from '../lib/question-bank.js';
 import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-bank.js';
 import {AUTHORED_REVISION} from '../lib/authored-policy.js';
 const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
@@ -15,13 +15,27 @@ export async function rpc(name,args){
  return r.json();
 }
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
+export function reviewSupply(job,curriculum){
+ const supply=authoredAvailability(job.learner,job.account,job.reserved||[]);
+ for(const row of curriculum){
+  const w=calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain}),st=job.learner.words?.[row.word];
+  if(!st?.seen&&!st?.introducedAt)continue;
+  const used=new Set([...(st.usedPassageKeys||[]),...(st.problemHistory||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...(job.reserved||[]).filter(q=>q.w?.w===w.w).flatMap(q=>passageKeys(q.ctx,(q.opts||[]).map(o=>o.t)))]);
+  const taskDemand=w.band<reviewFloor(job.learner.difficulty)?'foundation-review':job.learner.difficulty>4.5?'advanced':'standard';
+  if(['mc_usage','subjective_recall','subjective_use'].every(type=>(job.bank||[]).some(e=>bankCompatible(e,{w,type,taskDemand,supportLevel:st.supportLevel||0,needsCard:false},job.learner,job.account)&&!passageKeys(e.question.ctx,(e.question.opts||[]).map(o=>o.t)).some(k=>used.has(k)))))supply.review.add(w.w);
+ }
+ return supply;
+}
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=recovering?job.payload:((job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,[...(job.curriculum||[]),...authoredCurriculum(job.account)],job.account,job.profile,{reviewOnly:job.kind==='reserve',supplyPreference:authoredAvailability(job.learner,job.account,job.reserved||[])}));
+ const curriculum=[...(job.curriculum||[]),...authoredCurriculum(job.account)];
+ let payload=recovering?job.payload:((job.payload?.reviewPolicy===REVIEW_POLICY&&job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve',supplyPreference:reviewSupply(job,curriculum)}));
  const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
  payload.bankRevision=AUTHORED_REVISION;
- payload.supplySelection='bank-supply-12.16.1';
+ if(!recovering)payload.reviewPolicy=REVIEW_POLICY;
+ payload.supplySelection='bank-supply-12.16.3';
+ if(payload.budget?.waitingForReviews)payload.budget.waitingStudiedTotal=Object.values(job.learner.words||{}).filter(s=>s.seen||s.introducedAt).length;
  const authored=[];
  for(const [i,plan] of payload.plans.entries()){
   if((payload.ready||[]).some(([at])=>at===i))continue;

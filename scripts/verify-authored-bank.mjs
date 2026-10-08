@@ -54,7 +54,7 @@ const reserve=await prepare({id:'review-supply',lease:'test',account:AUTHORED_OW
 assert.equal(reserve.ready.length,20);assert.equal(reserve.plans.length,20);assert.equal(reserve.newWords.length,0);assert.ok(reserve.plans.every(p=>availability.review.has(p.w.w)));assert.equal(JSON.stringify(withGap),frozen);
 const held=reserve.ready.map(([,q])=>q);
 const refill=await prepare({id:'latest-level',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:{...withGap,difficulty:2.2},curriculum:[],catalog:{},reserved:held},'local',async()=>{throw Error('Unexpected repeat or missing task')},async()=>true);
-assert.equal(refill.ready.length,20);assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
+assert.equal(refill.ready.length,refill.plans.length);assert.equal(refill.budget.waitingForReviews,refill.plans.length===0);assert.ok(refill.ready.length<20);assert.ok(refill.plans.filter(p=>p.w.band<2).length<=Math.floor(refill.plans.filter(p=>p.w.band>=2).length/4));assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
 console.log(`Authored bank verified: ${rows.length} words, 18,540 canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);

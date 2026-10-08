@@ -24,7 +24,7 @@ const single={plans:[plan],ready:[]};assert.equal(hydrateFromBank(single,seen,[e
 const reserved=withReservedHistory(learner,[q]);assert.ok(reserved.words.근거.usedPassageKeys.length>0);assert.equal(JSON.stringify(learner),original);
 assert.equal(hydrateFromBank({plans:[plan],ready:[]},learner,[entry],[q]),0);
 assert.ok(passageKeys(q.ctx).some(k=>reserved.words.근거.usedPassageKeys.includes(k)));
-assert.throws(()=>makePreparedPlan({difficulty:2,words:{}},{},[],'family','guest',{reviewOnly:true}),/No studied/);
+assert.equal(makePreparedPlan({difficulty:2,words:{}},{},[],'family','guest',{reviewOnly:true}).budget.waitingForReviews,true);
 console.log('Question bank verified: full validated packets need zero AI calls, reader levels and review quality enforced, correct option rotation, used-sentence and reserve exclusions, review-only buffers, unchanged learner records.');
 
 assert.equal(isLearningTarget('광합성 작용'),false);assert.equal(isLearningTarget('도시 문제'),false);
