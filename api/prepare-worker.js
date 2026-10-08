@@ -39,7 +39,20 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const authored=[];
  for(const [i,plan] of payload.plans.entries()){
   if((payload.ready||[]).some(([at])=>at===i))continue;
-  const e=authoredEntry(plan,job.learner,job.account,[...(job.reserved||[]),...authored.map(e=>e.question)]);if(e)authored.push(e);
+  const reserved=[...(job.reserved||[]),...authored.map(e=>e.question)];
+  const cached=trial=>hydrateFromBank({account:job.account,plans:[trial],ready:[]},job.learner,job.bank||[],reserved)>0;
+  let e=authoredEntry(plan,job.learner,job.account,reserved);
+  // Keep the due target even when one question type has run out of fresh
+  // sentences. Try another supplied type before requesting live generation.
+  // Interrupted lessons retain their exact original tasks.
+  if(!e&&!recovering&&plan.review&&!cached(plan)){
+   for(const type of ['subjective_recall','subjective_use','mc_usage','mc_reading','mc_relation','mc_context'].filter(t=>t!==plan.type)){
+    const trial={...plan,type,stage:type==='subjective_recall'?'check':type==='subjective_use'?'use':'bridge'};
+    const alternative=authoredEntry(trial,job.learner,job.account,reserved);
+    if(alternative||cached(trial)){Object.assign(plan,trial);e=alternative;break}
+   }
+  }
+  if(e)authored.push(e);
  }
  hydrateFromBank(payload,job.learner,[...authored,...(job.bank||[])],job.reserved||[]);
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);

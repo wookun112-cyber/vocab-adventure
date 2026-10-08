@@ -6,6 +6,7 @@ import {authoredStats,authoredCurriculum,authoredQuestion,authoredEntry,authored
 import {prepare} from '../api/prepare-worker.js';
 import {bankCompatible} from '../lib/question-bank.js';
 import {calibratedWord,isLearningTarget} from '../lib/learning-model.js';
+import {makePreparedPlan} from '../lib/prepared-plan.js';
 const rows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')));
 assert.equal(rows.length,1854);assert.equal(authoredStats.questions,18540);
 assert.equal(authoredStats.independentReviewComplete,false);
@@ -54,7 +55,22 @@ const reserve=await prepare({id:'review-supply',lease:'test',account:AUTHORED_OW
 assert.equal(reserve.ready.length,10);assert.equal(reserve.plans.length,10);assert.equal(reserve.newWords.length,0);assert.ok(reserve.plans.every(p=>availability.review.has(p.w.w)));assert.equal(JSON.stringify(withGap),frozen);
 const held=reserve.ready.map(([,q])=>q);
 const refill=await prepare({id:'latest-level',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:{...withGap,difficulty:2.2},curriculum:[],catalog:{},reserved:held},'local',async()=>{throw Error('Unexpected repeat or missing task')},async()=>true);
-assert.equal(refill.ready.length,refill.plans.length);assert.equal(refill.budget.waitingForReviews,refill.plans.length===0);assert.ok(refill.ready.length<10);assert.ok(refill.plans.filter(p=>p.w.band<2).length<=Math.floor(refill.plans.filter(p=>p.w.band>=2).length/4));assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
+assert.equal(refill.ready.length,refill.plans.length);assert.equal(refill.budget.waitingForReviews,refill.plans.length===0);assert.ok(refill.ready.length<=10);assert.ok(refill.plans.filter(p=>p.w.band<2).length<=Math.floor(refill.plans.filter(p=>p.w.band>=2).length/4));assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
+// Exhausting a supplied type retains the due vocabulary and switches to an
+// unused verified type. A paused task must instead keep its original type.
+const target=authoredCurriculum(AUTHORED_OWNER).find(r=>r.band===1&&isLearningTarget(r.word,r.domain,r.band));
+const dueLearner={difficulty:1.7,words:{[target.word]:{seen:3,wrong:1,streak:0,nextReviewAt:'2020-01-01'}}};
+const usagePlan={id:'0',w:calibratedWord({w:target.word,d:target.definition,band:target.band,cat:target.domain}),type:'mc_usage',stage:'bridge',review:true,taskDemand:'standard',supportLevel:0,answerSlot:0};
+const exhausted=[];
+for(let i=0;i<10;i++){const e=authoredEntry(usagePlan,dueLearner,AUTHORED_OWNER,exhausted);if(!e)break;exhausted.push(e.question)}
+assert.ok(exhausted.length>0);assert.equal(authoredEntry(usagePlan,dueLearner,AUTHORED_OWNER,exhausted),null);
+const fallbackPacket=makePreparedPlan(dueLearner,{},[target],AUTHORED_OWNER,'test',{reviewOnly:true});Object.assign(fallbackPacket.plans[0],usagePlan);
+let fallbackCalls=0;
+const varied=await prepare({id:'variation',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:dueLearner,curriculum:[target],catalog:{},reserved:exhausted,payload:structuredClone(fallbackPacket)},'local',async()=>{fallbackCalls++;throw Error('Unexpected variation generation')},async()=>true);
+assert.equal(fallbackCalls,0);assert.equal(varied.plans[0].w.w,target.word);assert.notEqual(varied.plans[0].type,'mc_usage');assert.equal(varied.ready.length,1);assert.ok(authoredQuestionValid(varied.ready[0][1],AUTHORED_OWNER));
+const pausedPacket=structuredClone(fallbackPacket);pausedPacket.resumeId='variation-paused';const pausedLearner={...dueLearner,activeLesson:{id:pausedPacket.resumeId}};
+await assert.rejects(prepare({id:'paused',account:AUTHORED_OWNER,profile:'test',learner:pausedLearner,curriculum:[target],catalog:{},reserved:exhausted,payload:pausedPacket},'local',async items=>{assert.equal(items[0].type,'mc_usage');throw Error('Original task needs generation')},async()=>true),/Original task needs generation/);
+assert.equal(pausedPacket.plans[0].type,'mc_usage');
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
 console.log(`Authored bank verified: ${rows.length} words, 18,540 canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);
