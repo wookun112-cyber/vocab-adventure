@@ -31,7 +31,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
    }
   })
  });
- run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);
+ run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);
  run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;
   globalThis.makeRemoteLesson=()=>{
    const newWords=SEED_WORDS.filter(w=>inTargetBand(w,child().difficulty)).slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));
@@ -40,6 +40,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
    return {id:'job-'+state.selected,status:'ready',payload:{selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,mode:'daily',snapshot:preparationSnapshot(state.selected),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords:newWords,plans,ready}};
   };
  `);
+ run("getPreparation=async()=>{const remote=typeof recoveryRemote==='undefined'?makeRemoteLesson():recoveryRemote;const blocked=serverPreparationError(remote);if(blocked)throw blocked;return createServerPreparation({...remote.payload,key:preparationKey('daily'),serverId:remote.id},remote.payload.ready)}");
  return {run,ctx,node,alerts,calls,local,cloud,block(){blockWrites=true},release(){blockWrites=false;deferred.splice(0).forEach(resolve=>resolve())}};
 }
 const f=fixture();

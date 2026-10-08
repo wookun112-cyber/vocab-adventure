@@ -11,7 +11,7 @@ const ctx=vm.createContext({console,setTimeout,clearTimeout,Map,Set,Date,Math,Pr
 });
 let source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'');
 source=source.slice(0,source.indexOf("window.addEventListener('beforeinstallprompt'"));
-vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),ctx);vm.runInContext(source,ctx);
+vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),ctx);vm.runInContext(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''),ctx);vm.runInContext(source,ctx);
 const run=code=>vm.runInContext(code,ctx);
 // Existing learning data must retain its meaning while loading changes.
 run(`state.selected='guest';authUser={id:'test'};state.users.guest.words['근거'].seen=7;

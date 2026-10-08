@@ -4,8 +4,8 @@ import {makePreparedPlan,generationItems} from '../lib/prepared-plan.js';
 const day=learningDay(),words=Array.from({length:30},(_,i)=>({w:'복습어'+i,d:'배운 말의 의미',band:i<24?2:6+i%2,cat:'국어'}));
 const learner={difficulty:7.4,words:Object.fromEntries(words.map(w=>[w.w,{seen:3,wrong:0,streak:2,nextReviewAt:w.band===2?'2026-01-01':'2099-01-01'}]))};
 const snapshot=JSON.stringify(learner),chosen=selectLevelReviews(words,learner,17,day);
-assert.equal(reviewFloor(7.4),7);assert.ok(chosen.every(w=>w.band>=7&&w.band<=8));
-assert.ok(chosen.some(w=>w.band===7),'upcoming near-level practice is retained instead of twenty overdue easy words');
+assert.equal(reviewFloor(7.4),7);assert.ok(chosen.some(w=>w.band===2));
+assert.ok(chosen.every(w=>learner.words[w.w].seen>0),'lower studied vocabulary remains eligible for due reviews');
 const fresh=[0,1,2].map(i=>({w:'새어휘'+i,d:'새롭게 배우는 뜻',band:7,cat:'국어'}));
 const plans=buildLearningPlan(fresh,chosen,20,'daily',w=>learner.words[w]||{},{level:7.4,strictBand:true});
 assert.equal(plans.length,20);assert.ok(plans.every(p=>p.w.band>=7&&p.w.band<=8));assert.equal(plans.filter(p=>p.type.startsWith('mc_')).length,10);assert.equal(plans.filter(p=>p.type.startsWith('subjective_')).length,10);
@@ -17,9 +17,9 @@ const reserve=buildLearningPlan([],chosen,20,'daily',w=>learner.words[w]||{},{le
 assert.equal(JSON.stringify(learner),snapshot);
 // Basic words cannot fill a high-level set even if no matching learned words exist.
 const narrow=buildLearningPlan([],words.slice(0,2),20,'daily',()=>({seen:1}),{level:7.4,strictBand:true});
-assert.equal(narrow.length,0);assert.equal(selectLevelReviews(words.slice(0,2),learner,20,day).length,0);
+assert.equal(narrow.length,0);assert.equal(selectLevelReviews(words.slice(0,2),learner,20,day).length,2);
 const curriculum=[...words,...fresh].map(w=>({word:w.w,definition:w.d,band:w.band,domain:w.cat}));
 const packet=makePreparedPlan(learner,{},curriculum,'family','guest',{reviewOnly:true});
-assert.equal(packet.newWords.length,0);assert.ok(packet.plans.every(p=>p.w.band>=7&&p.w.band<=8));assert.equal(packet.introAt,packet.plans.filter(p=>p.stage==='check').length);
+assert.equal(packet.newWords.length,0);assert.ok(packet.plans.every(p=>p.review)&&packet.plans.some(p=>p.w.band===2));assert.equal(packet.introAt,packet.plans.filter(p=>p.stage==='check').length);
 assert.ok(generationItems(packet.plans,learner).every(i=>i.readerLevel===7.4&&i.taskDemand));
-console.log('Target vocabulary verified: level 7.4 selects only bands 7–8, no easy-word fallback, no extra reserve introductions, 10 choices/10 written tasks, and unchanged records.');
+console.log('Target vocabulary verified: new targets at level 7.4 retain bands 7–8, due lower studied vocabulary is eligible for review, no extra reserve introductions, and unchanged records.');

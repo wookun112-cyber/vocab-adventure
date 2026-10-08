@@ -12,7 +12,7 @@ function fixture(){
  };
  const ctx=vm.createContext({console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:(_k,account)=>({maybeSingle:()=>new Promise(resolve=>reads.push({account,resolve}))})}),upsert:async row=>{writes.push(clone(row));return {error:null}}})})});
  const run=x=>vm.runInContext(x,ctx);
- run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(source);
+ run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);
  run('ensureCatalog=async()=>{};warmDailyQuestions=()=>{};curriculumStatus=async()=>null');
  return {run,node,local,reads,writes};
 }

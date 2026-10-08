@@ -1,5 +1,5 @@
-const CACHE='vocab-adventure-v12-14-0';
-const ASSETS=['/','/index.html','/app.css','/app.js','/lib/learning-model.js','/manifest.webmanifest','/version.json','/icon.svg'];
+const CACHE='vocab-adventure-v12-15-0';
+const ASSETS=['/','/index.html','/app.css','/app.js','/lib/learning-model.js','/lib/daily-practice.js','/manifest.webmanifest','/version.json','/icon.svg'];
 
 self.addEventListener('install',e=>{
   self.skipWaiting();
@@ -35,6 +35,7 @@ self.addEventListener('fetch',e=>{
     u.pathname==='/index.html'||
     u.pathname==='/app.js'||
     u.pathname==='/lib/learning-model.js'||
+    u.pathname==='/lib/daily-practice.js'||
     u.pathname==='/app.css'||
     u.pathname==='/version.json'||
     e.request.mode==='navigate';

@@ -1,3 +1,4 @@
+import {DAILY_POLICY} from '../lib/daily-practice.js';
 import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
@@ -14,7 +15,7 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=(recovering||(job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy==='daily-3-20-25-flex'&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&inTargetBand(p.w,job.learner.difficulty)&&p.w?.w!=='민사 재판')))&&job.payload?.plans?.length===20?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'});
+ let payload=recovering?job.payload:((job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'}));
  const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
  hydrateFromBank(payload,job.learner,job.bank||[],job.reserved||[]);
@@ -69,7 +70,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
       if(!raw){retry.push([i,p]);continue}
       if(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation||!raw.validation.checks?.levelDemandFit)throw Error('Unverified prepared question');
       const q=browserQuestion(raw,p);q.bankReaderLevel=Number(job.learner.difficulty)||2;q.bankSupportLevel=p.supportLevel||0;q.bankPassageKeys=passageKeys(q.ctx,q.opts.map(o=>o.t));
-      const used=new Set([...(generationLearner.words?.[p.w.w]?.usedPassageKeys||[]),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
+      const used=new Set([...(generationLearner.words?.[p.w.w]?.usedPassageKeys||[]),...(generationLearner.words?.[p.w.w]?.problemHistory||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
       if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){duplicates=true;feedback[p.id]=['이미 사용한 문장이 중복되었습니다. 이전 문장을 재사용하지 말고 다른 사건으로 새 지문을 작성하세요.','이전 실패 지문: '+q.ctx];retry.push([i,p]);continue}
       ready.set(i,q);
      }
@@ -82,7 +83,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   const results=await Promise.allSettled(Array.from({length:Math.min(3,groups.length)},work));
   const failed=results.find(r=>r.status==='rejected');
   if(failed)throw failed.reason;
-  if(payload.ready.length<20)throw Error(duplicates?'Repeated sentence withheld':'Incomplete validated preparation');
+  if(payload.ready.length<payload.plans.length)throw Error(duplicates?'Repeated sentence withheld':'Incomplete validated preparation');
  }catch(error){
   if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);if(/credit_balance_exhausted|insufficient_quota/.test(payload.preparationError))payload.preparationBlocked='ai_credit_exhausted';checkpoint=checkpoint.catch(()=>{});await save(true)}
   throw error;

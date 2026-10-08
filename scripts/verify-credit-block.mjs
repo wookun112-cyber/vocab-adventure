@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {prepare} from '../api/prepare-worker.js';
 import {makePreparedPlan} from '../lib/prepared-plan.js';
 import {QUESTION_POLICY} from '../lib/learning-model.js';
-const learner={difficulty:2,words:{근거:{seen:2,correct:1,streak:1}}},before=JSON.stringify(learner);
+const learner={difficulty:2,words:{근거:{seen:2,correct:1,streak:1},의견:{seen:2,correct:1,streak:1}}},before=JSON.stringify(learner);
 const payload=makePreparedPlan(learner,{},[],'family','ayoung',{reviewOnly:true}),p=payload.plans[0];
 payload.ready=[[0,{w:p.w,type:p.type,taskDemand:p.taskDemand,ctx:'생각을 뒷받침하는 자료를 찾았어요.',opts:[],validation:{policy:QUESTION_POLICY,deterministic:true,aiVerified:true,checks:{coherentSituation:true,vocabularyFocus:true,levelDemandFit:true}}}]];
 const first=JSON.stringify(payload.ready[0]),saves=[];
