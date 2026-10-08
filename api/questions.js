@@ -1,6 +1,7 @@
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 import {LEARNING_TYPES,QUESTION_POLICY,isLearningTarget,sentenceWritingTask} from '../lib/learning-model.js';
+import {authoredQuestion} from './authored-bank.js';
 const TYPES=LEARNING_TYPES;
 const SHOWN_TYPES=['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'];
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
@@ -42,7 +43,7 @@ function passageTargets(items){return items.map(item=>({...item,example:item.typ
 async function verifyUser(auth){
   if(!auth?.startsWith('Bearer '))return false;
   const r=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:{apikey:SUPABASE_KEY,Authorization:auth}});
-  return r.ok;
+  return r.ok?await r.json():null;
 }
 function extractText(data){
   if(typeof data?.output_text==='string')return data.output_text;
@@ -434,8 +435,8 @@ export async function buildValidated(items,recent,{maxAttempts=3,partial=false,i
 }
 export default async function handler(req,res){
   if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
-  if(!(await verifyUser(req.headers.authorization)))return res.status(401).json({error:'Login required'});
-  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
+  const user=await verifyUser(req.headers.authorization);
+  if(!user?.id)return res.status(401).json({error:'Login required'});
   try{
     const raw=Array.isArray(req.body?.items)?req.body.items.slice(0,30):[];
     const recent=Array.isArray(req.body?.recent)?req.body.recent.slice(-40):[];
@@ -449,18 +450,21 @@ export default async function handler(req,res){
       answerSlot:Math.max(0,Math.min(4,Number(x.answerSlot)||0)),
       supportLevel:Math.max(0,Math.min(3,Number(x.supportLevel)||0)),
       successStreak:Math.max(0,Number(x.successStreak)||0),
-      firstLearning:Boolean(x.firstLearning),needsCard:Boolean(x.needsCard),structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),taskDemand:['foundation-review','initial-practice','advanced','standard'].includes(x.taskDemand)?x.taskDemand:'standard',
+      firstLearning:Boolean(x.firstLearning),review:Boolean(x.review),needsCard:Boolean(x.needsCard),structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),taskDemand:['foundation-review','initial-practice','advanced','standard'].includes(x.taskDemand)?x.taskDemand:'standard',
       previousContexts:Array.isArray(x.previousContexts)?x.previousContexts.filter(p=>p&&typeof p==='object').slice(-8).map(p=>({context:String(p.context||'').slice(0,1600),options:Array.isArray(p.options)?p.options.slice(0,5).map(o=>String(o).slice(0,500)):[]})):[],
       usedPassageKeys:Array.isArray(x.usedPassageKeys)?x.usedPassageKeys.filter(k=>typeof k==='string').slice(-2000):[]
     })).filter(x=>x.word&&x.definition);
     if(!items.length)return res.status(400).json({error:'No valid items'});
-    const questions=[];
-    for(let i=0;i<items.length;i+=4){
-      const chunk=items.slice(i,i+4);
+    const questions=[],missing=[];
+    for(const item of items){const q=authoredQuestion(item,user.id,questions);if(q)questions.push(q);else missing.push(item)}
+    if(missing.length&&!process.env.OPENAI_API_KEY)return res.status(503).json({code:'bank_variant_unavailable',error:'아직 사용하지 않은 문제를 더 준비해야 해요. 학습 기록과 입력한 답은 유지됩니다.'});
+    for(let i=0;i<missing.length;i+=4){
+      const chunk=missing.slice(i,i+4);
       const out=await buildValidated(chunk,[...recent,...questions.map(q=>q.signature)]);
       questions.push(...out);
     }
-    return res.status(200).json({questions,validated:true,validationMethod:'deterministic+independent_ai_review'});
+    const ordered=new Map(questions.map(q=>[String(q.id),q]));
+    return res.status(200).json({questions:items.map(item=>ordered.get(item.id)),validated:true,validationMethod:questions.every(q=>q.validation?.source==='authored_bank')?'authored_bank_schema_checked':'mixed_authored_and_independent_ai_review'});
   }catch(e){
     if(/credit_balance_exhausted|insufficient_quota/.test(String(e?.message||e)))return res.status(503).json({code:'ai_credit_exhausted',error:'문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 다시 시도해 주세요. 학습 기록은 유지됩니다.'});
     return res.status(422).json({error:String(e?.message||e).slice(0,1000),failed:e.failed||[]});

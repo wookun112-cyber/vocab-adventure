@@ -1,3 +1,4 @@
+import {AUTHORED_REVISION,authoredQuestionValid} from './lib/authored-policy.js';
 import {DAILY_POLICY,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand} from './lib/learning-model.js';
@@ -859,7 +860,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
      return ({
      id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,readerLevel:Number(state.users[profile].difficulty)||2,domain:apiDomain(p.w.cat),
      example:p.w.example||'',contextSeed:p.contextSeed||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
-     successStreak:p.successStreak,firstLearning:p.firstLearning,needsCard:!!p.needsCard,structureNote:p.structureNote||'',stage:p.stage||'',taskDemand:p.taskDemand||'standard',
+     successStreak:p.successStreak,firstLearning:p.firstLearning,review:!!p.review,needsCard:!!p.needsCard,structureNote:p.structureNote||'',stage:p.stage||'',taskDemand:p.taskDemand||'standard',
      previousContexts:[...(st.problemHistory||[]),...queued].slice(-4),
      usedPassageKeys:[...new Set([...(st.usedPassageKeys||[]),...queued.flatMap(q=>passageKeys(q.context,q.options))])]
    })}),
@@ -877,11 +878,11 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
  return j.questions.map(q=>{
    const p=planMap.get(String(q.id)); if(!p)throw new Error('문제 연결 오류');
    return {
-     w:p.w,type:q.type,stage:p.stage,taskDemand:p.taskDemand,needsCard:p.needsCard,practiceOnly:!!p.practiceOnly,review:!!p.review,remedial:!!p.remedial,learningCard:q.learningCard,answerForm:q.answerForm||p.w.w,label:TYPE_LABELS[q.type]||'문맥',q:q.prompt,ctx:q.context||'',
+     w:q.authored&&q.targetMeaning?{...p.w,d:q.targetMeaning}:p.w,type:q.type,stage:p.stage,taskDemand:p.taskDemand,needsCard:p.needsCard,practiceOnly:!!p.practiceOnly,review:!!p.review,remedial:!!p.remedial,learningCard:q.learningCard,answerForm:q.answerForm||p.w.w,label:TYPE_LABELS[q.type]||'문맥',q:q.prompt,ctx:q.context||'',
      showTarget:!!q.showTarget,open:q.type.startsWith('subjective_'),hideWord:!q.showTarget,
      opts:(q.options||[]).map(o=>({t:o.text,ok:!!o.correct,reason:o.reason||''})),
      acceptedAnswers:q.acceptedAnswers||[],hints:q.hints||[],feedbackCorrect:q.feedbackCorrect||'',
-     signature:q.signature||'',validation:q.validation||null
+     signature:q.signature||'',validation:q.validation||null,authored:q.authored||null,semanticGraderRequired:!!q.semanticGraderRequired,allowNaturalDerivations:q.allowNaturalDerivations||[]
    };
  });
 }
@@ -893,7 +894,7 @@ const SCENARIOS=['집에서 가족과 계획을 세우는 일','학교에서 친
 function preparationSnapshot(profile){
  const c=state.users[profile];
  const words=Object.entries(c.words||{}).filter(([,s])=>s.seen>0||s.introducedAt).sort(([a],[b])=>a.localeCompare(b)).map(([w,s])=>[w,s.seen,s.correct,s.wrong,s.streak,s.supportLevel,s.nextReviewAt,s.lastFeedbackDate,(s.usedPassageKeys||[]).length,s.introducedAt||null]);
- return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null]);
+ return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,AUTHORED_REVISION]);
 }
 function preparationKey(mode,profile=state.selected,account=authUser?.id){return 'vocab-prepared-'+account+'-'+profile+'-'+mode}
 function assignScenarios(plans){
@@ -904,7 +905,7 @@ function assignScenarios(plans){
  }
  return plans;
 }
-function validPreparedQuestion(q,plan){return q?.w?.w===plan?.w?.w&&q.type===plan.type&&(!plan.needsCard||!!q.learningCard?.example)&&q.validation?.deterministic===true&&q.validation?.aiVerified===true&&q.validation?.checks?.coherentSituation===true}
+function validPreparedQuestion(q,plan){return q?.w?.w===plan?.w?.w&&q.type===plan.type&&(!plan.needsCard||!!q.learningCard?.example)&&(authoredQuestionValid(q,authUser?.id)||(q.validation?.deterministic===true&&q.validation?.aiVerified===true&&q.validation?.checks?.coherentSituation===true))}
 function questionPassageKeys(q){return passageKeys(q.ctx,(q.opts||[]).map(o=>o.t))}
 function savePreparation(p){
  if(p.adopted||p.cancelled)return;
@@ -1309,7 +1310,7 @@ async function gradeCurrent(dontKnow){
  const listed=(q.acceptedAnswers||[]).find(x=>typeof x==='object'&&normalizeTyped(x.text)===typed);
  if(q.type!=='subjective_use'&&(typed===expected||typed===normalizeTyped(q.answerForm||'')||listed)){
    const credit=listed?Number(listed.credit):1;
-   if(typed!==expected&&typed!==normalizeTyped(q.answerForm||'')&&listed){applyResult(q,credit===1?'○':'△',q.feedbackCorrect||'문맥에 맞는 표현이에요.',answer,{credit,contextSuccess:credit>=1,targetRecall:false,independent:credit>=1&&!hintUsed,hintUsed,revealed:false});return}
+   if(typed!==expected&&typed!==normalizeTyped(q.answerForm||'')&&listed){applyResult(q,credit===1?'○':'△',q.feedbackCorrect||'문맥에 맞는 표현이에요.',answer,{credit,contextSuccess:credit>=1,targetRecall:listed.targetRecall===true,independent:credit>=1&&!hintUsed,hintUsed,revealed:false});return}
    applyResult(q,'◎',q.feedbackCorrect||'문맥의 단서를 보고 목표 어휘를 직접 떠올렸어요.',answer,{
      credit:1,contextSuccess:true,targetRecall:true,independent:!hintUsed,hintUsed,revealed:false
    });
@@ -1323,10 +1324,10 @@ async function gradeCurrent(dontKnow){
      method:'POST',
      headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
      body:JSON.stringify({
-       taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
+       taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'&&!q.authored?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
        question:q.q+'\n지문: '+q.ctx,
        targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,
-       acceptedAnswers:q.acceptedAnswers||[],answer,source:answerSource
+       acceptedAnswers:q.acceptedAnswers||[],allowNaturalDerivations:q.allowNaturalDerivations||[],answer,source:answerSource
      })
    });
    if(!r.ok){const failure=await r.json().catch(()=>({}));throw Object.assign(new Error(failure.error||'채점 서버 오류'),{code:failure.code})}

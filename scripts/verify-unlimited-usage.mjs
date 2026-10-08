@@ -1,3 +1,4 @@
+import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -28,7 +29,7 @@ const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replac
 function fixture(saved){
  const nodes=new Map(),alerts=[];
  const node=id=>{if(!nodes.has(id)){const classes=new Set();nodes.set(id,{textContent:'',innerHTML:'',value:'',disabled:false,style:{},appendChild(){},classList:{add(...x){x.forEach(v=>classes.add(v))},remove(...x){x.forEach(v=>classes.delete(v))},contains:x=>classes.has(x),toggle(x,on){if(on??!classes.has(x))classes.add(x);else classes.delete(x)}}})}return nodes.get(id)};
- const ctx=vm.createContext({console,Date,Math,Promise,Map,Set,setTimeout,clearTimeout,window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>node('option')},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},alert:x=>alerts.push(x),createClient:()=>({auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},rpc:async name=>({data:name==='consume_prepared_lesson'?true:{id:'packet',status:'ready',payload:{...packet,snapshot:vm.runInContext('preparationSnapshot(state.selected)',ctx)}}}),from:()=>({upsert:async()=>({error:null})})})});
+ const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,console,Date,Math,Promise,Map,Set,setTimeout,clearTimeout,window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>node('option')},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},alert:x=>alerts.push(x),createClient:()=>({auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},rpc:async name=>({data:name==='consume_prepared_lesson'?true:{id:'packet',status:'ready',payload:{...packet,snapshot:vm.runInContext('preparationSnapshot(state.selected)',ctx)}}}),from:()=>({upsert:async()=>({error:null})})})});
  const run=s=>vm.runInContext(s,ctx);
  run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);
  ctx.answerFor=answerFor;run("authUser={id:'family'};loadedAccount=authUser.id;state.selected='guest';warmDailyQuestions=()=>{};fetchValidatedQuestions=async plans=>plans.map(answerFor)");

@@ -1,3 +1,4 @@
+import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -14,7 +15,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
   return nodes.get(id);
  };
  let run;const deferred=[];let blockWrites=false;
- const ctx=vm.createContext({console,setTimeout,clearTimeout,Date,Math,Map,Set,Promise,
+ const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,console,setTimeout,clearTimeout,Date,Math,Map,Set,Promise,
   document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>node('element-'+Math.random())},window:{scrollTo(){}},alert:x=>alerts.push(x),
   localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)},
   fetch:()=>{calls.generation++;throw Error('Resuming saved base questions must not use AI')},

@@ -15,7 +15,7 @@ async function verifyUser(auth){
 export async function runGrade(payload){
   const {
     question,answer,source='typed',targetWord='',definition='',band=3,
-    gradingContext='',taskType='general',taskDemand='standard',readerLevel=band,acceptedAnswers=[]
+    gradingContext='',taskType='general',taskDemand='standard',readerLevel=band,acceptedAnswers=[],allowNaturalDerivations=[]
   }=payload||{};
   if(!question||typeof answer!=='string')throw new Error('Bad request');
 
@@ -28,6 +28,7 @@ export async function runGrade(payload){
 상황과 과제: ${question}
 현재 어휘력 수준: ${readerLevel}
 학생은 예문이나 지정 상황 없이 자신의 문장을 만듭니다. 실제로 요구하지 않은 이유·조건·결과·인물 역할을 숨은 채점 조건으로 추가하지 마세요. 단어 뜻의 핵심 조건과 자연스러운 사용을 판단하되 평범한 문장도 의미가 정확하면 정답입니다.
+허용할 자연스러운 파생형(문장 의미가 알맞을 때만): ${JSON.stringify(allowNaturalDerivations)}
 학생 문장: ${answer}
 입력 방식: ${source}
 규칙: 목표어 또는 같은 어휘의 자연스러운 활용형을 포함하고, 문장 전체가 실제 상황에서 해당 뜻으로 적절하게 쓰였으면 score 1입니다. 단어만 쓴 답, 뜻만 복사한 답, 목표어 없이 다른 표현만 쓴 답은 완전 정답이 아닙니다. 뜻을 일부 반영했으나 사용이 불완전하면 0.5, 뜻과 쓰임이 틀리거나 단어만 썼으면 0입니다. 의미가 분명한 사소한 오타/띄어쓰기는 허용합니다. 목표어를 화면에 보여준 활동이므로 targetRecall은 항상 false입니다. contextSuccess는 score 1일 때만 true입니다. 의견의 도덕성이나 문체 취향은 평가하지 않습니다. feedback은 단어가 왜 맞게/부족하게 쓰였는지와 개선 단서 하나를 1~2문장으로 주세요. voice는 명백한 인식 오류만 보정하며 발음은 평가하지 않습니다. JSON으로 normalizedAnswer,result(○|△|×),score(0|0.5|1),contextSuccess,targetRecall,feedback,correctionApplied,correctionNote를 반환하세요.`:recallMode?`당신은 한국어 어휘의 뜻 회상 답을 확인합니다.
@@ -96,6 +97,7 @@ ${question}
   const r=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+    signal:AbortSignal.timeout(22000),
     body:JSON.stringify({
       model,reasoning:{effort:'low'},max_output_tokens:500,input:prompt,
       text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}

@@ -1,8 +1,9 @@
+import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {generationItems} from '../lib/prepared-plan.js';
-const backend=vm.createContext({console,process,Map,Set,AbortSignal});
+const backend=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,console,process,Map,Set,AbortSignal});
 const api=fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8')
  .replace(/^import[^\n]+\n/gm,'').replace('export async function buildValidated','async function buildValidated')
  .replace('export default async function handler','async function handler');

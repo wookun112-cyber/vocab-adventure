@@ -1,3 +1,4 @@
+import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -7,7 +8,7 @@ const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(seed,account='family',shared=storage,server=false){
  const nodes=new Map(),alerts=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:id,classList:{add(){},remove(){},toggle(){}},style:{}});return nodes.get(id)};
- const ctx=vm.createContext({console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
+ const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
    document:{getElementById:node,querySelectorAll:()=>[]},window:{scrollTo(){}},
    localStorage:{setItem:(k,v)=>shared.set(k,v),getItem:k=>shared.get(k)||null,removeItem:k=>shared.delete(k)},
    alert:m=>alerts.push(m),fetch:()=>{throw Error('Unexpected network')},

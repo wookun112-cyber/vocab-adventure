@@ -4,6 +4,8 @@ import {waitUntil} from '@vercel/functions';
 import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
 import {hydrateFromBank,withReservedHistory} from '../lib/question-bank.js';
+import {authoredCurriculum,authoredEntry} from './authored-bank.js';
+import {AUTHORED_REVISION} from '../lib/authored-policy.js';
 const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
@@ -15,10 +17,16 @@ export async function rpc(name,args){
 const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
 export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const recovering=job.payload?.resumeId&&job.payload.resumeId===job.learner.activeLesson?.id&&job.payload.account===job.account&&job.payload.profile===job.profile;
- let payload=recovering?job.payload:((job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,job.curriculum,job.account,job.profile,{reviewOnly:job.kind==='reserve'}));
+ let payload=recovering?job.payload:((job.payload?.engine===LEARNING_MODEL&&job.payload?.questionPolicy===QUESTION_POLICY&&job.payload?.selectionPolicy===SELECTION_POLICY&&job.payload?.budget?.policy===DAILY_POLICY&&job.payload?.snapshot===learnerSnapshot(job.learner)&&job.payload?.plans?.length>0&&job.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||inTargetBand(p.w,job.learner.difficulty))))?job.payload:makePreparedPlan(job.learner,job.catalog,[...(job.curriculum||[]),...authoredCurriculum(job.account)],job.account,job.profile,{reviewOnly:job.kind==='reserve'}));
  const generationLearner=withReservedHistory(job.learner,job.reserved||[]);
  if(job.kind==='reserve'){payload.reserve=true;payload.reserveSlot=job.slot;}
- hydrateFromBank(payload,job.learner,job.bank||[],job.reserved||[]);
+ payload.bankRevision=AUTHORED_REVISION;
+ const authored=[];
+ for(const [i,plan] of payload.plans.entries()){
+  if((payload.ready||[]).some(([at])=>at===i))continue;
+  const e=authoredEntry(plan,job.learner,job.account,[...(job.reserved||[]),...authored.map(e=>e.question)]);if(e)authored.push(e);
+ }
+ hydrateFromBank(payload,job.learner,[...authored,...(job.bank||[])],job.reserved||[]);
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));
@@ -94,7 +102,8 @@ export default async function handler(req,res){
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
  const id=req.body?.id,key=req.headers['x-preparation-key'];
  if(!uuid(id)||!uuid(key))return res.status(401).json({error:'Unauthorized'});
- if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI not configured'});
+ // Stored authored questions need no generation-provider key.
+
  try{
   const job=await rpc('claim_preparation',{p_id:id,p_key:key});
   if(!job)return res.status(202).json({accepted:false});
