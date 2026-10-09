@@ -1,3 +1,4 @@
+import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -12,7 +13,7 @@ import {AUTHORED_OWNER} from '../lib/authored-policy.js';
 const targets=[{w:'준비',d:'어떤 일을 하기 전에 필요한 것을 갖추는 일',band:1,cat:'생활'},
  {w:'예측',d:'근거나 정보를 바탕으로 앞으로를 미리 판단함',band:3,cat:'사고'}];
 const itemFor=(w,i=0)=>({id:String(i),word:w.w,definition:w.d,domain:w.cat,band:w.band,readerLevel:w.band,type:'subjective_use',review:true,needsCard:false});
-const client=vm.createContext({AUTHORED_REVISION,authoredQuestionValid,sentenceUseQuestionValid,AbortSignal,console,setTimeout,clearTimeout,
+const client=vm.createContext({AUTHORED_REVISION,authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,AbortSignal,console,setTimeout,clearTimeout,
  document:{getElementById:()=>({classList:{add(){},remove(){},toggle(){}},style:{}}),querySelectorAll:()=>[]},
  window:{scrollTo(){}},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},createClient:()=>({auth:{getSession:async()=>({data:{session:null}})}})});
 vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),client);

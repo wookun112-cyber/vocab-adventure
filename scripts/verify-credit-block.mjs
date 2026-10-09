@@ -1,3 +1,4 @@
+import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
@@ -10,10 +11,10 @@ const learner={difficulty:2,words:{근거:{seen:2,correct:1,streak:1},의견:{se
 const payload=makePreparedPlan(learner,{},[],'family','ayoung',{reviewOnly:true}),p=payload.plans[0];
 payload.ready=[[0,{w:p.w,type:p.type,taskDemand:p.taskDemand,ctx:'생각을 뒷받침하는 자료를 찾았어요.',opts:[],validation:{policy:QUESTION_POLICY,deterministic:true,aiVerified:true,checks:{coherentSituation:true,vocabularyFocus:true,levelDemandFit:true}}}]];
 const first=JSON.stringify(payload.ready[0]),saves=[];
-await assert.rejects(()=>prepare({id:'job',account:'family',profile:'ayoung',learner,catalog:{},curriculum:[],payload,kind:'reserve',slot:1},'key',async()=>{throw Error('OpenAI 429: {"code":"credit_balance_exhausted","type":"insufficient_quota"}')},async(name,args)=>{saves.push(args);return true}),/credit_balance_exhausted/);
+await assert.rejects(()=>prepare({id:'job',account:'family',profile:'ayoung',learner,catalog:{},curriculum:[],payload:{...payload,plans:payload.plans.map((p,i)=>i===0?p:{...p,review:false,firstLearning:true,needsCard:true,type:'mc_usage'})},kind:'daily'},'key',async()=>{throw Error('OpenAI 429: {"code":"credit_balance_exhausted","type":"insufficient_quota"}')},async(name,args)=>{saves.push(args);return true}),/credit_balance_exhausted/);
 assert.equal(saves.at(-1).p_failed,true);assert.equal(saves.at(-1).p_payload.preparationBlocked,'ai_credit_exhausted');assert.equal(JSON.stringify(saves.at(-1).p_payload.ready[0]),first);assert.equal(JSON.stringify(learner),before);
 const sql=fs.readFileSync(new URL('../database/preparation-credit-block.sql',import.meta.url),'utf8');assert.ok(sql.includes("then 8 else attempts"));assert.ok(sql.includes("if p_retry then"));assert.ok(!/update public\.app_state/i.test(sql));
-const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,console,process:{env:{OPENAI_API_KEY:'test'}},fetch:async url=>url.includes('/auth/v1/user')?{ok:true}:{ok:false,status:429,text:async()=>'{"code":"credit_balance_exhausted"}'}});
+const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process:{env:{OPENAI_API_KEY:'test'}},fetch:async url=>url.includes('/auth/v1/user')?{ok:true}:{ok:false,status:429,text:async()=>'{"code":"credit_balance_exhausted"}'}});
 vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace(/export default /g,'').replace(/export /g,''),ctx);
 vm.runInContext(`globalThis.reply={status(n){this.code=n;return this},json(body){this.body=body;return body}}`,ctx);
 await vm.runInContext(`handler({method:'POST',headers:{authorization:'Bearer test'},body:{question:'의견을 넣어 문장을 써 보세요.',answer:'내 의견은 공원에서 놀자는 거야.',targetWord:'의견',taskType:'sentence_use'}},reply)`,ctx);

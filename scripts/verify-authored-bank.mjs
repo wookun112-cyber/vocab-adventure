@@ -111,7 +111,7 @@ try{
  const response=reply();await questionHandler({method:'POST',headers:{authorization:'Bearer test-fixture'},body:{items:[advancedItem]}},response);
  assert.equal(response.code,200);assert.equal(response.body.validated,true);assert.equal(response.body.questions[0].type,adapted.type);assert.equal(response.body.questions[0].bankFallbackFrom,'mc_usage');
  const blocked=reply();await questionHandler({method:'POST',headers:{authorization:'Bearer test-fixture'},body:{items:[{...advancedItem,allowBankTypeFallback:false}]}},blocked);
- assert.equal(blocked.code,503);assert.equal(blocked.body.code,'bank_variant_unavailable');assert.equal(authCalls,2);
+ assert.equal(blocked.code,409);assert.equal(blocked.body.code,'bank_variant_unavailable');assert.equal(authCalls,2);
 }finally{
  globalThis.fetch=originalFetch;if(originalKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=originalKey;
 }

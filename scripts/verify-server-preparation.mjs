@@ -35,8 +35,8 @@ const checkpoints=[];
 const store=async(name,args)=>{assert.equal(name,'save_preparation');checkpoints.push(structuredClone(args));return true};
 const ready=await prepare(job,'key',generate,store);
 assert.equal(ready.ready.length,15);
-assert.equal(maxFlight,3);
-assert.equal(calls,3,'fixed own-sentence instructions reduce live generation groups');
+assert.equal(maxFlight,2);
+assert.equal(calls,2,'legacy reviews are immediately available; only five new-word cards need background generation');
 assert.equal(JSON.stringify(learner),before);
 assert.equal(checkpoints.at(-1).p_payload.ready.length,15);
 assert.ok(checkpoints.every(c=>!c.p_failed));
@@ -44,10 +44,10 @@ assert.ok(checkpoints.every(c=>!c.p_failed));
 let rejectedOnce=false,repairIds=[];
 const immediate=await prepare(job,'key',async items=>{
  repairIds.push(items.map(x=>x.id));
- if(items.some(x=>x.id==='2')&&!rejectedOnce){rejectedOnce=true;const out=items.filter(x=>x.id!=='2').map(answer);out.failed=[{id:'2',issues:['coherentSituation']}];return out}
+ if(items.some(x=>x.id==='4')&&!rejectedOnce){rejectedOnce=true;const out=items.filter(x=>x.id!=='4').map(answer);out.failed=[{id:'4',issues:['coherentSituation']}];return out}
  return items.map(answer);
 },store);
-assert.equal(immediate.ready.length,15);assert.ok(repairIds.some(ids=>ids.length===1&&ids[0]==='2'));
+assert.equal(immediate.ready.length,15);assert.ok(repairIds.some(ids=>ids.length===1&&ids[0]==='4'));
 // Ready output resumes without any AI call; partial output generates only missing indices.
 calls=0;
 await prepare({...job,payload:ready},'key',generate,store);
@@ -57,12 +57,12 @@ const resumed=await prepare({...job,payload:partial},'key',generate,store);
 assert.equal(resumed.ready.length,15);
 assert.equal(calls,1,'remaining own-sentence tasks are supplied without a generation group');
 // A single rejected question does not discard the three validated peers.
-await assert.rejects(prepare(job,'key',async items=>items.filter(i=>i.id!=='2').map(answer),store),/Incomplete validated preparation/);
+await assert.rejects(prepare(job,'key',async items=>items.filter(i=>i.id!=='4').map(answer),store),/Incomplete validated preparation/);
 const almostReady=checkpoints.at(-1).p_payload;
 assert.equal(almostReady.ready.length,14);
 let retriedIds=[];
 const completed=await prepare({...job,payload:almostReady},'key',async items=>{retriedIds=items.map(i=>i.id);return items.map(answer)},store);
-assert.deepEqual(retriedIds,['2']);
+assert.deepEqual(retriedIds,['4']);
 assert.equal(completed.ready.length,15);
 // One failed group leaves good peer groups durable and marks the job retryable.
 let failed=false;
@@ -77,7 +77,7 @@ await assert.rejects(prepare(job,'key',async()=>{staleCalls++;return []},async()
 assert.equal(staleCalls,0);
 // Parallel responses are checked against other completed groups before publication.
 const repeated=async items=>items.map(item=>({...answer(item),context:'오늘 도서관에서 같은 자료를 살펴보고 생각을 뒷받침하는 ＿＿＿＿를 찾았어요.'}));
-await assert.rejects(prepare({...job,learner:{...learner,words:Object.fromEntries(Object.entries(learner.words).map(([w,st])=>[w,{...st,problemHistory:[{context:'오늘 도서관에서 같은 자료를 살펴보고 생각을 뒷받침하는 ＿＿＿＿를 찾았어요.',options:[]}]}]))}},'key',repeated,store),/Repeated sentence/);
+await assert.rejects(prepare({...job,payload:{...plan,resumeId:'repeated-test'},learner:{...learner,activeLesson:{id:'repeated-test'},words:Object.fromEntries(plan.plans.map(p=>[p.w.w,{...(learner.words[p.w.w]||{}),problemHistory:[{context:'오늘 도서관에서 같은 자료를 살펴보고 생각을 뒷받침하는 ＿＿＿＿를 찾았어요.',options:[]}]}]))}},'key',repeated,store),/Repeated sentence/);
 const withheld=checkpoints.at(-1).p_payload;
 for(const word of withheld.newWords){
  const seen=new Set();
@@ -85,7 +85,7 @@ for(const word of withheld.newWords){
   for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key));seen.add(key)}
  }
 }
-console.log('Server preparation verified: personalized 5-new/10-review packets with 15 distinct targets, three parallel groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
+console.log('Server preparation verified: personalized 5-new/10-review packets with 15 distinct targets, parallel background groups, durable checkpoints, resume without regeneration, bounded duplicate rejection, stale-lease protection, unchanged records.');
 
 // Recovery preserves original plans and accepted peers even after an answer
 // changes the learner snapshot. It must not create an unrelated new lesson.
@@ -139,12 +139,12 @@ const demandGenerate=async items=>{
  return items.map(answer);
 };
 const redesignedPacket=await prepare(advancedJob,'key',demandGenerate,async()=>true);
-assert.equal(redesigned,true);assert.equal(redesignedPacket.plans[0].type,'subjective_use');assert.equal(redesignedPacket.plans.filter(p=>p.type.startsWith('subjective_')).length,6);assert.equal(redesignedPacket.ready.length,8);
+assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_use');assert.equal(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length,8);assert.equal(redesignedPacket.ready.length,8);
 const frozenPacket=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});frozenPacket.resumeId='advanced-paused';
 const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};const originalTypes=JSON.stringify(frozenPacket.plans.map(p=>p.type));wideOnce=false;redesigned=false;
 const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
 assert.equal(JSON.stringify(frozenOutput.plans.map(p=>p.type)),originalTypes);assert.equal(redesigned,false);
-console.log('Demand repair verified: overly broad advanced blanks become independently reviewed sentence-use tasks, retain available written activities, and never rewrite interrupted lessons.');
+console.log('Legacy review delivery verified: missing advanced bank content uses example-free sentence tasks with no generation; interrupted lessons keep their original tasks.');
 
 // A failed relation task keeps its vocabulary, ID, and objective/written balance.
 const relationPlan=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});
@@ -152,6 +152,6 @@ const relation=relationPlan.plans.find(p=>p.type==='mc_usage');relation.type='mc
 const diversify=async items=>{if(!relationFailed&&items.some(i=>i.id===relation.id)){relationFailed=true;const out=items.filter(i=>i.id!==relation.id).map(answer);out.failed=[{id:relation.id,issues:['review_failed:levelDemandFit']}];return out;}return items.map(answer)};
 const diversified=await prepare({...advancedJob,payload:relationPlan},'key',diversify,async()=>true);
 assert.equal(diversified.plans.find(p=>p.id===relation.id).w.w,relation.w.w);
-assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,2);assert.equal(diversified.ready.length,8);
-assert.ok(['mc_usage','mc_reading'].includes(diversified.plans.find(p=>p.id===relation.id).type));
-console.log('Advanced variation verified: weak relation tasks retain target vocabulary, IDs, the available activities and objective/written balance after independent re-generation.');
+assert.equal(relationFailed,false);assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,0);assert.equal(diversified.ready.length,8);
+assert.equal(diversified.plans.find(p=>p.id===relation.id).type,'subjective_use');
+console.log('Missing relation-bank task verified: vocabulary and ID retained, no generation request, canonical productive use supplied immediately.');

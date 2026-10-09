@@ -3,6 +3,8 @@ const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 import {LEARNING_TYPES,QUESTION_POLICY,isLearningTarget,sentenceWritingTask} from '../lib/learning-model.js';
 import {sentenceUseQuestion} from '../lib/sentence-use-template.js';
 import {resolveAuthoredQuestion} from './authored-bank.js';
+import {bundlePractice} from './practice-pool.js';
+import {browserQuestion} from '../lib/prepared-plan.js';
 const TYPES=LEARNING_TYPES;
 const SHOWN_TYPES=['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'];
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
@@ -458,15 +460,21 @@ export default async function handler(req,res){
     })).filter(x=>x.word&&x.definition);
     if(!items.length)return res.status(400).json({error:'No valid items'});
     const questions=[],missing=[];
-    for(const item of items){const q=resolveAuthoredQuestion(item,user.id,questions)||sentenceUseQuestion(item);if(q)questions.push(q);else missing.push(item)}
-    if(missing.length&&!process.env.OPENAI_API_KEY)return res.status(503).json({code:'bank_variant_unavailable',error:'아직 사용하지 않은 문제를 더 준비해야 해요. 학습 기록과 입력한 답은 유지됩니다.'});
-    for(let i=0;i<missing.length;i+=4){
-      const chunk=missing.slice(i,i+4);
-      const out=await buildValidated(chunk,[...recent,...questions.map(q=>q.signature)]);
-      questions.push(...out);
+    for(const item of items){
+      let q=resolveAuthoredQuestion(item,user.id,questions)||sentenceUseQuestion(item);
+      if(!q&&item.allowBankTypeFallback&&item.review&&!item.firstLearning&&!item.needsCard){
+        q=sentenceUseQuestion({...item,type:'subjective_use'});if(q)q.bankFallbackFrom=item.type;
+      }
+      if(q)questions.push(q);else missing.push(item);
     }
+    // Interactive delivery never invokes generation. Missing new-word content
+    // is prepared by the background worker, outside an active lesson.
+    if(missing.length)return res.status(409).json({code:'bank_variant_unavailable',error:'저장된 문제를 확인하지 못했어요. 학습 기록과 입력한 답은 유지됩니다.'});
     const ordered=new Map(questions.map(q=>[String(q.id),q]));
-    return res.status(200).json({questions:items.map(item=>ordered.get(item.id)),validated:true,validationMethod:questions.every(q=>q.validation?.source==='authored_bank')?'authored_bank_schema_checked':questions.every(q=>['authored_bank','sentence_use_template'].includes(q.validation?.source))?'bank_and_template_schema_checked':'mixed_bank_templates_and_independent_ai_review'});
+    const plans=items.map(item=>({...item,w:{w:item.word,d:ordered.get(item.id).targetMeaning||item.definition,band:item.band,cat:item.domain}}));
+    const learner={difficulty:items[0].readerLevel,words:Object.fromEntries(items.map(item=>[item.word,{usedPassageKeys:item.usedPassageKeys,problemHistory:item.previousContexts}]))};
+    const bundle=bundlePractice({plans,ready:plans.map((p,i)=>[i,browserQuestion(ordered.get(p.id),p)])},learner,user.id);
+    return res.status(200).json({questions:items.map(item=>ordered.get(item.id)),practicePool:bundle.practicePool,deliveryPolicy:bundle.deliveryPolicy,validated:true,validationMethod:questions.every(q=>q.validation?.source==='authored_bank')?'authored_bank_schema_checked':questions.every(q=>['authored_bank','sentence_use_template'].includes(q.validation?.source))?'bank_and_template_schema_checked':'mixed_bank_templates_and_independent_ai_review'});
   }catch(e){
     if(/credit_balance_exhausted|insufficient_quota/.test(String(e?.message||e)))return res.status(503).json({code:'ai_credit_exhausted',error:'문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 다시 시도해 주세요. 학습 기록은 유지됩니다.'});
     return res.status(422).json({error:String(e?.message||e).slice(0,1000),failed:e.failed||[]});

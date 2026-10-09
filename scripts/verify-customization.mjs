@@ -1,3 +1,4 @@
+import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 const local=new Map(),cloud=new Map();
 function fixture(account='family'){
  const nodes=new Map();const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',value:'',style:{},classList:{toggle(){},add(){},remove(){}}});return nodes.get(id)};
- const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
+ const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
  const run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);run(`authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;warmDailyQuestions=()=>{};`);return {run,node};
 }
 
