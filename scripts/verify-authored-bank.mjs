@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
 import {archive} from '../api/authored-bank-data.js';
 import {AUTHORED_OWNER,AUTHORED_REVISION,authoredQuestionValid} from '../lib/authored-policy.js';
-import {authoredStats,authoredCurriculum,authoredQuestion,authoredEntry,authoredAvailability} from '../api/authored-bank.js';
+import {authoredStats,authoredCurriculum,authoredQuestion,resolveAuthoredQuestion,authoredEntry,authoredAvailability} from '../api/authored-bank.js';
+import questionHandler from '../api/questions.js';
 import {prepare} from '../api/prepare-worker.js';
 import {bankCompatible} from '../lib/question-bank.js';
 import {calibratedWord,isLearningTarget} from '../lib/learning-model.js';
-import {makePreparedPlan} from '../lib/prepared-plan.js';
+import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 const rows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')));
 assert.equal(rows.length,1854);assert.equal(authoredStats.questions,18540);
 assert.equal(authoredStats.independentReviewComplete,false);
@@ -71,6 +72,51 @@ assert.equal(fallbackCalls,0);assert.equal(varied.plans[0].w.w,target.word);asse
 const pausedPacket=structuredClone(fallbackPacket);pausedPacket.resumeId='variation-paused';const pausedLearner={...dueLearner,activeLesson:{id:pausedPacket.resumeId}};
 await assert.rejects(prepare({id:'paused',account:AUTHORED_OWNER,profile:'test',learner:pausedLearner,curriculum:[target],catalog:{},reserved:exhausted,payload:pausedPacket},'local',async items=>{assert.equal(items[0].type,'mc_usage');throw Error('Original task needs generation')},async()=>true),/Original task needs generation/);
 assert.equal(pausedPacket.plans[0].type,'mc_usage');
+// The adaptive API must also use another bank type after an objective type
+// runs out, rather than forcing live generation during a lesson.
+const advancedItem={id:'25',word:'유려하다',definition:'말이나 글의 흐름이 매끄럽고 아름답다.',band:7,readerLevel:7.3,type:'mc_usage',review:true,firstLearning:false,needsCard:false,taskDemand:'advanced',supportLevel:2,allowBankTypeFallback:true,usedPassageKeys:[]};
+const usedRaw=[];
+for(let i=0;i<10;i++){
+ const raw=authoredQuestion(advancedItem,AUTHORED_OWNER,usedRaw);if(!raw)break;usedRaw.push(raw);
+}
+assert.ok(usedRaw.length>0);
+advancedItem.usedPassageKeys=usedRaw.flatMap(q=>passageKeys(q.context,q.options.map(o=>o.text)));
+assert.equal(authoredQuestion(advancedItem,AUTHORED_OWNER),null);
+const adapted=resolveAuthoredQuestion(advancedItem,AUTHORED_OWNER);
+assert.ok(adapted);assert.equal(adapted.authored.word,advancedItem.word);assert.equal(adapted.bankFallbackFrom,'mc_usage');
+assert.notEqual(adapted.type,'mc_usage');assert.equal(adapted.validation.aiVerified,false);
+assert.ok(!passageKeys(adapted.context,adapted.options.map(o=>o.text)).some(k=>advancedItem.usedPassageKeys.includes(k)));
+for(const patch of [{allowBankTypeFallback:false},{review:false},{firstLearning:true},{needsCard:true}])assert.equal(resolveAuthoredQuestion({...advancedItem,...patch},AUTHORED_OWNER),null);
+assert.equal(resolveAuthoredQuestion(advancedItem,'another-account'),null);
+// All authored recognition/recall passages used: independent own-sentence
+// use remains available, and only a valid own sentence can complete a word.
+const exhaustedItem={...advancedItem,usedPassageKeys:[...advancedItem.usedPassageKeys],usedQuestionSignatures:usedRaw.map(q=>q.signature)};
+for(const type of ['subjective_recall','mc_context']){
+ for(let i=0;i<10;i++){
+  const raw=authoredQuestion({...exhaustedItem,type},AUTHORED_OWNER);if(!raw)break;
+  exhaustedItem.usedPassageKeys.push(...passageKeys(raw.context,raw.options.map(o=>o.text)));
+  exhaustedItem.usedQuestionSignatures.push(raw.signature);
+ }
+}
+const useOnly=resolveAuthoredQuestion(exhaustedItem,AUTHORED_OWNER);
+assert.equal(useOnly.type,'subjective_use');assert.equal(useOnly.context,'');assert.deepEqual(useOnly.acceptedAnswers,[]);assert.equal(useOnly.semanticGraderRequired,true);
+// Execute the real route without an AI key. The only permitted network call
+// is mocked authentication, so an unexpected generation call fails the test.
+const originalFetch=globalThis.fetch,originalKey=process.env.OPENAI_API_KEY;
+let authCalls=0;
+try{
+ delete process.env.OPENAI_API_KEY;
+ globalThis.fetch=async url=>{assert.ok(String(url).endsWith('/auth/v1/user'));authCalls++;return {ok:true,json:async()=>({id:AUTHORED_OWNER})}};
+ const reply=()=>({status(n){this.code=n;return this},json(body){this.body=body;return body}});
+ const response=reply();await questionHandler({method:'POST',headers:{authorization:'Bearer test-fixture'},body:{items:[advancedItem]}},response);
+ assert.equal(response.code,200);assert.equal(response.body.validated,true);assert.equal(response.body.questions[0].type,adapted.type);assert.equal(response.body.questions[0].bankFallbackFrom,'mc_usage');
+ const blocked=reply();await questionHandler({method:'POST',headers:{authorization:'Bearer test-fixture'},body:{items:[{...advancedItem,allowBankTypeFallback:false}]}},blocked);
+ assert.equal(blocked.code,503);assert.equal(blocked.body.code,'bank_variant_unavailable');assert.equal(authCalls,2);
+}finally{
+ globalThis.fetch=originalFetch;if(originalKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=originalKey;
+}
+console.log('Adaptive bank API verified: exhausted same-type passages switch to unused same-word tasks without any AI request; complete exhaustion returns example-free own-sentence use; base tasks and owner isolation remain intact.');
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
 console.log(`Authored bank verified: ${rows.length} words, 18,540 canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);
+

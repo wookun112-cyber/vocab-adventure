@@ -53,11 +53,30 @@ export function authoredQuestion(item,account,extra=[]){
  // The caller controls old-lesson recovery, but new words are always level matched.
  if(item.firstLearning&&!inTargetBand(w,item.readerLevel))return null;
  const used=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...extra.filter(q=>q.authored?.word===row.word).flatMap(q=>passageKeys(q.context,(q.options||[]).map(o=>o.text)))]);
+ const usedSignatures=new Set([...(item.usedQuestionSignatures||[]),...(item.previousContexts||[]).map(h=>h.signature),...extra.map(q=>q.signature)].filter(Boolean));
+ const normalizeContext=text=>String(text||'').normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
+ const usedContexts=new Set([...(item.previousContexts||[]).map(h=>h.context),...extra.filter(q=>q.authored?.word===row.word).map(q=>q.context)].map(normalizeContext).filter(Boolean));
  const available=row.questions.filter(q=>q.type===item.type);
  let hash=0;for(const ch of String(item.id)+'|'+(item.usedPassageKeys||[]).length)hash=(hash*31+ch.charCodeAt(0))>>>0;
  for(let i=0;i<available.length;i++){
   const q=rawFromSlot(row,available[(hash+i)%available.length],item);
+  // Very short blank sentences do not have a passage fingerprint. Keep their
+  // authored slot and full context in the duplicate check as well. Generic
+  // own-sentence instructions may repeat; the learner supplies the sentence.
+  if(q.type!=='subjective_use'&&(usedSignatures.has(q.signature)||usedContexts.has(normalizeContext(q.context))))continue;
   if(!passageKeys(q.context,q.options.map(o=>o.text)).some(k=>used.has(k)))return q;
+ }
+ return null;
+}
+export function resolveAuthoredQuestion(item,account,extra=[]){
+ const original=authoredQuestion(item,account,extra);
+ if(original)return original;
+ // Only newly appended practice tasks may change type. Base lessons and
+ // interrupted questions keep the task that the learner was already given.
+ if(!item.allowBankTypeFallback||!item.review||item.firstLearning||item.needsCard||item.type==='subjective_use')return null;
+ for(const type of ['subjective_recall','mc_context','mc_usage','subjective_use'].filter(t=>t!==item.type)){
+  const fresh=authoredQuestion({...item,type},account,extra);
+  if(fresh)return {...fresh,bankFallbackFrom:item.type};
  }
  return null;
 }
@@ -82,3 +101,4 @@ export function authoredEntry(plan,learner,account,reserved=[]){
  return {readerLevel:Number(learner.difficulty),supportLevel:plan.supportLevel||0,question:{w:plan.w,type:raw.type,taskDemand:plan.taskDemand,ctx:raw.context,q:raw.prompt,opts:raw.options.map(o=>({t:o.text,ok:o.correct})),acceptedAnswers:raw.acceptedAnswers,showTarget:raw.showTarget,open:raw.type.startsWith('subjective_'),hideWord:!raw.showTarget,label:raw.type==='subjective_recall'?'뜻 보고 떠올리기':raw.type==='subjective_use'?'내 문장 만들기':'뜻과 쓰임',answerForm:raw.answerForm,hints:raw.hints,feedbackCorrect:raw.feedbackCorrect,signature:raw.signature,learningCard:raw.learningCard,authored:raw.authored,semanticGraderRequired:raw.semanticGraderRequired,allowNaturalDerivations:raw.allowNaturalDerivations,validation:raw.validation,bankReaderLevel:Number(learner.difficulty),bankSupportLevel:plan.supportLevel||0}};
 }
 export default function handler(req,res){return res.status(404).json({error:'Not found'})}
+

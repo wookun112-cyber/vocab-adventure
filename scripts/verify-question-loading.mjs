@@ -2,6 +2,9 @@ import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {AUTHORED_OWNER} from '../lib/authored-policy.js';
+import {authoredQuestion,resolveAuthoredQuestion,authoredCurriculum} from '../api/authored-bank.js';
+import {browserQuestion,passageKeys} from '../lib/prepared-plan.js';
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const storage=new Map();
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
@@ -232,3 +235,39 @@ assert.equal(consumeTimeout.run('session'),null);
 assert.equal(consumeTimeout.node('startDaily').disabled,false);
 assert.equal(consumeTimeout.alerts.length,1);
 console.log('Start confirmation verified: an unresolved consumption request cannot leave the start button locked.');
+
+// Bank type fallback is applied to an unprepared adaptive task, preserving the
+// current question and existing records. Unannounced switches are rejected.
+const bankWord=authoredCurriculum(AUTHORED_OWNER).find(w=>w.word==='유려하다');
+const bankItem={id:'1',word:bankWord.word,type:'mc_usage',readerLevel:7.3,band:7,review:true,taskDemand:'advanced',allowBankTypeFallback:true,usedPassageKeys:[]};
+const held=[];
+for(let i=0;i<10;i++){const q=authoredQuestion(bankItem,AUTHORED_OWNER,held);if(!q)break;held.push(q)}
+bankItem.usedPassageKeys=held.flatMap(q=>passageKeys(q.context,q.options.map(o=>o.text)));
+const bankRaw=resolveAuthoredQuestion(bankItem,AUTHORED_OWNER);
+assert.ok(bankRaw&&bankRaw.type!=='mc_usage');
+function adaptiveFixture(allow=true,announced=true){
+ const f=fixture(undefined,AUTHORED_OWNER,new Map(),true);
+ const w={w:bankWord.word,d:bankWord.definition,band:7,cat:'국어',source:'fixed'};
+ const base={id:'0',w,type:'mc_usage',stage:'bridge',review:true,taskDemand:'advanced',needsCard:false};
+ const next={...base,id:'1',remedial:true,practiceOnly:true,allowBankTypeFallback:allow};
+ const current=browserQuestion(held[0],base);
+ const candidate={...browserQuestion(bankRaw,{...next,type:bankRaw.type}),bankFallbackFrom:announced?bankRaw.bankFallbackFrom:null};
+ f.ctx.adaptiveNext=candidate;
+ f.run(`state.users.guest.difficulty=7.3;answerFor=()=>adaptiveNext;
+  globalThis.priorRecords=JSON.stringify(state.users);
+  globalThis.p=createPreparation({key:'bank-test',account:authUser.id,profile:'guest',adopted:true,snapshot:preparationSnapshot('guest'),baseCount:1,plans:${JSON.stringify([base,next])}},${JSON.stringify([[0,current]])});p.pump();`);
+ return {f,current};
+}
+const variedClient=adaptiveFixture();
+assert.equal(variedClient.f.run('requests[0].plans[0].type'),'mc_usage');
+variedClient.f.run('requests[0].resolve()');await flush();
+assert.equal(variedClient.f.run('p.queue.length'),2);assert.equal(variedClient.f.run('p.plans[1].type'),bankRaw.type);assert.equal(variedClient.f.run('p.queue[1].type'),bankRaw.type);
+assert.equal(variedClient.f.run('JSON.stringify(p.queue[0])'),JSON.stringify(variedClient.current));
+assert.equal(variedClient.f.run('JSON.stringify(state.users)'),variedClient.f.run('priorRecords'));
+for(const [allow,announced] of [[false,true],[true,false]]){
+ const rejected=adaptiveFixture(allow,announced);rejected.f.run('requests[0].resolve()');await flush();
+ assert.equal(rejected.f.run('p.queue.length'),1);assert.equal(rejected.f.run('p.plans[1].type'),'mc_usage');assert.ok(rejected.f.run('p.jobs.some(j=>!!j.error)'));
+ assert.equal(rejected.f.run('JSON.stringify(p.queue[0])'),JSON.stringify(rejected.current));
+}
+console.log('Adaptive client verified: explicit same-word bank fallback updates only the next task; the current question and learner records stay unchanged, and unauthorized or unannounced switches are rejected.');
+

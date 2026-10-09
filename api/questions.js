@@ -1,7 +1,7 @@
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 import {LEARNING_TYPES,QUESTION_POLICY,isLearningTarget,sentenceWritingTask} from '../lib/learning-model.js';
-import {authoredQuestion} from './authored-bank.js';
+import {resolveAuthoredQuestion} from './authored-bank.js';
 const TYPES=LEARNING_TYPES;
 const SHOWN_TYPES=['mc_usage','mc_relation','mc_structure','mc_reading','subjective_use'];
 const DOMAINS=['국어','사회','과학','수학·논리','감정·관계','생활'];
@@ -450,13 +450,14 @@ export default async function handler(req,res){
       answerSlot:Math.max(0,Math.min(4,Number(x.answerSlot)||0)),
       supportLevel:Math.max(0,Math.min(3,Number(x.supportLevel)||0)),
       successStreak:Math.max(0,Number(x.successStreak)||0),
-      firstLearning:Boolean(x.firstLearning),review:Boolean(x.review),needsCard:Boolean(x.needsCard),structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),taskDemand:['foundation-review','initial-practice','advanced','standard'].includes(x.taskDemand)?x.taskDemand:'standard',
-      previousContexts:Array.isArray(x.previousContexts)?x.previousContexts.filter(p=>p&&typeof p==='object').slice(-8).map(p=>({context:String(p.context||'').slice(0,1600),options:Array.isArray(p.options)?p.options.slice(0,5).map(o=>String(o).slice(0,500)):[]})):[],
+      firstLearning:Boolean(x.firstLearning),review:Boolean(x.review),needsCard:Boolean(x.needsCard),allowBankTypeFallback:x.allowBankTypeFallback===true,structureNote:String(x.structureNote||'').slice(0,300),stage:String(x.stage||'').slice(0,30),taskDemand:['foundation-review','initial-practice','advanced','standard'].includes(x.taskDemand)?x.taskDemand:'standard',
+      previousContexts:Array.isArray(x.previousContexts)?x.previousContexts.filter(p=>p&&typeof p==='object').slice(-8).map(p=>({signature:String(p.signature||'').slice(0,300),context:String(p.context||'').slice(0,1600),options:Array.isArray(p.options)?p.options.slice(0,5).map(o=>String(o).slice(0,500)):[]})):[],
+      usedQuestionSignatures:Array.isArray(x.usedQuestionSignatures)?x.usedQuestionSignatures.filter(s=>typeof s==='string').slice(-2000):[],
       usedPassageKeys:Array.isArray(x.usedPassageKeys)?x.usedPassageKeys.filter(k=>typeof k==='string').slice(-2000):[]
     })).filter(x=>x.word&&x.definition);
     if(!items.length)return res.status(400).json({error:'No valid items'});
     const questions=[],missing=[];
-    for(const item of items){const q=authoredQuestion(item,user.id,questions);if(q)questions.push(q);else missing.push(item)}
+    for(const item of items){const q=resolveAuthoredQuestion(item,user.id,questions);if(q)questions.push(q);else missing.push(item)}
     if(missing.length&&!process.env.OPENAI_API_KEY)return res.status(503).json({code:'bank_variant_unavailable',error:'아직 사용하지 않은 문제를 더 준비해야 해요. 학습 기록과 입력한 답은 유지됩니다.'});
     for(let i=0;i<missing.length;i+=4){
       const chunk=missing.slice(i,i+4);
@@ -470,3 +471,4 @@ export default async function handler(req,res){
     return res.status(422).json({error:String(e?.message||e).slice(0,1000),failed:e.failed||[]});
   }
 }
+

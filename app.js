@@ -882,8 +882,9 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
      return ({
      id:p.id,type:p.type,word:p.w.w,definition:p.w.d,band:p.w.band||3,readerLevel:Number(state.users[profile].difficulty)||2,domain:apiDomain(p.w.cat),
      example:p.w.example||'',contextSeed:p.contextSeed||'',answerSlot:p.answerSlot,supportLevel:p.supportLevel,
-     successStreak:p.successStreak,firstLearning:p.firstLearning,review:!!p.review,needsCard:!!p.needsCard,structureNote:p.structureNote||'',stage:p.stage||'',taskDemand:p.taskDemand||'standard',
+     successStreak:p.successStreak,firstLearning:p.firstLearning,review:!!p.review,needsCard:!!p.needsCard,allowBankTypeFallback:p.allowBankTypeFallback===true,structureNote:p.structureNote||'',stage:p.stage||'',taskDemand:p.taskDemand||'standard',
      previousContexts:[...(st.problemHistory||[]),...queued].slice(-4),
+     usedQuestionSignatures:[...new Set([...(st.problemHistory||[]),...queued].map(h=>h.signature).filter(Boolean))],
      usedPassageKeys:[...new Set([...(st.usedPassageKeys||[]),...queued.flatMap(q=>passageKeys(q.context,q.options))])]
    })}),
    recent:[...(state.users[profile].recentProblems||[]),...(extraRecent||[])].slice(-40)
@@ -904,7 +905,7 @@ async function fetchValidatedQuestions(plans,extraRecent=[],preparedQuestions=[]
      showTarget:!!q.showTarget,open:q.type.startsWith('subjective_'),hideWord:!q.showTarget,
      opts:(q.options||[]).map(o=>({t:o.text,ok:!!o.correct,reason:o.reason||''})),
      acceptedAnswers:q.acceptedAnswers||[],hints:q.hints||[],feedbackCorrect:q.feedbackCorrect||'',
-     signature:q.signature||'',validation:q.validation||null,authored:q.authored||null,semanticGraderRequired:!!q.semanticGraderRequired,allowNaturalDerivations:q.allowNaturalDerivations||[]
+     signature:q.signature||'',validation:q.validation||null,authored:q.authored||null,bankFallbackFrom:q.bankFallbackFrom||null,semanticGraderRequired:!!q.semanticGraderRequired,allowNaturalDerivations:q.allowNaturalDerivations||[]
    };
  });
 }
@@ -982,6 +983,14 @@ function createPreparation(meta,saved=[]){
        let duplicate=false;
        questions.forEach((q,n)=>{
          const index=missing[n],plan=p.plans[index];
+         if(q.type!==plan.type){
+           const allowed=plan.allowBankTypeFallback===true&&q.bankFallbackFrom===plan.type&&
+             ['mc_context','mc_usage','subjective_recall','subjective_use'].includes(q.type)&&
+             authoredQuestionValid(q,authUser?.id)&&validPreparedQuestion(q,{...plan,type:q.type});
+           if(!allowed)throw new Error('문제 유형 전환 정보를 확인하지 못했습니다.');
+           plan.type=q.type;plan.stage=q.type==='subjective_use'?'use':q.type==='subjective_recall'?'check':'bridge';
+           q.stage=plan.stage;
+         }
          if(!validPreparedQuestion(q,plan))throw new Error('문제 검증 정보를 확인하지 못했습니다.');
          const previous=new Set([...(state.users[p.profile].words[q.w.w]?.usedPassageKeys||[]),...(state.users[p.profile].words[q.w.w]?.problemHistory||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...[...p.ready.values()].filter(prev=>prev.w.w===q.w.w).flatMap(questionPassageKeys)]);
          if(questionPassageKeys(q).some(key=>previous.has(key))){duplicate=true;return}
@@ -1649,3 +1658,4 @@ if('serviceWorker'in navigator){
 renderAll();
 
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else if(session&&['learn','intro'].some(id=>$(id)?.classList.contains('active')))session.clockStarted=Date.now()});
+
