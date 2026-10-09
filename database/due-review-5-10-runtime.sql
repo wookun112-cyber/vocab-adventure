@@ -17,6 +17,31 @@ begin
 end $function$
 ;
 
+-- Separate a recent meaning/recall weakness from incomplete sentence writing.
+CREATE OR REPLACE FUNCTION vocab_private.lower_review_weakness(st jsonb, l jsonb, w text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO ''
+AS $function$
+declare failed_days integer; day text:=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD');
+begin
+ if not vocab_private.review_weakness(st,l,w) then return false;end if;
+ with checks as (
+  select e,i from jsonb_array_elements(coalesce(l->'learningEvidence','[]')) with ordinality a(e,i)
+  where e->>'word'=w and e->>'kind' in ('recognition','recall','transfer')
+   and e->>'date' ~ '^\d{4}-\d{2}-\d{2}$'
+   and e->>'date'>=to_char(day::date-30,'YYYY-MM-DD') and e->>'date'<=day
+ ), recovered as (
+  select coalesce(max(i),0) as i from checks where e->>'success'='true' and e->>'independent'='true'
+ )
+ select count(distinct e->>'date') into failed_days from checks
+ where i>(select i from recovered) and e->>'success'='false' and e->>'firstAttempt'='true';
+ return failed_days>=2;
+end $function$
+;
+REVOKE ALL ON FUNCTION vocab_private.lower_review_weakness(jsonb,jsonb,text) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION vocab_private.review_packet_valid(p jsonb, l jsonb)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -25,7 +50,9 @@ CREATE OR REPLACE FUNCTION vocab_private.review_packet_valid(p jsonb, l jsonb)
 AS $function$
 declare x jsonb; st jsonb; band numeric; lo numeric:=greatest(1,ceil(coalesce((l->>'difficulty')::numeric,2)-1)); hi numeric:=least(9,floor(coalesce((l->>'difficulty')::numeric,2)+1)); near_count integer:=0; lower_count integer:=0; new_count integer:=0; review_count integer:=0;
 begin
- if p->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.4' or jsonb_typeof(p->'plans') is distinct from 'array' then return false;end if;
+ -- Accept the previous worker revision during rollout, with the same stricter
+ -- eligibility. The client only adopts packets bearing its current revision.
+ if not coalesce(p->>'reviewPolicy' in ('due-review-5-10-12.16.4','due-review-5-10-12.16.6'),false) or jsonb_typeof(p->'plans') is distinct from 'array' then return false;end if;
  if jsonb_array_length(p->'plans')=0 then return p#>>'{budget,waitingForReviews}'='true';end if;
  if (select count(distinct v.value#>>'{w,w}') from jsonb_array_elements(p->'plans') v(value))<>jsonb_array_length(p->'plans') then return false;end if;
  for x in select value from jsonb_array_elements(p->'plans') loop
@@ -35,7 +62,7 @@ begin
    if coalesce(p#>>'{budget,additionalPractice}','false')<>'true' and coalesce(st->>'nextReviewAt','')>to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD') then return false;end if;
    if st is null or (coalesce((st->>'seen')::integer,0)=0 and st->>'introducedAt' is null) then return false;end if;
    if band between lo and hi then near_count:=near_count+1;
-   elsif band<lo and vocab_private.review_weakness(st,l,x#>>'{w,w}') and x->>'taskDemand'='foundation-review' then lower_count:=lower_count+1;
+   elsif band between greatest(1,lo-2) and lo-1 and vocab_private.lower_review_weakness(st,l,x#>>'{w,w}') and x->>'taskDemand'='foundation-review' then lower_count:=lower_count+1;
    else return false;end if;
   else
    new_count:=new_count+1;if band not between lo and hi then return false;end if;
@@ -151,7 +178,7 @@ begin
  day:=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD');
  if coalesce(active,'null')='null' and j.payload is not null and
   (j.payload->>'snapshot' is distinct from p_snapshot or
-   j.payload->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.4' or
+   j.payload->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.6' or
    j.payload#>>'{budget,policy}' is distinct from 'daily-5-new-10-review-use-unlimited-12.16.4' or
    j.payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.13' or j.payload->>'selectionPolicy' is distinct from 'target-band-12.9' or
    j.payload->>'plannedFor' is distinct from day or
@@ -200,10 +227,11 @@ begin
  for i in 1..1 loop
   insert into vocab_private.lesson_reserves(user_id,profile,slot) values(p_user,p_profile,i) on conflict(user_id,profile,slot) do nothing;
   update vocab_private.lesson_reserves set id=gen_random_uuid(),capability=gen_random_uuid(),lease=null,status='pending',payload=null,attempts=0,next_attempt=now(),updated_at=now()
-   where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='waiting' and (payload->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.4' or (payload->>'difficulty')::numeric is distinct from (l->>'difficulty')::numeric or coalesce((payload#>>'{budget,waitingStudiedTotal}')::integer,-1)<>(select count(*) from jsonb_each(coalesce(l->'words','{}')) w where coalesce((w.value->>'seen')::integer,0)>0 or w.value->>'introducedAt' is not null))) or (status='ready' and (not vocab_private.reserve_usable(payload,l) or payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.13' or payload->>'selectionPolicy' is distinct from 'target-band-12.9' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
+   where user_id=p_user and profile=p_profile and slot=i and (status='consumed' or (status='waiting' and (payload->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.6' or (payload->>'difficulty')::numeric is distinct from (l->>'difficulty')::numeric or coalesce((payload#>>'{budget,waitingStudiedTotal}')::integer,-1)<>(select count(*) from jsonb_each(coalesce(l->'words','{}')) w where coalesce((w.value->>'seen')::integer,0)>0 or w.value->>'introducedAt' is not null))) or (status='ready' and (not vocab_private.reserve_usable(payload,l) or payload->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.6' or payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.13' or payload->>'selectionPolicy' is distinct from 'target-band-12.9' or abs(coalesce((payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35)));
  end loop;
  perform vocab_private.kick_reserve((select id from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and slot=1));
 end $function$
 ;
+
 
 
