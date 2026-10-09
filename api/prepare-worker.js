@@ -6,6 +6,7 @@ import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passage
 import {hydrateFromBank,withReservedHistory,bankCompatible} from '../lib/question-bank.js';
 import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-bank.js';
 import {AUTHORED_REVISION} from '../lib/authored-policy.js';
+import {sentenceUseQuestion,sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
@@ -14,7 +15,12 @@ export async function rpc(name,args){
  if(!r.ok)throw Error('Preparation storage '+r.status);
  return r.json();
 }
-const generatePrepared=(items,recent,initialFeedback)=>buildValidated(items,recent,{maxAttempts:1,partial:true,initialFeedback});
+const generatePrepared=async(items,recent,initialFeedback)=>{
+ const questions=[],missing=[];
+ for(const item of items){const q=sentenceUseQuestion(item);if(q)questions.push(q);else missing.push(item)}
+ if(missing.length){const generated=await buildValidated(missing,recent,{maxAttempts:1,partial:true,initialFeedback});questions.push(...generated);questions.failed=generated.failed}
+ return questions;
+};
 export function reviewSupply(job,curriculum){
  const supply=authoredAvailability(job.learner,job.account,job.reserved||[]);
  for(const row of curriculum){
@@ -55,6 +61,17 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   if(e)authored.push(e);
  }
  hydrateFromBank(payload,job.learner,[...authored,...(job.bank||[])],job.reserved||[]);
+ const supplied=new Map(payload.ready||[]);
+ for(const [i,plan] of payload.plans.entries()){
+  if(supplied.has(i))continue;
+  const raw=sentenceUseQuestion(generationItems([plan],generationLearner)[0]);
+  if(!raw)continue;
+  const q=browserQuestion(raw,plan);
+  q.bankReaderLevel=Number(job.learner.difficulty)||2;q.bankSupportLevel=plan.supportLevel||0;q.bankPassageKeys=[];
+  if(!sentenceUseQuestionValid(q,plan))throw Error('Invalid sentence-use template');
+  supplied.set(i,q);
+ }
+ payload.ready=[...supplied].sort(([a],[b])=>a-b);
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));
@@ -104,8 +121,8 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
      for(const [i,p] of missing){
       const raw=questions.find(q=>String(q.id)===p.id);
       if(!raw){retry.push([i,p]);continue}
-      if(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation||!raw.validation.checks?.levelDemandFit)throw Error('Unverified prepared question');
       const q=browserQuestion(raw,p);q.bankReaderLevel=Number(job.learner.difficulty)||2;q.bankSupportLevel=p.supportLevel||0;q.bankPassageKeys=passageKeys(q.ctx,q.opts.map(o=>o.t));
+      if(!sentenceUseQuestionValid(q,p)&&(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation||!raw.validation.checks?.levelDemandFit))throw Error('Unverified prepared question');
       const used=new Set([...(generationLearner.words?.[p.w.w]?.usedPassageKeys||[]),...(generationLearner.words?.[p.w.w]?.problemHistory||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
       if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){duplicates=true;feedback[p.id]=['이미 사용한 문장이 중복되었습니다. 이전 문장을 재사용하지 말고 다른 사건으로 새 지문을 작성하세요.','이전 실패 지문: '+q.ctx];retry.push([i,p]);continue}
       ready.set(i,q);

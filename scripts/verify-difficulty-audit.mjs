@@ -1,3 +1,4 @@
+import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,7 +25,7 @@ for(const context of ['무대 감독이 공연을 살피고 있다.','진행자�
  const saved={w:observation,type:'subjective_use',q:'관찰자를 넣어 진행자의 역할을 설명하세요.',ctx:context,hints:['무대를 지켜보는 모습을 써 보세요.'],acceptedAnswers:[]};const frozen=JSON.stringify(saved),shown=presentWrittenQuestion(saved);
  assert.equal(shown.ctx,'');assert.equal(shown.q,'‘관찰자’를 넣어 뜻이 드러나는 문장 하나를 만들어 보세요.');assert.ok(!JSON.stringify(shown).includes('진행자'));assert.ok(!JSON.stringify(shown).includes('무대 감독'));assert.equal(JSON.stringify(saved),frozen);
 }
-const backend=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,console,process,Map,Set,AbortSignal});
+const backend=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,console,process,Map,Set,AbortSignal});
 vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),backend);
 vm.runInContext(fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export default /g,'').replace(/export /g,''),backend);
 const run=s=>vm.runInContext(s,backend);

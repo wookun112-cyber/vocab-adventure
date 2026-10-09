@@ -36,7 +36,7 @@ const store=async(name,args)=>{assert.equal(name,'save_preparation');checkpoints
 const ready=await prepare(job,'key',generate,store);
 assert.equal(ready.ready.length,15);
 assert.equal(maxFlight,3);
-assert.equal(calls,4);
+assert.equal(calls,3,'fixed own-sentence instructions reduce live generation groups');
 assert.equal(JSON.stringify(learner),before);
 assert.equal(checkpoints.at(-1).p_payload.ready.length,15);
 assert.ok(checkpoints.every(c=>!c.p_failed));
@@ -55,7 +55,7 @@ assert.equal(calls,0);
 const partial={...ready,ready:ready.ready.slice(0,8)};
 const resumed=await prepare({...job,payload:partial},'key',generate,store);
 assert.equal(resumed.ready.length,15);
-assert.equal(calls,2);
+assert.equal(calls,1,'remaining own-sentence tasks are supplied without a generation group');
 // A single rejected question does not discard the three validated peers.
 await assert.rejects(prepare(job,'key',async items=>items.filter(i=>i.id!=='2').map(answer),store),/Incomplete validated preparation/);
 const almostReady=checkpoints.at(-1).p_payload;
@@ -97,9 +97,9 @@ const repaired=await prepare({...job,learner:interruptedLearner,payload:interrup
 assert.equal(JSON.stringify(repaired.plans),frozenPlans);
 assert.equal(JSON.stringify(repaired.ready.slice(0,8)),firstEight);
 assert.equal(repaired.ready.length,15);
-assert.equal(recoveryIds.length,7);assert.ok(recoveryIds.every(id=>Number(id)>=8));
+assert.equal(recoveryIds.length,interrupted.plans.slice(8).filter(p=>p.type!=='subjective_use'||p.needsCard).length);assert.ok(recoveryIds.every(id=>Number(id)>=8));
 assert.equal(repaired.snapshot,learnerSnapshot(interruptedLearner));
-console.log('Recovery worker verified: original plans and eight accepted questions retained across changed progress; only seven missing IDs generated.');
+console.log('Recovery worker verified: original plans and eight accepted questions retained across changed progress; fixed sentence tasks supplied locally and only missing passage tasks generated.');
 
 for(const phrase of CONTEXT_ONLY_EXPRESSIONS){
  assert.equal(isLearningTarget(phrase),false);assert.equal(isLearningTarget(phrase.replaceAll(' ','')),false);

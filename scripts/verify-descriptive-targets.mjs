@@ -1,3 +1,4 @@
+import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,7 +25,7 @@ assert.ok(packet.plans.every(p=>p.w.w!==phrase.w));assert.equal(JSON.stringify(l
 // spelling variants; independent targets survive the same AI response.
 const replies=[{word:'상징적장치',definition:'설명구',band:3,domain:'국어'},{word:'새로운 설명 구절',definition:'설명구',band:3,domain:'국어'},{word:'성찰적관점',definition:'설명구',band:3,domain:'국어'},{word:'상징',definition:core.d,band:3,domain:'국어'},{word:'시행착오',definition:'실패하며 방법을 찾음',band:3,domain:'국어'}];
 let prompt='';
-const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,console,process:{env:{OPENAI_API_KEY:'test'}},Map,Set,fetch:async(url,opts)=>{if(url.includes('/auth/'))return {ok:true};prompt=JSON.parse(opts.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({words:replies})})}}});
+const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,console,process:{env:{OPENAI_API_KEY:'test'}},Map,Set,fetch:async(url,opts)=>{if(url.includes('/auth/'))return {ok:true};prompt=JSON.parse(opts.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({words:replies})})}}});
 vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),ctx);
 vm.runInContext(fs.readFileSync(new URL('../api/vocab.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ',''),ctx);
 let response;

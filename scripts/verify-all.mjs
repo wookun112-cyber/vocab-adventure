@@ -1,5 +1,5 @@
 import {spawnSync} from 'node:child_process';
-const checks=['static-boundary','review-window','authored-bank','unlimited-usage','credit-block','difficulty-audit','descriptive-targets','written-tasks','state-protection','session-levels','lesson-resume','server-preparation','question-loading','question-batches','exploration','learning-model','customization','passage-design','question-bank','level-fit'];
+const checks=['static-boundary','review-window','sentence-use','authored-bank','unlimited-usage','credit-block','difficulty-audit','descriptive-targets','written-tasks','state-protection','session-levels','lesson-resume','server-preparation','question-loading','question-batches','exploration','learning-model','customization','passage-design','question-bank','level-fit'];
 for(const check of checks){
  const result=spawnSync(process.execPath,[new URL('verify-'+check+'.mjs',import.meta.url).pathname],{stdio:'inherit'});
  if(result.error)throw result.error;
