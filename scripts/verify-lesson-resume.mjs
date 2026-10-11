@@ -1,3 +1,4 @@
+import * as studyHistory from '../lib/study-history.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
@@ -18,7 +19,7 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
   return nodes.get(id);
  };
  let run;const deferred=[];let blockWrites=false;
- const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Date,Math,Map,Set,Promise,
+ const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Date,Math,Map,Set,Promise,
   document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>node('element-'+Math.random())},window:{scrollTo(){}},alert:x=>alerts.push(x),
   localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)},
   fetch:()=>{calls.generation++;throw Error('Resuming saved base questions must not use AI')},

@@ -1,3 +1,4 @@
+import * as studyHistory from '../lib/study-history.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -44,7 +45,7 @@ for(const fixture of fixtures){
  assert.equal(usageLessonComplete([word],[...history,{word:word.w,type:'subjective_use',credit:1,contextSuccess:true}]),true);
  // Run the actual app pump, with generation/network deliberately unavailable.
  const nodes=new Map(),storage=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:'',style:{},classList:{add(){},remove(){},toggle(){}}});return nodes.get(id)};
- const context=vm.createContext({AbortSignal,AUTHORED_OWNER,AUTHORED_REVISION,authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Map,Set,Date,Math,Promise,setTimeout,clearTimeout,
+ const context=vm.createContext({studyHistory,AbortSignal,AUTHORED_OWNER,AUTHORED_REVISION,authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Map,Set,Date,Math,Promise,setTimeout,clearTimeout,
   document:{getElementById:node,querySelectorAll:()=>[]},window:{scrollTo(){}},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   createClient:()=>({}),fetch:()=>{throw Error('Question network must not run')},alert(){}});
  vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),context);

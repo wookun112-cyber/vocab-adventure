@@ -1,3 +1,4 @@
+import * as studyHistory from '../lib/study-history.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
@@ -7,7 +8,7 @@ import vm from 'node:vm';
 const nodes=new Map();
 const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:'',classList:{add(){},remove(){},toggle(){}},style:{}});return nodes.get(id)};
 const alerts=[];
-const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
+const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
  document:{getElementById:node,querySelectorAll:()=>[]},window:{scrollTo(){}},
  localStorage:{setItem(){}},alert:m=>alerts.push(m),fetch:()=>{throw new Error('unexpected network')},
  createClient:()=>({auth:{getSession:async()=>({data:{session:{access_token:'test'}}})}})
@@ -42,7 +43,7 @@ assert.equal(run('catalogCalls[0]'),3);
 assert.equal(run('JSON.stringify(state.users)'),run('records'));
 console.log('Curriculum verified: cached words avoid network wait; depleted bands refill; records preserved.');
 // A comparison situation is valid; asking learners to compare two target words is not.
-const backend=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process,Map,Set,AbortSignal});
+const backend=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process,Map,Set,AbortSignal});
 const api=fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8')
  .replace(/^import[^\n]+\n/gm,'').replace('export async function buildValidated','async function buildValidated')
  .replace('export default async function handler','async function handler');
@@ -146,7 +147,7 @@ await assert.rejects(back('buildValidated([item],[])'),/sentence_use_has_fixed_a
 console.log('New materials verified: whole inflected Korean forms, teaching-card verification gates, open sentence-use tasks, no fixed word-only sentence answers.');
 // The server enforces the distinction even if the model accidentally reports recall.
 let sentPrompt='';
-const grader=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,process:{env:{}},fetch:async(url,options)=>{sentPrompt=JSON.parse(options.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({score:.5,result:'△',normalizedAnswer:'협력',contextSuccess:true,targetRecall:true,feedback:'문장으로 써 보세요.',correctionApplied:false,correctionNote:''})})}}});
+const grader=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,process:{env:{}},fetch:async(url,options)=>{sentPrompt=JSON.parse(options.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({score:.5,result:'△',normalizedAnswer:'협력',contextSuccess:true,targetRecall:true,feedback:'문장으로 써 보세요.',correctionApplied:false,correctionNote:''})})}}});
 vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace('export async function runGrade','async function runGrade').replace('export default async function handler','async function handler'),grader);
 const sentenceGrade=await vm.runInContext("runGrade({question:'내 문장을 써요.',answer:'협력',targetWord:'협력',definition:'힘을 합침',taskType:'sentence_use'})",grader);
 assert.equal(sentenceGrade.targetRecall,false);assert.equal(sentenceGrade.contextSuccess,false);assert.ok(sentPrompt.includes('단어만 썼으면 0'));

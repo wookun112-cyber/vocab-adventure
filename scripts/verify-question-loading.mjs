@@ -1,3 +1,4 @@
+import * as studyHistory from '../lib/study-history.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
@@ -13,7 +14,7 @@ const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(seed,account='family',shared=storage,server=false){
  const nodes=new Map(),alerts=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:id,classList:{add(){},remove(){},toggle(){}},style:{}});return nodes.get(id)};
- const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
+ const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
    document:{getElementById:node,querySelectorAll:()=>[]},window:{scrollTo(){}},
    localStorage:{setItem:(k,v)=>shared.set(k,v),getItem:k=>shared.get(k)||null,removeItem:k=>shared.delete(k)},
    alert:m=>alerts.push(m),fetch:()=>{throw Error('Unexpected network')},

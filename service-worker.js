@@ -1,5 +1,5 @@
-const CACHE='vocab-adventure-v12-16-8';
-const ASSETS=['/','/index.html','/app.css','/app.js','/lib/learning-model.js','/lib/daily-practice.js','/lib/authored-policy.js','/lib/sentence-use-template.js','/lib/local-delivery.js','/manifest.webmanifest','/version.json','/icon.svg'];
+const CACHE='vocab-adventure-v12-16-9';
+const ASSETS=['/','/index.html','/app.css','/app.js','/lib/learning-model.js','/lib/daily-practice.js','/lib/authored-policy.js','/lib/sentence-use-template.js','/lib/local-delivery.js','/lib/study-history.js','/manifest.webmanifest','/version.json','/icon.svg'];
 
 self.addEventListener('install',e=>{
   self.skipWaiting();
@@ -39,6 +39,7 @@ self.addEventListener('fetch',e=>{
     u.pathname==='/lib/authored-policy.js'||
     u.pathname==='/lib/sentence-use-template.js'||
     u.pathname==='/lib/local-delivery.js'||
+    u.pathname==='/lib/study-history.js'||
     u.pathname==='/app.css'||
     u.pathname==='/version.json'||
     e.request.mode==='navigate';

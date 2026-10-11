@@ -1,3 +1,4 @@
+import * as studyHistory from '../lib/study-history.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
@@ -13,7 +14,7 @@ function fixture(){
   if(!nodes.has(id)){const classes=new Set();nodes.set(id,{value:'',textContent:'',innerHTML:'',style:{},classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle(x,v){if(v??!classes.has(x))classes.add(x);else classes.delete(x)}}})}
   return nodes.get(id);
  };
- const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:(_k,account)=>({maybeSingle:()=>new Promise(resolve=>reads.push({account,resolve}))})}),upsert:async row=>{writes.push(clone(row));return {error:null}}})})});
+ const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:(_k,account)=>({maybeSingle:()=>new Promise(resolve=>reads.push({account,resolve}))})}),upsert:async row=>{writes.push(clone(row));return {error:null}}})})});
  const run=x=>vm.runInContext(x,ctx);
  run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);
  run('ensureCatalog=async()=>{};warmDailyQuestions=()=>{};curriculumStatus=async()=>null');
