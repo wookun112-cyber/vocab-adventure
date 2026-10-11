@@ -43,6 +43,19 @@ main{padding:18px 18px 100px}.screen{display:none}.screen.active{display:block}.
 
 .home-stars{display:block;color:#947035;font-size:12px;margin-top:9px;line-height:1.5}.earned-stars{display:inline-block;margin-top:8px;color:#856128;background:#fff3cd;border-radius:10px;padding:7px 10px}.dress-stage{overflow:hidden}
 
+/* Put the answer and the explanation above the supporting notes. */
+#feedback{padding:18px;border:1px solid #dce5f2}
+.feedback-result{display:block;font-size:20px;line-height:1.5;color:#243a54}
+.feedback-word{margin:8px 0 16px;color:#536477;font-size:14px;line-height:1.65}
+.feedback-answer,.feedback-explanation{padding:16px 18px;margin-top:12px;border:1px solid;border-left-width:5px;border-radius:14px;overflow-wrap:anywhere}
+.feedback-answer{background:#f1eaff;border-color:#b7a0e3;color:#49327c}
+.feedback-explanation{background:#eaf3ff;border-color:#99bce7;color:#24466f}
+.feedback-answer h3,.feedback-explanation h3{font-size:18px;font-weight:900;margin:0 0 8px;line-height:1.4}
+.feedback-answer p{margin:0;font-size:clamp(20px,3.5vw,24px);font-weight:900;line-height:1.65;white-space:pre-line}
+.feedback-explanation p{margin:0;font-size:18px;font-weight:600;line-height:1.75;white-space:pre-line}
+.feedback-details{display:grid;gap:8px;margin-top:14px}.feedback-details small{font-size:12px;line-height:1.65}.feedback-details .earned-stars{justify-self:start;margin-top:0}
+@media(max-width:480px){#feedback{padding:14px}.feedback-answer,.feedback-explanation{padding:14px}.feedback-explanation p{font-size:17px}}
+
 /* Date-based study records. */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .study-history{margin-bottom:20px}.study-history h3{margin:5px 0 0}.study-history-filters{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:18px 0 10px}.study-history-filters label{display:grid;gap:6px;font-size:13px;font-weight:700;color:#536477}.study-history-filters input,.study-history-filters select{width:100%;min-width:0;box-sizing:border-box;border:1px solid #dce5f0;border-radius:12px;background:#f7faff;padding:11px;color:#26354a;font:inherit}.study-history-periods{gap:8px;margin:0 0 16px}.study-history-periods .ghost{font-size:13px;padding:8px 12px}.study-history-summary{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;background:#edf3ff;border-radius:16px;padding:16px}.study-history-summary strong{display:block;font-size:22px;color:#425adb}.study-history-summary span{display:block;font-size:12px;color:#65758b;margin-top:5px}.study-history-note{font-size:12px;line-height:1.65}.study-history-scroll{overflow-x:auto}.study-history-table{border-collapse:collapse;width:100%;min-width:590px;text-align:left;font-size:13px}.study-history-table th,.study-history-table td{padding:15px 10px;border-bottom:1px solid #e5ecf5;vertical-align:middle}.study-history-table thead{color:#64758a;background:#f8faff}.study-history-table tbody th{color:#283b54;white-space:nowrap}.study-history-table strong{font-size:19px;color:#445dde}.study-history-table small{display:block;font-size:11px;color:#718198;margin-top:5px;white-space:nowrap}.study-history-pages{margin-top:14px}.study-history-pages .ghost{padding:9px 16px;font-size:13px}.study-history-pages button:disabled{opacity:.35}.study-history-empty{padding:28px 0;text-align:center}.study-history-warning{font-size:13px;color:#ae4b38}

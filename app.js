@@ -1340,7 +1340,12 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  const full=credit>=.99&&!hintUsed,partial=credit>0&&!full;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
- $('feedback').innerHTML='<strong>'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><br>'+escapeHtml(q.w.w)+' · '+escapeHtml(q.w.d)+'<br>'+escapeHtml(feedback)+(rec.stars?'<br><small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(full&&contextSuccess&&!targetRecall&&!q.showTarget?'<br><small>문맥에 맞는 답이에요. 목표 단어를 떠올렸는지는 따로 기록해요.</small>':'')+(practiceOnly&&full?'<br><small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<br><small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ const sentenceUse=q.type==='subjective_use',correctOption=q.opts?.find(o=>o.ok);
+ const example=sentenceUse?String(meta.exampleAnswer||((credit>=1&&contextSuccess)?normalized||$('answer').value:'')||q.learningCard?.example||q.w.example||'').trim():'';
+ const answerLabel=sentenceUse?(example?'자연스러운 표현 예':'목표 어휘의 뜻'):'정답';
+ const answerText=sentenceUse?(example||q.w.d):(correctOption?.t||q.answerForm||q.w.w);
+ const notes=(rec.stars?'<small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(full&&contextSuccess&&!targetRecall&&!q.showTarget?'<small>문맥에 맞는 답이에요. 목표 단어를 떠올렸는지는 따로 기록해요.</small>':'')+(practiceOnly&&full?'<small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
+ $('feedback').innerHTML='<strong class="feedback-result">'+(full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><p class="feedback-word"><strong>'+escapeHtml(q.w.w)+'</strong> · '+escapeHtml(q.w.d)+'</p><section class="feedback-answer"><h3>'+answerLabel+'</h3><p>'+escapeHtml(answerText)+'</p></section><section class="feedback-explanation"><h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>'+(notes?'<div class="feedback-details">'+notes+'</div>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  checkpointSession();localSave();cloudSave();
 }
@@ -1416,7 +1421,7 @@ async function gradeCurrent(dontKnow){
    const result=credit===1?'○':credit===.5?'△':'×';
    applyResult(q,result,j.feedback||q.feedbackCorrect||'문맥에 맞는지 확인했어요.',j.normalizedAnswer||answer,{
      credit,contextSuccess:Boolean(j.contextSuccess),targetRecall:q.type==='subjective_use'?false:Boolean(j.targetRecall),
-     independent:credit===1&&!hintUsed,hintUsed,revealed:false
+     independent:credit===1&&!hintUsed,hintUsed,revealed:false,exampleAnswer:j.exampleAnswer
    });
  }catch(e){
    if(session===active&&state.selected===active.profile){if(checkpointSession()){localSave();cloudSave()}alert(e.code==='ai_credit_exhausted'?creditMessage+' 입력한 문장은 화면에 남아 있습니다.':'채점을 완료하지 못했어요. 답은 기록하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 채점해 주세요.');}

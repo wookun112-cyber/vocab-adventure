@@ -75,6 +75,7 @@ ${question}
 반드시 JSON만 출력:
 {"normalizedAnswer":"...","result":"◎|○|△|?|×","score":0.0,"contextSuccess":false,"targetRecall":false,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`;
 
+  const feedbackPrompt=prompt+`\n채점 뒤 보여주는 표현 예: exampleAnswer는 sentence_use에서만 작성하고 다른 과제는 빈 문자열로 반환합니다. 문장 사용이 정확하면 학생 문장을 그대로 쓰되 명백한 오타만 바로잡으세요. 부족한 문장이면 목표 어휘의 뜻과 쓰임이 드러나도록 자연스럽게 다듬은 짧은 문장 하나를 주세요. 단어만 쓴 답은 현재 어휘력 수준에 맞는 평범한 생활 문장 하나로 예를 들어 주세요. 새로운 역사·과학 사실이나 숨은 조건은 추가하지 마세요. 이 예문은 학생 답을 채점한 뒤에 보여줄 참고 자료이며, 학생의 normalizedAnswer·score·contextSuccess를 예문에 맞춰 바꾸지 마세요.`;
   const scoreSchema=contextMode
     ?{type:'number',enum:[0,0.5,1]}
     :{type:'number',minimum:0,maximum:1};
@@ -87,10 +88,11 @@ ${question}
       contextSuccess:{type:'boolean'},
       targetRecall:{type:'boolean'},
       feedback:{type:'string'},
+      exampleAnswer:{type:'string'},
       correctionApplied:{type:'boolean'},
       correctionNote:{type:'string'}
     },
-    required:['normalizedAnswer','result','score','contextSuccess','targetRecall','feedback','correctionApplied','correctionNote'],
+    required:['normalizedAnswer','result','score','contextSuccess','targetRecall','feedback','exampleAnswer','correctionApplied','correctionNote'],
     additionalProperties:false
   };
   const model=process.env.OPENAI_MODEL||'gpt-6-luna';
@@ -99,7 +101,7 @@ ${question}
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
     signal:AbortSignal.timeout(22000),
     body:JSON.stringify({
-      model,reasoning:{effort:'low'},max_output_tokens:500,input:prompt,
+      model,reasoning:{effort:'low'},max_output_tokens:500,input:feedbackPrompt,
       text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
     })
   });
@@ -111,6 +113,7 @@ ${question}
     graded.targetRecall=false;graded.contextSuccess=graded.score===1;
   }
   if(recallMode)graded.contextSuccess=graded.score===1;
+  graded.exampleAnswer=sentenceMode&&typeof graded.exampleAnswer==='string'?graded.exampleAnswer.trim().slice(0,400):'';
   return {...graded,model};
 }
 export default async function handler(req,res){

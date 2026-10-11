@@ -77,7 +77,7 @@
     <div id="voiceRow" class="row hidden" style="margin-top:10px"><button id="mic" class="voice">🎤 음성 입력</button><small id="voiceHint" class="muted">발음은 채점하지 않아요.</small></div>
     <div class="actions" style="margin-top:12px"><button id="submit" class="primary hidden">채점하기</button><button id="hint" class="secondary">힌트</button><button id="dontKnow" class="ghost">모르겠어</button></div>
     <div id="hintBox" class="feedback hidden"></div>
-    <div id="feedback" class="feedback hidden"></div>
+    <div id="feedback" class="feedback hidden" role="status" aria-live="polite" aria-atomic="true"></div>
     <button id="next" class="primary wide hidden" style="margin-top:12px">다음 문제</button>
   </div>
 </section>
