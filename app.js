@@ -4,7 +4,7 @@ import {DELIVERY_POLICY,localPracticeQuestion} from './lib/local-delivery.js';
 import * as studyHistory from './lib/study-history.js';
 import {DAILY_POLICY,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -49,7 +49,7 @@ const SEED_WORDS=[
 const BAND_NAMES={1:'기초 1',2:'기초 2',3:'기초 3',4:'확장 4',5:'확장 5',6:'확장 6',7:'심화 7',8:'심화 8',9:'심화 9'};
 const bandLabel=v=>BAND_NAMES[clamp(Math.round(Number(v)||3),1,9)];
 const FIXED_CACHE=new Map();
-let WORDS=[...SEED_WORDS];
+let WORDS=[...SEED_WORDS,...Object.entries(ESSENTIAL_VOCABULARY).filter(([w])=>!SEED_WORDS.some(s=>s.w===w)).map(([w,x])=>({w,...x,source:'fixed'}))];
 const byWord=w=>WORDS.find(x=>x.w===w);
 const freshWord=()=>({
  seen:0,correct:0,wrong:0,assisted:0,streak:0,days:[],level:1,mastered:false,last:null,types:{},confusions:[],

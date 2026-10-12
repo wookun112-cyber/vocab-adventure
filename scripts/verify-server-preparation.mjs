@@ -121,9 +121,10 @@ console.log('Core vocabulary verified: descriptive phrases and spacing variants 
 
 for(const w of ["등비중항","소인수분해","삼각형의 합동","사동 표현","절대온도"])assert.equal(isLearningTarget(w),false);
 for(const w of ["수렴","편차","확인하다"])assert.equal(isLearningTarget(w,"수학·논리",7),true);
-for(const w of ["나누다","비교"])assert.equal(isLearningTarget(w,"수학·논리",7),false,'retired stage-one words cannot return through a stale high band');
+for(const w of ["나누다","비교하다"])assert.equal(isLearningTarget(w,"수학·논리",7),false,'unreviewed retired words cannot return through a stale high band');
+assert.equal(isLearningTarget('비교','수학·논리',7),true,'reviewed core noun is reclassified to the canonical stage two');
 assert.equal(isLearningTarget("새로운 수학 공식","수학·논리",7),false);
-assert.equal(isLearningTarget("간섭","과학",7),false);assert.equal(isLearningTarget("새로운 전문 과학명","과학",7),false);
+assert.equal(isLearningTarget("간섭","과학",7),true,'canonical general sense replaces the excluded specialist sense');assert.equal(isLearningTarget("새로운 전문 과학명","과학",7),false);
 
 for(const w of ['꾸미는 말','부사','주어','자외선 차단'])assert.equal(isLearningTarget(w),false);
 

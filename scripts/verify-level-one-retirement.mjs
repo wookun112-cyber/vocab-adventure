@@ -11,8 +11,9 @@ import {sentenceUseQuestion,sentenceUseQuestionValid,SENTENCE_USE_REVISION} from
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {DAILY_POLICY} from '../lib/daily-practice.js';
 
-assert.equal(model.RETIRED_LEVEL_ONE_WORDS.length,563);
-assert.equal(new Set(model.RETIRED_LEVEL_ONE_WORDS).size,563);
+assert.equal(model.RETIRED_LEVEL_ONE_WORDS.length,553);
+assert.equal(new Set(model.RETIRED_LEVEL_ONE_WORDS).size,553);
+assert.equal(model.LEVEL_ONE_RETIREMENT_ARCHIVE_WORDS.length,563);
 for(const word of model.RETIRED_LEVEL_ONE_WORDS)assert.equal(model.isLearningTarget(word,'생활',8),false,'stale high-band caches cannot revive retired words');
 assert.equal(model.isLearningTarget({w:'새기초어',band:1,cat:'생활'}),false);
 assert.equal(model.isRecordedVocabulary('아기'),true,'retired genuine words remain valid historical answers');
@@ -71,4 +72,4 @@ const fresh=await prepare({id:'fresh',account:authored.AUTHORED_OWNER,profile:'t
 assert.equal(fresh.newWords.length,5);assert.ok(fresh.plans.every(p=>p.w.band===2&&!model.isRetiredVocabulary(p.w)));assert.equal(generation,0);assert.equal(JSON.stringify(learner),before);
 const reserve=await prepare({id:'reserve',account:authored.AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner,curriculum:[],catalog:{}},'test',async()=>{throw Error('Unexpected AI')},async()=>true);
 assert.equal(reserve.plans.length,0);assert.equal(reserve.budget.waitingForReviews,true,'a retired-only history waits for real eligible learning');
-console.log('Level-one retirement verified: 563 names, unseen band-one targets, stale caches, authored/templates, eight-level overview, five bank-backed stage-two new words, safe empty reserve, no generation, unchanged answered receipts/word stats/grades, incomplete-task resume, archived drafts, idempotency, historical time/accuracy and no false completion.');
+console.log('Level-one retirement verified: 553 retired names and 10 reclassified core words, unseen band-one targets, stale caches, authored/templates, eight-level overview, five bank-backed stage-two new words, safe empty reserve, no generation, unchanged answered receipts/word stats/grades, incomplete-task resume, archived drafts, idempotency, historical time/accuracy and no false completion.');

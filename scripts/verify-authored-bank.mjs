@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
 import {archive} from '../api/authored-bank-data.js';
-import {AUTHORED_OWNER,AUTHORED_REVISION,authoredQuestionValid} from '../lib/authored-policy.js';
+import {essentialArchive} from '../lib/server/essential-bank-data.js';
+import {AUTHORED_OWNER,AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,authoredQuestionValid} from '../lib/authored-policy.js';
 import {authoredStats,authoredCurriculum,authoredQuestion,resolveAuthoredQuestion,authoredEntry,authoredAvailability} from '../api/authored-bank.js';
 import questionHandler from '../api/questions.js';
 import {prepare} from '../api/prepare-worker.js';
 import {bankCompatible} from '../lib/question-bank.js';
 import {calibratedWord,isLearningTarget,isRetiredVocabulary} from '../lib/learning-model.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
-const rows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')));
-assert.equal(rows.length,1854);assert.equal(authoredStats.questions,18540);
+const originals=JSON.parse(gunzipSync(Buffer.from(archive,'base64'))),supplement=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64'))),changed=new Set(supplement.map(r=>r.word));
+const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement];
+assert.equal(originals.length,1854);assert.equal(rows.length,1927);assert.equal(authoredStats.questions,19270);
 assert.equal(authoredStats.independentReviewComplete,false);
 assert.deepEqual(authoredCurriculum('another-account'),[]);
 assert.equal(authoredQuestion({word:'의견',readerLevel:2,type:'mc_context'},'another-account'),null);
@@ -25,7 +27,7 @@ for(const row of rows){
    const entry=authoredEntry(plan,learner,AUTHORED_OWNER);
    assert.ok(entry);const q=entry.question;
    assert.ok(authoredQuestionValid(q,AUTHORED_OWNER));assert.equal(authoredQuestionValid(q,'another-account'),false);
-   assert.equal(q.validation.aiVerified,false);assert.equal(q.authored.revision,AUTHORED_REVISION);
+   assert.equal(q.validation.aiVerified,false);assert.equal(q.authored.revision,row.revision||AUTHORED_LEGACY_REVISION);
    assert.equal(q.w.d,row.definition);
    if(q.opts.length)assert.equal(q.opts.findIndex(o=>o.ok),answerSlot);
    if(q.type==='subjective_recall')assert.equal((q.ctx.match(/＿＿＿＿/g)||[]).length,1);
@@ -119,5 +121,5 @@ try{
 console.log('Adaptive bank API verified: exhausted same-type passages switch to unused same-word tasks without any AI request; complete exhaustion returns example-free own-sentence use; base tasks and owner isolation remain intact.');
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
-console.log(`Authored bank verified: ${rows.length} words, 18,540 canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);
+console.log(`Authored bank verified: ${rows.length} words, ${authoredStats.questions.toLocaleString()} canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);
 

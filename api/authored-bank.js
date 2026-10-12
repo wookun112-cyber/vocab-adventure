@@ -1,14 +1,18 @@
 import {gunzipSync} from 'node:zlib';
 import {archive} from './authored-bank-data.js';
-import {AUTHORED_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
+import {essentialArchive} from '../lib/server/essential-bank-data.js';
+import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
 import {QUESTION_POLICY,calibratedWord,inTargetBand,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
 import {passageKeys} from '../lib/prepared-plan.js';
 // Inflate and index exactly once per worker instance, never per question.
-const rows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
+const originalRows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
+const supplementalRows=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64')).toString('utf8'));
+const supplementalWords=new Set(supplementalRows.map(r=>r.word));
+const rows=[...originalRows.filter(r=>!supplementalWords.has(r.word)),...supplementalRows];
 const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));
-export const authoredStats=Object.freeze({revision:AUTHORED_REVISION,words:byWord.size,questions:rows.reduce((n,w)=>n+w.questions.length,0),independentReviewComplete:false});
+export const authoredStats=Object.freeze({revision:AUTHORED_REVISION,words:byWord.size,questions:rows.reduce((n,w)=>n+w.questions.length,0),supplementalWords:supplementalRows.length,supplementalQuestions:supplementalRows.reduce((n,w)=>n+w.questions.length,0),independentReviewComplete:false});
 export function authoredCurriculum(account){return account===AUTHORED_OWNER?rows.filter(w=>!isRetiredVocabulary(w)).map(({questions,...w})=>({...w,definition:w.definition})):[]}
 // These existing accepted alternatives preserve answer credit, but they are
 // distinct lexemes rather than an inflection of the requested target.
@@ -21,10 +25,11 @@ const recallAlternatives={
  '비판하다':['지적'],'성취하다':['달성','이루','이뤘'],'수줍다':['쑥스러','쑥스럽']
 };
 function targetRecallAnswer(row,q,text){
- if((recallAlternatives[row.word]||[]).some(prefix=>text.startsWith(prefix)))return false;
+ if((row.acceptedAlternatives||[]).includes(text)||(recallAlternatives[row.word]||[]).some(prefix=>text.startsWith(prefix)))return false;
  return text===row.word||text===q.answer||q.allowNaturalInflections===true;
 }
 function rawFromSlot(row,q,item){
+ const revision=row.revision||AUTHORED_LEGACY_REVISION;
  const own=q.type==='subjective_use';
  const task=own?sentenceWritingTask(row.word):null;
  const options=structuredClone(q.options||[]);
@@ -39,11 +44,11 @@ function rawFromSlot(row,q,item){
  const prompt=own?task.prompt:(recall&&clue!==q.prompt?[clue,q.prompt].join('\n'):q.prompt);
  return {id:String(item.id),targetMeaning:row.definition,type:q.type,prompt,context:ctx,showTarget:own||q.type==='mc_usage',options,
   answerForm:row.word,acceptedAnswers:own?[]:(q.acceptedAnswers||[]).map(x=>typeof x==='string'?{text:x,credit:1,targetRecall:targetRecallAnswer(row,q,x),rationale:'작성 은행의 인정 답안'}:x),
-  hints:own?task.hints:['지문에서 중요한 뜻을 찾아보세요.','보기나 뜻 설명이 상황에 맞는지 다시 읽어 보세요.'],feedbackCorrect:q.explanation||'',signature:AUTHORED_REVISION+':'+row.word+':'+q.slot,
+  hints:own?task.hints:['지문에서 중요한 뜻을 찾아보세요.','보기나 뜻 설명이 상황에 맞는지 다시 읽어 보세요.'],feedbackCorrect:q.explanation||'',signature:revision+':'+row.word+':'+q.slot,
   learningCard:item.needsCard&&!own?{definition:row.definition,example:row.example||'',nonExample:'비슷한 말이라도 핵심 뜻이 다르면 이 단어를 쓰지 않아요.',structureNote:row.contrast||''}:null,
-  authored:{revision:AUTHORED_REVISION,owner:AUTHORED_OWNER,word:row.word,slot:q.slot,band:effective.band,sourceBand:row.band},
+  authored:{revision,owner:AUTHORED_OWNER,word:row.word,slot:q.slot,band:effective.band,sourceBand:row.band},
   semanticGraderRequired:own,allowNaturalDerivations:q.grading?.allowNaturalDerivations||[],
-  validation:{policy:QUESTION_POLICY,source:'authored_bank',sourceRevision:AUTHORED_REVISION,deterministic:true,schemaChecked:true,aiVerified:false,independentReviewComplete:false}};
+  validation:{policy:QUESTION_POLICY,source:'authored_bank',sourceRevision:revision,deterministic:true,schemaChecked:true,aiVerified:false,independentReviewComplete:false}};
 }
 export function authoredQuestion(item,account,extra=[]){
  if(account!==AUTHORED_OWNER)return null;
