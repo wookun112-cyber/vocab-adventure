@@ -1514,6 +1514,7 @@ async function nextQuestion(){
 }
 function levelAdjustmentLabel(c){
  const a=c.lastLevelAdjustment;
+ if(a?.policy==='parent-difficulty-adjustment-12.16.11')return '보호자 설정 · 출제 난이도 '+a.from.toFixed(1)+' → '+a.to.toFixed(1)+' · '+a.reason;
  if(a?.policy!==SESSION_LEVEL_POLICY)return '';
  const change=a.change>0?'+'+a.change.toFixed(1):a.change<0?a.change.toFixed(1):'유지';
  return '등급 '+a.from.toFixed(1)+' → '+a.to.toFixed(1)+' ('+change+')'+(a.score==null?'':' · 회차 평가 '+a.score+'%')+' · '+a.reason;
