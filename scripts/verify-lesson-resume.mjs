@@ -5,12 +5,12 @@ import * as authoredPolicy from '../lib/authored-policy.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {DAILY_POLICY} from '../lib/daily-practice.js';
+import {DAILY_POLICY,MINIMUM_STUDY_POLICY} from '../lib/daily-practice.js';
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const clone=value=>JSON.parse(JSON.stringify(value));
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(local=new Map(),cloud=new Map(),account='family'){
- const nodes=new Map(),alerts=[],calls={reads:0,consumes:0,generation:0,writes:[]};
+ const nodes=new Map(),alerts=[],calls={reads:0,consumes:0,generation:0,topups:0,writes:[]};
  const node=id=>{
   if(!nodes.has(id)){
    const classes=new Set();
@@ -22,7 +22,10 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
  const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Date,Math,Map,Set,Promise,
   document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>node('element-'+Math.random())},window:{scrollTo(){}},alert:x=>alerts.push(x),
   localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)},
-  fetch:()=>{calls.generation++;throw Error('Resuming saved base questions must not use AI')},
+  fetch:url=>{
+   if(url==='/api/study-topups'){calls.topups++;return Promise.resolve({ok:true,json:async()=>({policy:MINIMUM_STUDY_POLICY,level:run('child().difficulty'),targets:[],exhausted:true})})}
+   calls.generation++;throw Error('Resuming saved base questions must not use AI');
+  },
   createClient:()=>({
    auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},
    from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>{calls.reads++;return {data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null}}})}),upsert:async row=>{
