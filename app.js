@@ -487,6 +487,8 @@ const freshChild=name=>({
 });
 const initial=()=>({v:5,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성'),guest:freshChild('게스트')},updatedAt:Date.now()});
 let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null,hintLevel=0,introIndex=0;
+let wordbookView='levels',vocabularyFilter={band:0,query:'',status:'all',page:0};
+let vocabularyIndex={account:null,rows:[],loaded:false,loading:false,error:'',task:null};
 let reportHistoryFilter={from:'',to:'',mode:'study'},reportHistoryPage=0;
 let loadedAccount=null,authEpoch=0,authLoadTask=null;
 const canSaveLearning=()=>!!authUser&&loadedAccount===authUser.id;
@@ -1570,8 +1572,90 @@ function renderStudySummary(){
  if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';
 }
 function renderWordbook(){
+ $('vocabularyOverview')?.classList.toggle('hidden',wordbookView!=='levels');
+ $('learnedWordbook')?.classList.toggle('hidden',wordbookView!=='learned');
+ document.querySelectorAll('[data-wordbook-view]').forEach(b=>{const selected=b.dataset.wordbookView===wordbookView;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected))});
+ if(wordbookView==='levels')renderVocabularyOverview();
  const c=child(),arr=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&(c.words[w.w]?.seen||0)>0).sort((a,b)=>((c.words[b.w]?.wrong||0)-(c.words[a.w]?.wrong||0))||((c.words[b.w]?.seen||0)-(c.words[a.w]?.seen||0)));
  $('wordList').innerHTML=arr.length?arr.map(w=>{const s=hydrateWordState(c.words[w.w]);return '<div class="item row between"><div><strong>'+w.w+'</strong><br><small>'+w.d+'</small><br><small>문맥 이해 '+(s.contextSuccess||0)+' · 목표어 직접 회상 '+(s.targetRecall||0)+' · 오답 '+(s.wrong||0)+'</small><br><small>도움 없이 '+(s.independentCorrect||0)+'회 · 직접 회상 '+(s.independentRecallDays?.length||0)+'일 · 다음 복습 '+(s.nextReviewAt||'미정')+'</small></div><span class="tag">Lv.'+s.level+(masteryConfirmed(s)?' 장기 확인':s.mastered?' 이전 숙달':' 연습 중')+'</span></div>'}).join(''):'<div class="card muted">아직 학습 기록이 없어요.</div>';
+}
+// Browsing uses a separate, read-only index: it never adds targets or learning evidence.
+function normalizeVocabularyIndex(rows){
+ const words=new Map();
+ for(const row of rows){
+  const w=calibratedWord({w:String(row.word||'').trim(),d:String(row.definition||'').trim(),band:Number(row.band),cat:String(row.domain||'')});
+  if(row.quality_status==='rejected'||!w.d||!Number.isInteger(w.band)||w.band<1||w.band>9||!isLearningTarget(w.w,w.cat,w.band)||words.has(w.w))continue;
+  words.set(w.w,w);
+ }
+ return [...words.values()].sort((a,b)=>a.band-b.band||a.w.localeCompare(b.w,'ko'));
+}
+async function loadVocabularyIndex(refresh=false){
+ if(!canSaveLearning())return;
+ const account=authUser.id;
+ if(vocabularyIndex.account!==account)vocabularyIndex={account,rows:[],loaded:false,loading:false,error:'',task:null};
+ const index=vocabularyIndex;
+ if(index.task)return index.task;
+ if(index.loaded&&!refresh)return;
+ index.loading=true;index.error='';renderVocabularyOverview();
+ const task=Promise.resolve().then(async()=>{
+  try{
+   const signal=AbortSignal.timeout(15000),pageSize=500;
+   const page=(from,to,count)=>sb.from('curriculum_words').select('id,word,definition,band,domain',count?{count:'exact'}:{}).neq('quality_status','rejected').order('id',{ascending:true}).range(from,to).abortSignal(signal);
+   const first=await page(0,pageSize-1,true);
+   if(first.error)throw first.error;
+   if(!Number.isInteger(first.count)||first.count<0)throw new Error('Missing vocabulary count');
+   const pages=[];
+   for(let from=pageSize;from<first.count;from+=pageSize)pages.push(page(from,Math.min(from+pageSize-1,first.count-1),false));
+   const rest=await Promise.all(pages);
+   const failed=rest.find(r=>r.error);if(failed)throw failed.error;
+   const rows=[...(first.data||[]),...rest.flatMap(r=>r.data||[])];
+   if(rows.length!==first.count||new Set(rows.map(r=>r.id)).size!==first.count)throw new Error('Vocabulary list changed during download');
+   if(vocabularyIndex!==index||authUser?.id!==account||!canSaveLearning())return;
+   index.rows=normalizeVocabularyIndex(rows);index.loaded=true;
+  }catch{
+   if(vocabularyIndex===index&&authUser?.id===account)index.error='어휘 목록을 불러오지 못했어요. 인터넷 연결을 확인하고 ‘목록 새로고침’을 눌러 주세요.';
+  }finally{
+   index.loading=false;index.task=null;
+   if(vocabularyIndex===index&&authUser?.id===account)renderVocabularyOverview();
+  }
+ });
+ index.task=task;return task;
+}
+function vocabularyProgress(word,learner){
+ const st=learner.words?.[word.w]||{},retained=masteryConfirmed(st),used=(Array.isArray(st.useDays)&&st.useDays.length>0)||Number(st.useSuccess)>0;
+ const studied=retained||used||Number(st.seen)>0||!!st.introducedAt;
+ return {studied,used,retained,status:retained?'retained':used?'use':studied?'studied':'new',label:retained?'장기 기억 확인':used?'문장 사용 확인':studied?'학습 중':'아직 학습 전'};
+}
+function renderVocabularyOverview(){
+ if(!$('vocabularyLevels'))return;
+ const c=child(),index=vocabularyIndex,rows=index.account===authUser?.id?index.rows:[],ready=index.loaded&&index.account===authUser?.id;
+ const groups=Array.from({length:9},(_,i)=>({band:i+1,words:rows.filter(w=>w.band===i+1)}));
+ const target=groups.filter(g=>inTargetBand({band:g.band},c.difficulty)).map(g=>g.band);
+ const range=target.length===1?target[0]+'단계':target[0]+'~'+target.at(-1)+'단계';
+ $('vocabularyCurrent').textContent=c.name+' · 현재 난이도 '+Number(c.difficulty).toFixed(1)+' · 기본 출제 범위 '+range;
+ const studied=rows.filter(w=>vocabularyProgress(w,c).studied).length,used=rows.filter(w=>vocabularyProgress(w,c).used).length;
+ $('vocabularySummary').textContent=ready?'등록 어휘 '+rows.length.toLocaleString()+'개 · 학습한 단어 '+studied+'개 · 문장 사용 확인 '+used+'개':'등록된 전체 어휘를 단계별로 살펴보세요.';
+ $('vocabularyLoadStatus').textContent=index.error+(index.error&&ready?' 이전에 불러온 목록을 표시하고 있어요.':'')||(index.loading?'어휘 목록을 불러오는 중…':'각 단계의 단어 수와 학습한 단어 수예요. 파란 표시가 현재 출제 범위입니다.');
+ $('vocabularyReload').disabled=index.loading;
+ $('vocabularyLevels').innerHTML=groups.map(g=>{
+  const count=g.words.length,learned=g.words.filter(w=>vocabularyProgress(w,c).studied).length,selected=vocabularyFilter.band===g.band,near=target.includes(g.band);
+  return `<button class="vocabulary-level ${g.band<=3?'foundation':g.band<=6?'extension':'advanced'}${selected?' selected':''}" data-vocabulary-band="${g.band}" aria-pressed="${selected}" aria-label="${g.band}단계${ready?' 어휘 '+count+'개, 학습 '+learned+'개':''}${near?', 현재 출제 범위':''}"><span class="vocabulary-level-head"><strong>${g.band}<small>단계</small></strong><span>${g.band<=3?'기초':g.band<=6?'확장':'심화'}</span></span><b>${ready?count.toLocaleString()+'개':'—'}</b><small>${ready?'학습 '+learned+'개':'목록 확인 중'}</small><p>${ready?(count?g.words.slice(0,3).map(w=>escapeHtml(w.w)).join(' · '):'등록된 어휘 없음'):'&nbsp;'}</p><span class="vocabulary-range${near?' current':''}">${near?'현재 출제 범위':'&nbsp;'}</span></button>`;
+ }).join('');
+ $('vocabularyListTitle').textContent=vocabularyFilter.band?vocabularyFilter.band+'단계 전체 어휘':'전체 어휘';
+ $('vocabularyAll').setAttribute?.('aria-pressed',String(!vocabularyFilter.band));
+ const query=vocabularyFilter.query.normalize('NFKC').trim().toLocaleLowerCase('ko'),status=vocabularyFilter.status;
+ const filtered=rows.filter(w=>{
+  const p=vocabularyProgress(w,c);
+  return (!vocabularyFilter.band||w.band===vocabularyFilter.band)&&(!query||(w.w+' '+w.d).normalize('NFKC').toLocaleLowerCase('ko').includes(query))&&(status==='all'||status==='studied'&&p.studied||status==='new'&&!p.studied||status==='use'&&p.used||status==='retained'&&p.retained);
+ });
+ const pageSize=60,pages=Math.max(1,Math.ceil(filtered.length/pageSize));vocabularyFilter.page=clamp(vocabularyFilter.page,0,pages-1);
+ const start=vocabularyFilter.page*pageSize,visible=filtered.slice(start,start+pageSize);
+ $('vocabularyResultCount').textContent=ready?(filtered.length?'조건에 맞는 '+filtered.length.toLocaleString()+'개 · '+(start+1)+'~'+(start+visible.length)+'번째':'조건에 맞는 단어가 없어요.'):(index.error?'목록을 다시 불러와 주세요.':'목록을 불러오면 단어가 표시됩니다.');
+ $('vocabularyWords').innerHTML=visible.map(w=>{
+  const p=vocabularyProgress(w,c),st=c.words?.[w.w]||{};
+  return `<details class="vocabulary-entry"><summary><span class="vocabulary-word-name"><strong>${escapeHtml(w.w)}</strong><small>${w.band}단계</small></span><span class="vocabulary-progress ${p.status}">${p.label}</span></summary><div class="vocabulary-definition"><p>${escapeHtml(w.d)}</p><small>${escapeHtml(w.cat||'어휘')} · 난이도 ${w.band}단계</small>${p.studied&&st.nextReviewAt?`<small>다음 복습 ${escapeHtml(st.nextReviewAt)}</small>`:''}</div></details>`;
+ }).join('');
+ $('vocabularyPages').innerHTML=ready&&filtered.length?`<button class="ghost" data-vocabulary-page="-1"${vocabularyFilter.page===0?' disabled':''}>이전</button><small>${vocabularyFilter.page+1} / ${pages}페이지</small><button class="ghost" data-vocabulary-page="1"${vocabularyFilter.page>=pages-1?' disabled':''}>다음</button>`:'';
 }
 function renderStudyHistory(profile){
  const host=$('studyHistory');if(!host)return;
@@ -1609,7 +1693,7 @@ function renderReport(){
  <div class="card"><h3>매 회차 등급 조정</h3><p>${escapeHtml(levelAdjustmentLabel(c)||'다음 학습을 마치면 이 회차의 등급 변화를 보여 드려요.')}</p><p class="muted">현재 수준에 맞는 어휘 문항의 부분 점수까지 반영해, 학습을 마칠 때마다 출제 난이도와 순위 등급을 함께 조정해요. 하루에 여러 번 학습해도 매번 적용됩니다. 20개 평가 문항 기준: 90% 이상 +0.2, 80~89% +0.1, 60~79% 유지, 40~59% −0.1, 40% 미만 −0.2. 짧게 마친 회차는 활동 수에 비례해 반영하며, 힌트는 부분 점수로 계산해요. 이 등급은 게임용 학습 추정값이며 공인 어휘력 점수나 실제 학년 점수가 아닙니다.</p></div>`;
 }
 
-function show(id){if(!['learn','intro'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else if(session&&!session.clockStarted&&!document.hidden)session.clockStarted=Date.now();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home')renderResumeButton();if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook')renderWordbook();if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
+function show(id){if(!['learn','intro'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else if(session&&!session.clockStarted&&!document.hidden)session.clockStarted=Date.now();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home')renderResumeButton();if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
 async function login(){setMsg('로그인 중…');const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)setMsg('로그인 실패: 이메일과 비밀번호를 확인해 주세요.',true)}
 async function signup(){const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<6)return setMsg('이메일과 6자 이상의 비밀번호를 입력해 주세요.',true);setMsg('계정을 만드는 중…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg(data.session?'계정이 만들어졌어요.':'확인 메일을 보냈어요. 메일의 확인 링크를 눌러 주세요.')}
 async function resendConfirm(){const email=$('email').value.trim();if(!email)return setMsg('먼저 이메일을 입력해 주세요.',true);setMsg('확인 메일을 다시 보내는 중…');const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg('새 확인 메일을 보냈어요. 가장 최근 메일의 링크를 눌러 주세요.')}
@@ -1624,6 +1708,9 @@ async function applyAuth(sessionObj){
  const epoch=++authEpoch;loadedAccount=null;authUser=nextUser;
  $('authGate').classList.remove('hidden');
  if(previousAccount!==nextUser?.id){
+  vocabularyIndex={account:nextUser?.id||null,rows:[],loaded:false,loading:false,error:'',task:null};
+  vocabularyFilter={band:0,query:'',status:'all',page:0};
+  if($('vocabularySearch'))$('vocabularySearch').value='';if($('vocabularyStatus'))$('vocabularyStatus').value='all';
   for(const p of preparations.values())p.cancel();preparations.clear();
   if(session?.preparation)session.preparation.cancel();session=null;
   state=mergeState(initial());
@@ -1639,6 +1726,7 @@ async function applyAuth(sessionObj){
    const loaded=await cloudLoad(account,epoch);
    if(!loaded||epoch!==authEpoch||!canSaveLearning())return;
    $('authGate').classList.add('hidden');setMsg('');
+   if($('wordbook').classList.contains('active')&&wordbookView==='levels')loadVocabularyIndex();
    $('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');
    setTimeout(async()=>{
     if(epoch!==authEpoch||!canSaveLearning())return;
@@ -1680,6 +1768,13 @@ $('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();awa
 document.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>{pauseLearningClock();checkpointSession();if(session?.preparation)session.preparation.cancel();session=null;state.selected=b.dataset.profile;localSave();cloudSave();renderAll();show('home');warmDailyQuestions()});
 document.querySelectorAll('[data-report-profile]').forEach(b=>b.onclick=()=>{reportProfile=b.dataset.reportProfile;reportHistoryPage=0;renderReport()});
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
+document.querySelectorAll('[data-wordbook-view]').forEach(b=>b.onclick=()=>{wordbookView=b.dataset.wordbookView;renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()});
+$('vocabularyLevels')?.addEventListener('click',e=>{const b=e.target.closest('[data-vocabulary-band]');if(!b)return;vocabularyFilter.band=Number(b.dataset.vocabularyBand);vocabularyFilter.page=0;renderVocabularyOverview()});
+if($('vocabularySearch'))$('vocabularySearch').oninput=()=>{vocabularyFilter.query=$('vocabularySearch').value;vocabularyFilter.page=0;renderVocabularyOverview()};
+if($('vocabularyStatus'))$('vocabularyStatus').onchange=()=>{vocabularyFilter.status=$('vocabularyStatus').value;vocabularyFilter.page=0;renderVocabularyOverview()};
+if($('vocabularyAll'))$('vocabularyAll').onclick=()=>{vocabularyFilter.band=0;vocabularyFilter.page=0;renderVocabularyOverview()};
+if($('vocabularyReload'))$('vocabularyReload').onclick=()=>loadVocabularyIndex(true);
+$('vocabularyPages')?.addEventListener('click',e=>{const b=e.target.closest('[data-vocabulary-page]');if(!b||b.disabled)return;vocabularyFilter.page+=Number(b.dataset.vocabularyPage);renderVocabularyOverview()});
 $('startDaily').onclick=()=>buildSession('daily');$('startReview').onclick=()=>buildSession('review');$('levelTest').onclick=()=>buildSession('level');
 $('submit').onclick=()=>gradeCurrent(false);$('hint').onclick=showHint;$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('introNext').onclick=nextIntro;
 if($('finishEarly')){$('finishEarly').textContent='잠시 쉬기';$('finishEarly').onclick=()=>{if(!session)return;if(session.mode==='level'){finishSession();return}pauseLearningClock();checkpointSession();localSave();cloudSave();show('home');renderResumeButton()}};$('mic').onclick=startVoice;
