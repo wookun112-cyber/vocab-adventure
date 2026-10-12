@@ -9,7 +9,7 @@ import {buildDailyPlan,usageLessonComplete,usageCompleted,nextUsagePlan,DAILY_PO
 import {studyBudget,learningDay,updateLearningLevels} from '../lib/learning-model.js';
 import {makePreparedPlan,browserQuestion} from '../lib/prepared-plan.js';
 const day=learningDay(),fresh=Array.from({length:5},(_,i)=>({w:'새어휘'+i,d:'일을 함께 살펴보는 뜻',band:2,cat:'국어'}));
-const reviews=Array.from({length:10},(_,i)=>({w:'복습어휘'+i,d:'생각이나 행동을 나타내는 뜻',band:i%3===0?1:2,cat:'국어'}));
+const reviews=Array.from({length:10},(_,i)=>({w:'복습어휘'+i,d:'생각이나 행동을 나타내는 뜻',band:2,cat:'국어'}));
 const learner={difficulty:2,words:Object.fromEntries(reviews.map(w=>[w.w,{seen:1,correct:0,wrong:1,streak:0,introducedAt:'2026-09-01',nextReviewAt:day}])),recentProblems:[]};
 const original=JSON.stringify(learner),plans=buildDailyPlan(fresh,reviews,w=>learner.words[w]||{},2);
 assert.equal(plans.length,15);assert.equal(new Set(plans.map(p=>p.w.w)).size,15);assert.equal(plans.filter(p=>p.needsCard).length,5);assert.equal(plans.filter(p=>p.review).length,10);

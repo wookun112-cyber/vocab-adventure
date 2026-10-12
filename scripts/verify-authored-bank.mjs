@@ -6,7 +6,7 @@ import {authoredStats,authoredCurriculum,authoredQuestion,resolveAuthoredQuestio
 import questionHandler from '../api/questions.js';
 import {prepare} from '../api/prepare-worker.js';
 import {bankCompatible} from '../lib/question-bank.js';
-import {calibratedWord,isLearningTarget} from '../lib/learning-model.js';
+import {calibratedWord,isLearningTarget,isRetiredVocabulary} from '../lib/learning-model.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 const rows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')));
 assert.equal(rows.length,1854);assert.equal(authoredStats.questions,18540);
@@ -17,6 +17,7 @@ for(const word of ['근거자료','공공재원','공공임대주택','여론조
 let tested=0;
 for(const row of rows){
  const w=calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain});
+ if(isRetiredVocabulary(w)){assert.equal(authoredQuestion({word:row.word,type:'mc_usage',readerLevel:2,review:true},AUTHORED_OWNER),null);continue}
  const learner={difficulty:w.band,words:{}};
  for(const task of row.questions){
   for(const answerSlot of task.type.startsWith('mc_')?[0,4]:[0]){
@@ -34,10 +35,10 @@ for(const row of rows){
   }
  }
 }
-const recall=authoredQuestion({id:'7',word:'마르다',readerLevel:1,type:'subjective_recall',review:true},AUTHORED_OWNER);
-assert.ok(recall.acceptedAnswers.filter(a=>a.text!=='마르다').every(a=>a.targetRecall===true));
+const recall=authoredQuestion({id:'7',word:'능숙하다',readerLevel:3,type:'subjective_recall',review:true},AUTHORED_OWNER);
+assert.ok(recall.acceptedAnswers.filter(a=>a.text!=='능숙하다').every(a=>a.targetRecall===true));
 assert.equal(authoredQuestion({word:'열심히',readerLevel:7.4,type:'mc_context',firstLearning:true},AUTHORED_OWNER),null);
-for(const word of ['묻다','기르다','의논하다','달성하다']){const q=authoredQuestion({id:'7',word,readerLevel:3,type:'subjective_recall',review:true},AUTHORED_OWNER);for(const a of q.acceptedAnswers)if(/질문|물어보|^키|상의|이루|이뤘|성취/.test(a.text)){assert.equal(a.credit,1);assert.equal(a.targetRecall,false)}}
+for(const word of ['의논하다','달성하다']){const q=authoredQuestion({id:'7',word,readerLevel:3,type:'subjective_recall',review:true},AUTHORED_OWNER);for(const a of q.acceptedAnswers)if(/질문|물어보|^키|상의|이루|이뤘|성취/.test(a.text)){assert.equal(a.credit,1);assert.equal(a.targetRecall,false)}}
 const cardWord=authoredCurriculum(AUTHORED_OWNER).find(r=>r.word==='회복');assert.ok(cardWord.example.includes('회복'));
 for(const difficulty of [1,2,3,7.4,8]){
  const learner={difficulty,words:{},levelTestCompleted:true};const before=JSON.stringify(learner);let calls=0;
@@ -59,7 +60,7 @@ const refill=await prepare({id:'latest-level',lease:'test',account:AUTHORED_OWNE
 assert.equal(refill.ready.length,refill.plans.length);assert.equal(refill.budget.waitingForReviews,refill.plans.length===0);assert.ok(refill.ready.length<=10);assert.ok(refill.plans.filter(p=>p.w.band<2).length<=Math.floor(refill.plans.filter(p=>p.w.band>=2).length/4));assert.equal(refill.difficulty,2.2);assert.equal(refill.reserveSlot,1);
 // Exhausting a supplied type retains the due vocabulary and switches to an
 // unused verified type. A paused task must instead keep its original type.
-const target=authoredCurriculum(AUTHORED_OWNER).find(r=>r.band===1&&isLearningTarget(r.word,r.domain,r.band));
+const target=authoredCurriculum(AUTHORED_OWNER).find(r=>r.band===2&&isLearningTarget(r.word,r.domain,r.band));
 const dueLearner={difficulty:1.7,words:{[target.word]:{seen:3,wrong:1,streak:0,nextReviewAt:'2020-01-01'}}};
 const usagePlan={id:'0',w:calibratedWord({w:target.word,d:target.definition,band:target.band,cat:target.domain}),type:'mc_usage',stage:'bridge',review:true,taskDemand:'standard',supportLevel:0,answerSlot:0};
 const exhausted=[];

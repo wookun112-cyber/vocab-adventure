@@ -32,16 +32,15 @@ export default async function handler(req,res){
     const body=req.body||{};
     const count=Math.max(12,Math.min(30,Number(body.count)||24));
     const mode=body.mode==='diagnostic'?'diagnostic':'daily';
-    const band=Math.max(1,Math.min(9,Math.round(Number(body.band)||3)));
+    const band=Math.max(2,Math.min(9,Math.round(Number(body.band)||3)));
     const exclude=Array.isArray(body.exclude)?body.exclude.filter(x=>typeof x==='string').slice(-500):[];
     const distribution=mode==='diagnostic'
-      ? '1~9단계가 모두 포함되도록 각 단계에서 비슷한 수로 고르게 뽑으세요.'
-      : '중심 단계는 '+band+'단계('+bandNames[band]+')입니다. 약 65%는 '+band+'단계, 20%는 한 단계 쉬운 어휘, 15%는 한 단계 어려운 어휘로 구성하세요.';
+      ? '2~9단계가 모두 포함되도록 각 단계에서 비슷한 수로 고르게 뽑으세요.'
+      : '중심 단계는 '+band+'단계('+bandNames[band]+')입니다. 약 65%는 '+band+'단계, 20%는 '+Math.max(2,band-1)+'단계, 15%는 '+Math.min(9,band+1)+'단계로 구성하세요.';
     const prompt='한국어 어휘 학습 앱의 교육과정용 어휘 데이터 편집자입니다.\n'
       +'대상 범위는 초등 1학년부터 고등학교 3학년까지입니다.\n'
       +'이번 작업은 '+(mode==='diagnostic'?'진단평가용':'일일 학습용')+' 새 어휘 '+count+'개를 만드는 것입니다.\n\n'
       +'난이도 단계:\n'
-      +'1 = 초등 1~2학년 핵심 생활·기초 학습어\n'
       +'2 = 초등 3~4학년 교과·독해 핵심어\n'
       +'3 = 초등 5~6학년 교과·추론·추상어\n'
       +'4 = 중학교 1학년 국어·사회·과학 독해 핵심어\n'
@@ -63,7 +62,7 @@ export default async function handler(req,res){
       +'- example은 자연스러운 한 문장 예시입니다.\n'
       +'- confusion은 실제로 헷갈리기 쉬운 다른 단어 하나가 있을 때만 넣고, 없으면 빈 문자열입니다.\n'
       +'- contrast는 confusion과의 차이를 한 문장으로 설명하고, confusion이 없으면 빈 문자열입니다.\n'
-      +'- band는 반드시 1~9의 정수입니다.\n\n'
+      +'- 1단계 어휘는 학습 대상에서 삭제되었으므로 만들지 마세요. band는 반드시 2~9의 정수입니다.\n\n'
       +'제외 단어:\n'+exclude.join(', ')+'\n\n'
       +'정확히 '+count+'개의 서로 다른 단어를 반환하세요.';
 
@@ -79,7 +78,7 @@ export default async function handler(req,res){
             properties:{
               word:{type:'string'},
               definition:{type:'string'},
-              band:{type:'integer',minimum:1,maximum:9},
+              band:{type:'integer',minimum:2,maximum:9},
               domain:{type:'string',enum:['국어','사회','과학','수학·논리','감정·관계','생활']},
               confusion:{type:'string'},
               contrast:{type:'string'},

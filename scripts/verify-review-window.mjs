@@ -44,7 +44,7 @@ const ranked=selectLevelReviews(rankingWords,rankingLearner,10,'2026-10-08',{ava
 assert.deepEqual(ranked.map(w=>w.w),['오래된약점','최근약점','뜻만아는말','문장도아는말']);
 assert.equal(selectLevelReviews(rankingWords,rankingLearner,10,'2026-10-08',{includeNotDue:true}).at(-1).w,'아직복습전');
 for(const difficulty of [1,1.7,2,2.5,3,3.8,4,4.9,5,5.5,6,6.9,7.4,8,8.8,9]){
- const range=targetBandRange(difficulty),pool=Array.from({length:15},(_,i)=>word('수준어'+i,range.min));
+ const range=targetBandRange(difficulty),pool=Array.from({length:15},(_,i)=>word('수준어'+i,Math.max(2,range.min)));
  if(range.min>1)pool.push(...Array.from({length:8},(_,i)=>word('약점어'+i,range.min-1)));
  const c={difficulty,words:Object.fromEntries(pool.map(w=>[w.w,{seen:3,wrong:2,streak:0,nextReviewAt:'2026-10-08'}])),learningEvidence:pool.flatMap(w=>meaningErrors(w.w))};
  const picked=selectLevelReviews(pool,c,30,'2026-10-08'),lower=picked.filter(w=>w.band<range.min);
@@ -68,7 +68,7 @@ for(const index of [0,1,19,64]){
  assert.equal(migrated.completionPolicy,DAILY_POLICY);assert.equal(migrated.reviewPolicy,REVIEW_POLICY);assert.deepEqual(migrated.results,legacy.results);assert.deepEqual(new Map(migrated.ready).get(index),ready[index][1]);assert.equal(migrated.pendingAnswer,legacy.pendingAnswer);
  assert.equal(migrated.deferredReview.items[0].reason,'prior_deferred');assert.equal(migrated.deferredReview.originalTarget,100);assert.ok(migrated.baseWords.filter(w=>!migrated.newWords.includes(w.w)).length<=10);assert.equal(applyPendingReviewPolicy(migrated,learner),migrated);
 }
-const authored=authoredCurriculum(AUTHORED_OWNER),simple=authored.filter(w=>w.band===1).slice(0,22),high=authored.filter(w=>calibratedWord({w:w.word,band:w.band}).band===7&&isLearningTarget(w.word,w.domain,w.band)).slice(0,6);
+const authored=authoredCurriculum(AUTHORED_OWNER),simple=authored.filter(w=>w.band===2&&isLearningTarget(w.word,w.domain,w.band)).slice(0,22),high=authored.filter(w=>calibratedWord({w:w.word,band:w.band}).band===7&&isLearningTarget(w.word,w.domain,w.band)).slice(0,6);
 const beginner={difficulty:1.8,words:Object.fromEntries(simple.map(w=>[w.word,{seen:1,wrong:0,streak:0}]))};
 const novice=await prepare({id:'low',account:AUTHORED_OWNER,profile:'test',learner:beginner,curriculum:[],catalog:{},kind:'reserve',slot:1},'local',async()=>{throw Error('Unexpected AI')},async()=>true);assert.equal(novice.plans.length,10);assert.equal(novice.ready.length,10);
 const advanced={difficulty:7.4,words:Object.fromEntries([...simple,...high].map(w=>[w.word,{seen:1,wrong:w.band===1?2:0,streak:0}]))};

@@ -1,7 +1,7 @@
 import {gunzipSync} from 'node:zlib';
 import {archive} from './authored-bank-data.js';
 import {AUTHORED_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
-import {QUESTION_POLICY,calibratedWord,inTargetBand,sentenceWritingTask} from '../lib/learning-model.js';
+import {QUESTION_POLICY,calibratedWord,inTargetBand,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
 import {passageKeys} from '../lib/prepared-plan.js';
 // Inflate and index exactly once per worker instance, never per question.
 const rows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
@@ -9,7 +9,7 @@ const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));
 export const authoredStats=Object.freeze({revision:AUTHORED_REVISION,words:byWord.size,questions:rows.reduce((n,w)=>n+w.questions.length,0),independentReviewComplete:false});
-export function authoredCurriculum(account){return account===AUTHORED_OWNER?rows.map(({questions,...w})=>({...w,definition:w.definition})):[]}
+export function authoredCurriculum(account){return account===AUTHORED_OWNER?rows.filter(w=>!isRetiredVocabulary(w)).map(({questions,...w})=>({...w,definition:w.definition})):[]}
 // These existing accepted alternatives preserve answer credit, but they are
 // distinct lexemes rather than an inflection of the requested target.
 const recallAlternatives={
@@ -49,6 +49,7 @@ export function authoredQuestion(item,account,extra=[]){
  if(account!==AUTHORED_OWNER)return null;
  const row=byWord.get(item.word);if(!row)return null;
  const w=calibratedWord({w:row.word,band:row.band});
+ if(isRetiredVocabulary(w))return null;
  if(!item.review&&!inTargetBand(w,item.readerLevel)&&!item.firstLearning)return null;
  // The caller controls old-lesson recovery, but new words are always level matched.
  if(item.firstLearning&&!inTargetBand(w,item.readerLevel))return null;

@@ -127,15 +127,15 @@ assert.equal(run("wordState('새표제어').streak"),2);
 console.log('Legacy flow verified: no pre-answer definition; same-day repetitions preserve scores without inflating mastery or review intervals.');
 
 // New learning types retain strict pre-publication checks and accept whole inflected forms.
-back(`item={id:'1',type:'subjective_context',word:'맑다',answerSlot:0,needsCard:true};
- sample={...sample,type:item.type,showTarget:false,answerForm:'맑았다',context:'비가 그치고 구름이 걷혔어요. 오늘 하늘은 맑았다. 멀리 있는 산도 잘 보였어요.',learningCard:{definition:'흐리거나 탁하지 않다',example:'흙이 가라앉자 물이 맑아졌어요.',nonExample:'흙탕물은 탁해서 맑다고 하지 않아요.',structureNote:''},acceptedAnswers:[{text:'맑다',credit:1},{text:'맑았다',credit:1}],hints:['구름이 없는 하늘을 생각해요.','멀리 잘 보이는 까닭을 생각해요.']};
+back(`item={id:'1',type:'subjective_context',word:'능숙하다',band:3,answerSlot:0,needsCard:true};
+ sample={...sample,type:item.type,showTarget:false,answerForm:'능숙했다',context:'민수는 매일 실험을 연습했어요. 실험 도구를 다루는 데 능숙했다. 친구들이 민수에게 도움을 청했어요.',learningCard:{definition:'어떤 일에 익숙하고 잘하다',example:'오래 연습한 수아는 현미경을 다루는 데 능숙했어요.',nonExample:'처음 다루어서 자꾸 실수하면 아직 능숙하다고 하지 않아요.',structureNote:''},acceptedAnswers:[{text:'능숙하다',credit:1},{text:'능숙했다',credit:1}],hints:['오랫동안 연습한 모습을 생각해요.','일을 익숙하게 다루는 뜻을 떠올려요.']};
  flags={...flags,valid:true,noAnswerLeak:true,coherentSituation:true,learningCardAccurate:true,issues:[],acceptedAnswers:sample.acceptedAnswers};
  ask=async(prompt,schema,name)=>name==='validated_vocab_questions'?{questions:[sample]}:{reviews:[flags]};`);
-back("flags.acceptedAnswers=[{text:'맑았다',credit:1,rationale:'자연스러운 전체 활용형'}]");
+back("flags.acceptedAnswers=[{text:'능숙했다',credit:1,rationale:'자연스러운 전체 활용형'}]");
 const inflected=await back('buildValidated([item],[])');
-assert.ok(inflected[0].context.includes('하늘은 ＿＿＿＿.'));
-assert.equal(inflected[0].answerForm,'맑았다');
-assert.equal(inflected[0].learningCard.example,'흙이 가라앉자 물이 맑아졌어요.');
+assert.ok(inflected[0].context.includes('다루는 데 ＿＿＿＿.'));
+assert.equal(inflected[0].answerForm,'능숙했다');
+assert.equal(inflected[0].learningCard.example,'오래 연습한 수아는 현미경을 다루는 데 능숙했어요.');
 back('flags.learningCardAccurate=false;');
 const rejectedCard=await back('buildValidated([item],[],{maxAttempts:1,partial:true})');
 assert.ok(rejectedCard.failed[0].issues.includes('review_failed:learningCardAccurate'));
