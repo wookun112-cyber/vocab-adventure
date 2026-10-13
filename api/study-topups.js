@@ -1,5 +1,5 @@
 import {AUTHORED_OWNER} from '../lib/authored-policy.js';
-import {calibratedWord,inTargetBand,isLearningTarget} from '../lib/learning-model.js';
+import {calibratedWord,inTargetBand,isLearningTarget,REALTIME_LEVEL_POLICY} from '../lib/learning-model.js';
 import {buildDailyPlan,MINIMUM_STUDY_POLICY} from '../lib/daily-practice.js';
 import {authoredCurriculum,authoredEntry} from './authored-bank.js';
 import {hydrateFromBank} from '../lib/question-bank.js';
@@ -31,6 +31,27 @@ export function buildStudyTopups(learner,account,excluded=[],seed='',count=5){
  return {policy:MINIMUM_STUDY_POLICY,level,targets,exhausted:targets.length===0};
 }
 
+// Unintroduced candidates from neighboring bands, not additional reserve sets.
+// They are downloaded with the lesson so a level change never invokes generation.
+export function buildRealtimePool(learner,account,excluded=[],seed=''){
+ const originLevel=Number(learner.difficulty)||2,targets=[],held=new Set(excluded);
+ const floor=Math.max(2,Math.floor(originLevel)-1),ceiling=Math.min(9,Math.floor(originLevel)+2);
+ for(let band=floor;band<=ceiling;band++){
+  const reader={...learner,difficulty:band};
+  const pool=buildStudyTopups(reader,account,[...held],seed+'|adaptive:'+band);
+  for(const t of pool.targets.filter(t=>t.plan.w.band===band).slice(0,4)){
+   const probePlan={...t.plan,type:'subjective_recall',stage:'check',firstLearning:true,needsCard:false,review:false,
+    taskDemand:band>4.5?'advanced':'standard',realtimeProbe:true,realtimeLevelPolicy:REALTIME_LEVEL_POLICY};
+   const entry=authoredEntry(probePlan,reader,account),packet={account,plans:[probePlan],ready:[]};
+   if(!entry||!hydrateFromBank(packet,reader,[entry]))continue;
+   const probeQuestion=packet.ready[0][1];
+   if(probeQuestion.showTarget||probeQuestion.learningCard)continue;
+   targets.push({...t,plan:{...t.plan,realtimeLevelPolicy:REALTIME_LEVEL_POLICY},probePlan,probeQuestion});held.add(t.plan.w.w);
+  }
+ }
+ return {policy:REALTIME_LEVEL_POLICY,originLevel,floor,ceiling,targets};
+}
+
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private, no-store');
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
@@ -51,7 +72,9 @@ export default async function handler(req,res){
   if(Math.abs(Number(req.body.level)-Number(learner.difficulty))>.35)return res.status(409).json({error:'Learner level changed; reload the saved lesson'});
   const excluded=(Array.isArray(req.body.excluded)?req.body.excluded:[]).slice(0,4000).filter(x=>typeof x==='string'&&x.length<=80);
   excluded.push(...(learner.activeLesson?.baseWords||[]).map(w=>w.w));
-  return res.status(200).json(buildStudyTopups(learner,user.id,excluded,String(req.body.seed||'').slice(0,150)));
+  const seed=String(req.body.seed||'').slice(0,150),pool=buildStudyTopups(learner,user.id,excluded,seed);
+  if(req.body.adaptive===true)pool.adaptivePool=buildRealtimePool(learner,user.id,excluded,seed);
+  return res.status(200).json(pool);
  }catch{
   return res.status(503).json({error:'추가 새 단어를 불러오지 못했어요. 기존 학습은 저장되어 있습니다.'});
  }

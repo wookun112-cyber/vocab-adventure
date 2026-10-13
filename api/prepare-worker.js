@@ -8,7 +8,7 @@ import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-
 import {AUTHORED_REVISION} from '../lib/authored-policy.js';
 import {sentenceUseQuestion,sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import {bundlePractice} from './practice-pool.js';
-import {buildStudyTopups} from './study-topups.js';
+import {buildStudyTopups,buildRealtimePool} from './study-topups.js';
 const URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
@@ -80,6 +80,8 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   const excluded=[...payload.baseWords.map(w=>w.w),...(job.reserved||[]).map(q=>q.w?.w).filter(Boolean)];
   payload.studyTopups=buildStudyTopups(job.learner,job.account,excluded,job.profile+'|'+payload.created);
  }
+ if(!recovering&&!payload.adaptivePool?.targets?.length)
+  payload.adaptivePool=buildRealtimePool(job.learner,job.account,[...payload.baseWords.map(w=>w.w),...(job.reserved||[]).map(q=>q.w?.w).filter(Boolean)],job.profile+'|'+payload.created);
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));

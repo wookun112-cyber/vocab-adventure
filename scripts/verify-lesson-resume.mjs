@@ -269,7 +269,7 @@ const lowRestart=fixture(lowPaused.local,lowPaused.cloud);await lowRestart.run('
 assert.equal(lowRestart.run('current'),10);assert.equal(lowRestart.run('JSON.stringify(session.results.slice(0,9))'),lowAnswers);
 assert.equal(lowRestart.run('session.results[9].exclusionReason'),'out_of_target_band');assert.equal(lowRestart.run('session.results[9].credit'),null);
 assert.equal(lowRestart.run('JSON.stringify(savedLesson().plans)'),lowOrder);assert.equal(lowRestart.calls.generation,0);
-assert.equal(lowRestart.node('qWord').textContent,'간주하다');assert.equal(lowRestart.node('difficulty').textContent,'학습 등급 7.4 · 어휘 7단계');
+assert.equal(lowRestart.node('qWord').textContent,'간주하다');assert.equal(lowRestart.node('difficulty').textContent,'출제 난이도 7.4 · 어휘 7단계');
 console.log('Actual 7.4 restart verified: old reservation task skipped without penalty or AI generation, all nine answers and original plans retained, next valid high-band question displayed with separate learner/word levels.');
 
 const creditBlocked=fixture();creditBlocked.run(`globalThis.recoveryRemote={...makeRemoteLesson(),status:'failed'};recoveryRemote.payload.preparationBlocked='ai_credit_exhausted'`);
