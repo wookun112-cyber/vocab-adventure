@@ -9,6 +9,9 @@
     },
     "api/*.js": {
       "maxDuration": 30
+    },
+    "api/author-level-five-six.js": {
+      "maxDuration": 300
     }
   },
   "headers": [
