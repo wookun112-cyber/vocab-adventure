@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
 import {archive} from '../api/authored-bank-data.js';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
+import {levelFiveSixArchive} from '../lib/server/level-five-six-bank-data.js';
 import {levelFourArchive} from '../lib/server/level-four-bank-data.js';
 import {AUTHORED_OWNER,AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,authoredQuestionValid} from '../lib/authored-policy.js';
 import {authoredStats,authoredCurriculum,authoredQuestion,resolveAuthoredQuestion,authoredEntry,authoredAvailability} from '../api/authored-bank.js';
@@ -12,8 +13,9 @@ import {calibratedWord,isLearningTarget,isRetiredVocabulary,isCoveragePlan} from
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 const originals=JSON.parse(gunzipSync(Buffer.from(archive,'base64'))),supplement=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64'))),changed=new Set(supplement.map(r=>r.word));
 const levelFour=JSON.parse(gunzipSync(Buffer.from(levelFourArchive,'base64')));
-const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement,...levelFour];
-assert.equal(originals.length,1854);assert.equal(rows.length,2176);assert.equal(authoredStats.questions,21760);
+const levelFiveSix=JSON.parse(gunzipSync(Buffer.from(levelFiveSixArchive,'base64')));
+const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement,...levelFour,...levelFiveSix];
+assert.equal(originals.length,1854);assert.equal(rows.length,2788);assert.equal(authoredStats.questions,27880);
 assert.equal(authoredStats.independentReviewComplete,false);
 assert.deepEqual(authoredCurriculum('another-account'),[]);
 assert.equal(authoredQuestion({word:'의견',readerLevel:2,type:'mc_context'},'another-account'),null);
@@ -44,7 +46,7 @@ assert.ok(recall.acceptedAnswers.filter(a=>a.text!=='능숙하다').every(a=>a.t
 assert.equal(authoredQuestion({word:'열심히',readerLevel:7.4,type:'mc_context',firstLearning:true},AUTHORED_OWNER),null);
 for(const word of ['의논하다','달성하다']){const q=authoredQuestion({id:'7',word,readerLevel:3,type:'subjective_recall',review:true},AUTHORED_OWNER);for(const a of q.acceptedAnswers)if(/질문|물어보|^키|상의|이루|이뤘|성취/.test(a.text)){assert.equal(a.credit,1);assert.equal(a.targetRecall,false)}}
 const cardWord=authoredCurriculum(AUTHORED_OWNER).find(r=>r.word==='회복');assert.ok(cardWord.example.includes('회복'));
-for(const difficulty of [1,2,3,4,4.4,7.4,8]){
+for(const difficulty of [1,2,3,4,4.4,5,5.8,6,6.9,7.4,8]){
  const learner={difficulty,words:{},levelTestCompleted:true};const before=JSON.stringify(learner);let calls=0;
  const packet=await prepare({id:'local',lease:'test',account:AUTHORED_OWNER,profile:'test',learner,curriculum:[],catalog:{}},'local',async()=>{calls++;throw Error('Unexpected live generation')},async()=>true);
  assert.equal(packet.ready.length,packet.plans.length);assert.equal(packet.newWords.length,5);assert.equal(calls,0);assert.equal(packet.bankRevision,AUTHORED_REVISION);assert.equal(JSON.stringify(learner),before);
@@ -54,10 +56,10 @@ for(const difficulty of [1,2,3,4,4.4,7.4,8]){
 // supplied reviews keep their existing due/weakness ordering and up to 10 slots.
 const supplied=authoredCurriculum(AUTHORED_OWNER).filter(r=>isLearningTarget(r.word,r.domain,r.band)).slice(0,30);
 const withGap={difficulty:2,levelTestCompleted:true,words:Object.fromEntries(supplied.map((r,i)=>[r.word,{seen:1,wrong:i%3,correct:0,streak:0,introducedAt:'2026-09-01',nextReviewAt:'2026-09-01'}]))};
-withGap.words['전제']={seen:7,wrong:99,correct:2,streak:0,introducedAt:'2026-09-01'};
+withGap.words['추산']={seen:7,wrong:99,correct:2,streak:0,introducedAt:'2026-09-01'};
 const frozen=JSON.stringify(withGap),availability=authoredAvailability(withGap,AUTHORED_OWNER);
-assert.ok(availability.review.size>=20);assert.ok(!availability.review.has('전제'));
-const reserve=await prepare({id:'review-supply',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:withGap,curriculum:[{word:'전제',definition:'추론의 바탕',band:5,domain:'국어'}],catalog:{}},'local',async()=>{throw Error('Unexpected quota-dependent review')},async()=>true);
+assert.ok(availability.review.size>=20);assert.ok(!availability.review.has('추산'));
+const reserve=await prepare({id:'review-supply',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:withGap,curriculum:[{word:'추산',definition:'짐작으로 수나 양을 계산함',band:5,domain:'국어'}],catalog:{}},'local',async()=>{throw Error('Unexpected quota-dependent review')},async()=>true);
 assert.equal(reserve.ready.length,10);assert.equal(reserve.plans.length,10);assert.equal(reserve.newWords.length,0);assert.ok(reserve.plans.every(p=>availability.review.has(p.w.w)));assert.equal(JSON.stringify(withGap),frozen);
 const held=reserve.ready.map(([,q])=>q);
 const refill=await prepare({id:'latest-level',lease:'test',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:{...withGap,difficulty:2.2},curriculum:[],catalog:{},reserved:held},'local',async()=>{throw Error('Unexpected repeat or missing task')},async()=>true);
@@ -123,5 +125,6 @@ try{
 console.log('Adaptive bank API verified: exhausted same-type passages switch to unused same-word tasks without any AI request; complete exhaustion returns example-free own-sentence use; base tasks and owner isolation remain intact.');
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
-console.log(`Authored bank verified: ${rows.length} words, ${authoredStats.questions.toLocaleString()} canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and five grade-matched preparations with zero AI generation or learner mutations.`);
+console.log(`Authored bank verified: ${rows.length} words, ${authoredStats.questions.toLocaleString()} canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and eleven grade-matched preparations with zero AI generation or learner mutations.`);
+
 

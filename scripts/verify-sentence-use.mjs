@@ -11,7 +11,7 @@ import questionsHandler from '../api/questions.js';
 import {authoredQuestion} from '../api/authored-bank.js';
 import {AUTHORED_OWNER} from '../lib/authored-policy.js';
 
-const targets=[{w:'맥락',d:'말이나 글이 앞뒤로 이어지는 관계와 상황',band:4,cat:'국어'},
+const targets=[{w:'추산',d:'짐작으로 수나 양을 계산함',band:5,cat:'국어'},
  {w:'예측',d:'근거나 정보를 바탕으로 앞으로를 미리 판단함',band:3,cat:'사고'}];
 const itemFor=(w,i=0)=>({id:String(i),word:w.w,definition:w.d,domain:w.cat,band:w.band,readerLevel:w.band,type:'subjective_use',review:true,needsCard:false});
 const client=vm.createContext({studyHistory,AUTHORED_REVISION,authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,AbortSignal,console,setTimeout,clearTimeout,

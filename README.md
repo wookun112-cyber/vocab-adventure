@@ -150,3 +150,9 @@
 
 잠시 쉬기는 완료나 등급 조정을 주장하지 않고 답안·추가 계획·진행 순서·힌트를 저장합니다. 기존 중단한 회차의 원래 문제와 답안도 보존합니다. 서버 준비/소모/예비 세트 검사는 고정 20문항 대신 모든 계획 인덱스가 준비되었는지 확인합니다. 배포 전 database/unlimited-usage-practice.sql을 적용합니다. 문제 생성과 의미 기반 문장 채점은 연결된 API의 정상 응답이 필요하며, API 오류를 오답으로 기록하지 않습니다.
 
+
+
+
+## 12.16.23 — Complete stage 5/6 bank
+
+Adds 377 stage-five and 235 stage-six words, each with three context questions, three usage questions, three definition-and-context recall questions, and one example-free sentence-writing task. Combined totals: stage five 387 words / 3,870 questions; stage six 246 words / 2,460 questions. AI editorial review and deterministic checks are not human standardization or empirical difficulty calibration. Existing revisions and learner records remain accepted.

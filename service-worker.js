@@ -1,4 +1,4 @@
-const CACHE='vocab-adventure-v12-16-22';
+const CACHE='vocab-adventure-v12-16-23';
 const ASSETS=['/','/index.html','/app.css','/app.js','/lib/learning-model.js','/lib/daily-practice.js','/lib/authored-policy.js','/lib/sentence-use-template.js','/lib/local-delivery.js','/lib/study-history.js','/manifest.webmanifest','/version.json','/icon.svg'];
 
 self.addEventListener('install',e=>{
@@ -59,5 +59,6 @@ self.addEventListener('fetch',e=>{
     }))
   );
 });
+
 
 

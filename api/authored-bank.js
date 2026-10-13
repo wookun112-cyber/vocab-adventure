@@ -1,6 +1,7 @@
 import {gunzipSync} from 'node:zlib';
 import {archive} from './authored-bank-data.js';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
+import {levelFiveSixArchive} from '../lib/server/level-five-six-bank-data.js';
 import {levelFourArchive} from '../lib/server/level-four-bank-data.js';
 import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
 import {QUESTION_POLICY,calibratedWord,inTargetBand,isCoverageWord,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
@@ -11,7 +12,10 @@ const supplementalRows=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base6
 const supplementalWords=new Set(supplementalRows.map(r=>r.word));
 const levelFourRows=JSON.parse(gunzipSync(Buffer.from(levelFourArchive,'base64')).toString('utf8'));
 const levelFourWords=new Set(levelFourRows.map(r=>r.word));
-const rows=[...originalRows.filter(r=>!supplementalWords.has(r.word)&&!levelFourWords.has(r.word)),...supplementalRows.filter(r=>!levelFourWords.has(r.word)),...levelFourRows];
+const levelFiveSixRows=JSON.parse(gunzipSync(Buffer.from(levelFiveSixArchive,'base64')).toString('utf8'));
+const levelFiveSixWords=new Set(levelFiveSixRows.map(r=>r.word));
+const previousRows=[...originalRows.filter(r=>!supplementalWords.has(r.word)&&!levelFourWords.has(r.word)),...supplementalRows.filter(r=>!levelFourWords.has(r.word)),...levelFourRows];
+const rows=[...previousRows.filter(r=>!levelFiveSixWords.has(r.word)),...levelFiveSixRows];
 const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));
@@ -111,4 +115,5 @@ export function authoredEntry(plan,learner,account,reserved=[]){
  return {readerLevel:Number(learner.difficulty),supportLevel:plan.supportLevel||0,question:{w:plan.w,type:raw.type,taskDemand:plan.taskDemand,ctx:raw.context,q:raw.prompt,opts:raw.options.map(o=>({t:o.text,ok:o.correct})),acceptedAnswers:raw.acceptedAnswers,showTarget:raw.showTarget,open:raw.type.startsWith('subjective_'),hideWord:!raw.showTarget,label:raw.type==='subjective_recall'?'뜻 보고 떠올리기':raw.type==='subjective_use'?'내 문장 만들기':'뜻과 쓰임',answerForm:raw.answerForm,hints:raw.hints,feedbackCorrect:raw.feedbackCorrect,signature:raw.signature,learningCard:raw.learningCard,authored:raw.authored,semanticGraderRequired:raw.semanticGraderRequired,allowNaturalDerivations:raw.allowNaturalDerivations,validation:raw.validation,bankReaderLevel:Number(learner.difficulty),bankSupportLevel:plan.supportLevel||0}};
 }
 export default function handler(req,res){return res.status(404).json({error:'Not found'})}
+
 
