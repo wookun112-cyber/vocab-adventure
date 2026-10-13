@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {gunzipSync} from 'node:zlib';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
-import {ESSENTIAL_VOCABULARY,RESTORED_CORE_WORDS,LEVEL_ONE_RETIREMENT_ARCHIVE_WORDS,RETIRED_LEVEL_ONE_WORDS,GENERAL_SENSE_RESTORED_WORDS,calibratedWord,isLearningTarget,inTargetBand,selectLevelReviews} from '../lib/learning-model.js';
+import {ESSENTIAL_VOCABULARY,RESTORED_CORE_WORDS,LEVEL_ONE_RETIREMENT_ARCHIVE_WORDS,RETIRED_LEVEL_ONE_WORDS,GENERAL_SENSE_RESTORED_WORDS,calibratedWord,isLearningTarget,inTargetBand,isCoveragePlan,selectLevelReviews} from '../lib/learning-model.js';
 import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER,authoredQuestionValid} from '../lib/authored-policy.js';
 import {authoredQuestion,authoredEntry,authoredStats,authoredCurriculum} from '../api/authored-bank.js';
 import {bankCompatible} from '../lib/question-bank.js';
@@ -58,8 +58,8 @@ for(const difficulty of [2,3.5,5,6,7.4,8,9]){
  const learner={difficulty,levelTestCompleted:true,words:{}},before=JSON.stringify(learner);let requests=0;
  const packet=await prepare({id:'essential-'+difficulty,lease:'fixture',account:AUTHORED_OWNER,profile:'test',learner,curriculum:[],catalog:{}},'fixture',async()=>{requests++;throw Error('Unexpected AI generation')},async()=>true);
  assert.equal(requests,0);assert.equal(packet.ready.length,packet.plans.length);assert.equal(packet.newWords.length,5);
- assert.ok(packet.plans.every(p=>p.review||inTargetBand(p.w,difficulty)));assert.equal(JSON.stringify(learner),before);
- if(difficulty===7.4)assert.ok(packet.plans.every(p=>!RESTORED_CORE_WORDS.includes(p.w.w)));
+ assert.ok(packet.plans.every(p=>p.review||isCoveragePlan(p)||inTargetBand(p.w,difficulty)));assert.equal(JSON.stringify(learner),before);
+ if(difficulty===7.4)assert.ok(packet.plans.every(p=>!RESTORED_CORE_WORDS.includes(p.w.w)||isCoveragePlan(p)));
 }
 const low=RESTORED_CORE_WORDS.map(w=>({w,...ESSENTIAL_VOCABULARY[w]}));
 assert.deepEqual(selectLevelReviews(low,{difficulty:7.4,words:Object.fromEntries(low.map(w=>[w.w,{seen:2,wrong:0,streak:2}]))},10),[]);

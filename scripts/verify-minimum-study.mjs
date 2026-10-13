@@ -6,7 +6,7 @@ import {AUTHORED_OWNER,AUTHORED_REVISION,authoredQuestionValid} from '../lib/aut
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,buildDailyPlan} from '../lib/daily-practice.js';
-import {calibratedWord,inTargetBand,learningDay} from '../lib/learning-model.js';
+import {calibratedWord,inTargetBand,isCoveragePlan,learningDay} from '../lib/learning-model.js';
 import {authoredCurriculum,authoredEntry} from '../api/authored-bank.js';
 import {hydrateFromBank} from '../lib/question-bank.js';
 import {prepare} from '../api/prepare-worker.js';
@@ -19,7 +19,7 @@ for(const difficulty of [1.8,3.5,7.4,9]){
  assert.equal(base.newWords.length,5);assert.equal(base.ready.length,base.plans.length);
  assert.equal(base.studyTopups.policy,MINIMUM_STUDY_POLICY);assert.equal(base.studyTopups.targets.length,5);
  for(const t of base.studyTopups.targets){
-  assert.ok(inTargetBand(t.plan.w,difficulty));assert.ok(!base.baseWords.some(w=>w.w===t.plan.w.w));
+  assert.ok(isCoveragePlan(t.plan)||inTargetBand(t.plan.w,difficulty));assert.ok(!base.baseWords.some(w=>w.w===t.plan.w.w));
   assert.equal(t.plan.firstLearning,true);assert.ok(t.question.learningCard.example);
   assert.ok(authoredQuestionValid(t.question,AUTHORED_OWNER));
   assert.ok(t.practicePool.some(q=>q.type==='subjective_use'&&q.semanticGraderRequired&&q.ctx===''));
@@ -122,7 +122,7 @@ try{
  globalThis.fetch=async url=>{calls++;return url.endsWith('/auth/v1/user')?{ok:true,json:async()=>({id:AUTHORED_OWNER})}:{ok:true,json:async()=>[{state:{users:{ayoung:learner}}}]}};
  res=response();await topupHandler({method:'POST',headers:{authorization:'Bearer fixture'},body:{profile:'ayoung',level,excluded:[w.w]}},res);
  assert.equal(res.code,200);assert.equal(calls,2);assert.equal(res.headers['Cache-Control'],'private, no-store');assert.equal(res.body.targets.length,5);
- assert.ok(res.body.targets.every(t=>t.plan.w.w!==w.w&&inTargetBand(t.plan.w,level)));
+ assert.ok(res.body.targets.every(t=>t.plan.w.w!==w.w&&(isCoveragePlan(t.plan)||inTargetBand(t.plan.w,level))));
  calls=0;globalThis.fetch=async()=>{calls++;return {ok:true,json:async()=>({id:'other-owner'})}};
  res=response();await topupHandler({method:'POST',headers:{authorization:'Bearer fixture'},body:{profile:'ayoung',level}},res);assert.equal(res.code,403);assert.equal(calls,1);
 }finally{globalThis.fetch=originalFetch}

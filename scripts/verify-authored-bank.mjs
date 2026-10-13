@@ -7,7 +7,7 @@ import {authoredStats,authoredCurriculum,authoredQuestion,resolveAuthoredQuestio
 import questionHandler from '../api/questions.js';
 import {prepare} from '../api/prepare-worker.js';
 import {bankCompatible} from '../lib/question-bank.js';
-import {calibratedWord,isLearningTarget,isRetiredVocabulary} from '../lib/learning-model.js';
+import {calibratedWord,isLearningTarget,isRetiredVocabulary,isCoveragePlan} from '../lib/learning-model.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 const originals=JSON.parse(gunzipSync(Buffer.from(archive,'base64'))),supplement=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64'))),changed=new Set(supplement.map(r=>r.word));
 const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement];
@@ -46,7 +46,7 @@ for(const difficulty of [1,2,3,7.4,8]){
  const learner={difficulty,words:{},levelTestCompleted:true};const before=JSON.stringify(learner);let calls=0;
  const packet=await prepare({id:'local',lease:'test',account:AUTHORED_OWNER,profile:'test',learner,curriculum:[],catalog:{}},'local',async()=>{calls++;throw Error('Unexpected live generation')},async()=>true);
  assert.equal(packet.ready.length,packet.plans.length);assert.equal(packet.newWords.length,5);assert.equal(calls,0);assert.equal(packet.bankRevision,AUTHORED_REVISION);assert.equal(JSON.stringify(learner),before);
- assert.ok(packet.plans.every(p=>p.w.band>=Math.max(1,Math.ceil(difficulty-1))&&p.w.band<=Math.min(9,Math.floor(difficulty+1))));
+ assert.ok(packet.plans.every(p=>isCoveragePlan(p)||(p.w.band>=Math.max(1,Math.ceil(difficulty-1))&&p.w.band<=Math.min(9,Math.floor(difficulty+1)))));
 }
 // A high-priority, currently unsupplied review stays in the learner record;
 // supplied reviews keep their existing due/weakness ordering and up to 10 slots.

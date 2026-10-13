@@ -2,7 +2,7 @@ import {gunzipSync} from 'node:zlib';
 import {archive} from './authored-bank-data.js';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
 import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
-import {QUESTION_POLICY,calibratedWord,inTargetBand,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
+import {QUESTION_POLICY,calibratedWord,inTargetBand,isCoverageWord,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
 import {passageKeys} from '../lib/prepared-plan.js';
 // Inflate and index exactly once per worker instance, never per question.
 const originalRows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
@@ -56,8 +56,9 @@ export function authoredQuestion(item,account,extra=[]){
  const w=calibratedWord({w:row.word,band:row.band});
  if(isRetiredVocabulary(w))return null;
  if(!item.review&&!inTargetBand(w,item.readerLevel)&&!item.firstLearning)return null;
- // The caller controls old-lesson recovery, but new words are always level matched.
- if(item.firstLearning&&!inTargetBand(w,item.readerLevel))return null;
+ // Lower unfinished vocabulary has an explicit coverage allocation. Ordinary
+ // new words retain their level guard; retired vocabulary never gets an exception.
+ if(item.firstLearning&&!inTargetBand(w,item.readerLevel)&&!isCoverageWord({...w,coveragePolicy:item.coveragePolicy},item.readerLevel))return null;
  const used=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...extra.filter(q=>q.authored?.word===row.word).flatMap(q=>passageKeys(q.context,(q.options||[]).map(o=>o.text)))]);
  const usedSignatures=new Set([...(item.usedQuestionSignatures||[]),...(item.previousContexts||[]).map(h=>h.signature),...extra.map(q=>q.signature)].filter(Boolean));
  const normalizeContext=text=>String(text||'').normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'').toLowerCase();
@@ -102,7 +103,7 @@ export function authoredAvailability(learner,account,reserved=[]){
 }
 export function authoredEntry(plan,learner,account,reserved=[]){
  const st=learner.words?.[plan.w.w]||{};
- const raw=authoredQuestion({id:plan.id,type:plan.type,word:plan.w.w,readerLevel:learner.difficulty,review:!!plan.review,firstLearning:!!plan.firstLearning,needsCard:!!plan.needsCard,answerSlot:plan.answerSlot,usedPassageKeys:st.usedPassageKeys||[],previousContexts:st.problemHistory||[]},account,reserved.map(q=>({authored:q.authored,context:q.ctx,options:(q.opts||[]).map(o=>({text:o.t}))})));
+ const raw=authoredQuestion({id:plan.id,type:plan.type,word:plan.w.w,readerLevel:learner.difficulty,coveragePolicy:plan.coveragePolicy,review:!!plan.review,firstLearning:!!plan.firstLearning,needsCard:!!plan.needsCard,answerSlot:plan.answerSlot,usedPassageKeys:st.usedPassageKeys||[],previousContexts:st.problemHistory||[]},account,reserved.map(q=>({authored:q.authored,context:q.ctx,options:(q.opts||[]).map(o=>({text:o.t}))})));
  if(!raw)return null;
  return {readerLevel:Number(learner.difficulty),supportLevel:plan.supportLevel||0,question:{w:plan.w,type:raw.type,taskDemand:plan.taskDemand,ctx:raw.context,q:raw.prompt,opts:raw.options.map(o=>({t:o.text,ok:o.correct})),acceptedAnswers:raw.acceptedAnswers,showTarget:raw.showTarget,open:raw.type.startsWith('subjective_'),hideWord:!raw.showTarget,label:raw.type==='subjective_recall'?'뜻 보고 떠올리기':raw.type==='subjective_use'?'내 문장 만들기':'뜻과 쓰임',answerForm:raw.answerForm,hints:raw.hints,feedbackCorrect:raw.feedbackCorrect,signature:raw.signature,learningCard:raw.learningCard,authored:raw.authored,semanticGraderRequired:raw.semanticGraderRequired,allowNaturalDerivations:raw.allowNaturalDerivations,validation:raw.validation,bankReaderLevel:Number(learner.difficulty),bankSupportLevel:plan.supportLevel||0}};
 }

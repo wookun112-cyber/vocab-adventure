@@ -31,7 +31,7 @@ function fixture(seed,account='family',shared=storage,server=false){
    globalThis.answerFor=plan=>({w:plan.w,type:plan.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'탐험'+plan.id+'에서 새로운 기록을 찾아 자세히 살폈어요. 탐험'+plan.id+'의 기록이 생각을 뒷받침하는 ＿＿＿＿가 되었어요.',opts:[],signature:'시나리오'+plan.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}});
    fetchValidatedQuestions=(plans,recent,known,profile)=>new Promise((resolve,reject)=>requests.push({plans,recent,known,profile,resolve:()=>resolve(plans.map(answerFor)),reject}));
  `);
- if(!server)run("buildDailyPlan=(fresh,reviews,getState,level)=>buildLearningPlan(fresh,reviews,20,'daily',getState,{level});const actualGetPreparation=getPreparation,actualBuildSession=buildSession;getPreparation=mode=>actualGetPreparation(mode==='level'?'level':'review').then(p=>{p.model=undefined;p.completionPolicy=null;return p});buildSession=mode=>actualBuildSession(mode==='level'?'level':'review')");
+ if(!server)run("selectDailyTargets=()=>({newWords:[],reviewWords:[word]});buildDailyPlan=(fresh,reviews,getState,level)=>buildLearningPlan(fresh,reviews,20,'daily',getState,{level});const actualGetPreparation=getPreparation,actualBuildSession=buildSession;getPreparation=mode=>actualGetPreparation(mode==='level'?'level':'review').then(p=>{p.model=undefined;p.completionPolicy=null;return p});buildSession=mode=>actualBuildSession(mode==='level'?'level':'review')");
  return {run,nodes,node,alerts,ctx};
 }
 const f=fixture();
@@ -102,7 +102,7 @@ assert.equal(restart.run('requests.length'),0,'all 19 ready transitions are loca
 assert.equal(cacheStorage.has(key),false);
 console.log('Persistent preparation verified: cached start and 19 next-button transitions make zero generation requests; cache is consumed once.');
 // Different accounts, different profiles, changed progress and expired data must not reuse it.
-const saved=c.run('JSON.stringify({completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,snapshot:preparationSnapshot(state.selected),mode:"review",difficulty:2,newWords:[word.w],baseWords:[word],plans:preparations.values().next().value.plans,ready:[...preparations.values().next().value.ready]})');
+const saved=c.run('JSON.stringify({coveragePolicy:COVERAGE_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,snapshot:preparationSnapshot(state.selected),mode:"review",difficulty:2,newWords:[word.w],baseWords:[word],plans:preparations.values().next().value.plans,ready:[...preparations.values().next().value.ready]})');
 for(const kind of ['account','profile','progress','expired','unverified']){
  const bank=new Map([[key,saved]]),t=fixture(original,kind==='account'?'other':'family',bank);
  if(kind==='profile')t.run("state.selected='inseong'");
@@ -152,7 +152,7 @@ console.log('Profile switch verified: pending responses cannot move another chil
 const remote=fixture(undefined,'family',new Map(),true);
 remote.run(`state.selected='inseong';globalThis.remoteReads=0;globalThis.consumes=0;
  const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
- globalThis.serverPayload={reviewPolicy:REVIEW_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'inseong',snapshot:preparationSnapshot('inseong'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
+ globalThis.serverPayload={coveragePolicy:COVERAGE_POLICY,reviewPolicy:REVIEW_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'inseong',snapshot:preparationSnapshot('inseong'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
  sb.rpc=async(name,args)=>{if(name==='consume_prepared_lesson'){consumes++;return {data:consumes===1,error:null}}remoteReads++;return {data:{id:'server-job',status:'ready',payload:serverPayload},error:null}};
 `);
 await remote.run('buildSession()');
@@ -173,7 +173,7 @@ assert.equal(remote.alerts.length,1);
 const partialRemote=fixture(undefined,'family',new Map(),true);
 partialRemote.run(`state.selected='ayoung';globalThis.completed=false;
  const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
- globalThis.remotePayload={reviewPolicy:REVIEW_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'ayoung',snapshot:preparationSnapshot('ayoung'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:[[0,answerFor(plans[0])]]};
+ globalThis.remotePayload={coveragePolicy:COVERAGE_POLICY,reviewPolicy:REVIEW_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'ayoung',snapshot:preparationSnapshot('ayoung'),mode:'daily',difficulty:2,newWords:[word.w],baseWords:[word],plans,ready:[[0,answerFor(plans[0])]]};
  sb.rpc=async(name)=>name==='consume_prepared_lesson'?{data:true,error:null}:{data:{id:'partial-job',status:completed?'consumed':'working',payload:{...remotePayload,ready:completed?plans.map((p,i)=>[i,answerFor(p)]):remotePayload.ready}},error:null};
 `);
 const partialStart=partialRemote.run('buildSession()');await flush();
@@ -190,7 +190,7 @@ const guest=fixture(undefined,'family',new Map(),true);
 guest.run(`state.users.guest.difficulty=7.4;word.band=7;globalThis.guestReads=[];
  ensureCatalog=async()=>{throw Error('Guest start must use prepared server questions')};
  const plans=assignScenarios(makeQuestionPlan([word],[word],20,'daily'));
- globalThis.guestPayload={reviewPolicy:REVIEW_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'guest',snapshot:preparationSnapshot('guest'),mode:'daily',difficulty:7.4,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
+ globalThis.guestPayload={coveragePolicy:COVERAGE_POLICY,reviewPolicy:REVIEW_POLICY,completionPolicy:DAILY_POLICY,selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:'family',profile:'guest',snapshot:preparationSnapshot('guest'),mode:'daily',difficulty:7.4,newWords:[word.w],baseWords:[word],plans,ready:plans.map((p,i)=>[i,answerFor(p)])};
  sb.rpc=async(name,args)=>{guestReads.push({name,profile:args.p_profile});return {data:name==='consume_prepared_lesson'?true:{id:'guest-job',status:'ready',payload:guestPayload},error:null}};
 `);
 const guestBefore=guest.run('JSON.stringify(state.users)');

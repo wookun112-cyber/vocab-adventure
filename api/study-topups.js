@@ -1,5 +1,5 @@
 import {AUTHORED_OWNER} from '../lib/authored-policy.js';
-import {calibratedWord,inTargetBand,isLearningTarget,REALTIME_LEVEL_POLICY} from '../lib/learning-model.js';
+import {calibratedWord,inTargetBand,isLearningTarget,selectCoverageWords,COVERAGE_POLICY,REALTIME_LEVEL_POLICY} from '../lib/learning-model.js';
 import {buildDailyPlan,MINIMUM_STUDY_POLICY} from '../lib/daily-practice.js';
 import {authoredCurriculum,authoredEntry} from './authored-bank.js';
 import {hydrateFromBank} from '../lib/question-bank.js';
@@ -11,11 +11,14 @@ const fingerprint=text=>{let n=2166136261;for(const ch of text)n=Math.imul(n^ch.
 
 // These are downloaded candidates, not introduced words or extra lessons.
 // Only the client completion boundary introduces one when time is short.
-export function buildStudyTopups(learner,account,excluded=[],seed='',count=5){
+export function buildStudyTopups(learner,account,excluded=[],seed='',count=5,options={}){
  const blocked=new Set(excluded),level=Number(learner.difficulty)||2;
- const candidates=authoredCurriculum(account).map(row=>calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,example:row.example||'',pair:row.confusion||'',contrast:row.contrast||'',source:'fixed'}))
+ const all=authoredCurriculum(account).map(row=>calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,example:row.example||'',pair:row.confusion||'',contrast:row.contrast||'',source:'fixed'}));
+ const coverage=options.coverage===true?selectCoverageWords(all,learner,2,{excluded,unseenOnly:true,newLimit:count}):[];
+ for(const w of coverage)blocked.add(w.w);
+ const candidates=[...coverage,...all
   .filter(w=>!blocked.has(w.w)&&!learner.words?.[w.w]?.seen&&!learner.words?.[w.w]?.introducedAt&&isLearningTarget(w)&&inTargetBand(w,level))
-  .sort((a,b)=>Math.abs(a.band-level)-Math.abs(b.band-level)||fingerprint(seed+'|'+a.w)-fingerprint(seed+'|'+b.w));
+  .sort((a,b)=>Math.abs(a.band-level)-Math.abs(b.band-level)||fingerprint(seed+'|'+a.w)-fingerprint(seed+'|'+b.w))];
  const targets=[];
  for(const w of candidates){
   const plan=buildDailyPlan([w],[],()=>({}),level)[0];
@@ -28,7 +31,7 @@ export function buildStudyTopups(learner,account,excluded=[],seed='',count=5){
   targets.push({plan,question:packet.ready[0][1],practicePool:packet.practicePool});
   if(targets.length>=Math.max(1,Math.min(5,Number(count)||5)))break;
  }
- return {policy:MINIMUM_STUDY_POLICY,level,targets,exhausted:targets.length===0};
+ return {policy:MINIMUM_STUDY_POLICY,coveragePolicy:options.coverage?COVERAGE_POLICY:null,level,targets,exhausted:targets.length===0};
 }
 
 // Unintroduced candidates from neighboring bands, not additional reserve sets.
@@ -72,7 +75,7 @@ export default async function handler(req,res){
   if(Math.abs(Number(req.body.level)-Number(learner.difficulty))>.35)return res.status(409).json({error:'Learner level changed; reload the saved lesson'});
   const excluded=(Array.isArray(req.body.excluded)?req.body.excluded:[]).slice(0,4000).filter(x=>typeof x==='string'&&x.length<=80);
   excluded.push(...(learner.activeLesson?.baseWords||[]).map(w=>w.w));
-  const seed=String(req.body.seed||'').slice(0,150),pool=buildStudyTopups(learner,user.id,excluded,seed);
+  const seed=String(req.body.seed||'').slice(0,150),pool=buildStudyTopups(learner,user.id,excluded,seed,5,{coverage:true});
   if(req.body.adaptive===true)pool.adaptivePool=buildRealtimePool(learner,user.id,excluded,seed);
   return res.status(200).json(pool);
  }catch{

@@ -16,7 +16,7 @@ const observation={w:'관찰자',d:'관찰하는 사람',band:7,cat:'국어'},pr
 assert.equal(vocabularyBand(observation),3);assert.equal(vocabularyBand(prediction),3);
 assert.equal(vocabularyBand({w:'재고하다',band:9}),7,'reconsider is not warehouse stock merely because spellings share a stem');
 assert.equal(vocabularyBand({w:'재고',band:4}),5);
-const learner={difficulty:7.4,words:{관찰자:{seen:2},간주하다:{seen:1}}};const original=JSON.stringify(learner);
+const learner={difficulty:7.4,words:{관찰자:{seen:2,useSuccess:1},간주하다:{seen:1}}};const original=JSON.stringify(learner);
 assert.deepEqual(selectLevelReviews([observation,tough],learner).map(w=>w.w),['간주하다']);
 const plan=buildLearningPlan([observation,prediction,tough],[],20,'daily',()=>({}),{level:7.4,strictBand:true});assert.ok(plan.every(p=>p.w.w==='간주하다'));
 const packet=makePreparedPlan(learner,{관찰자:observation,간주하다:tough},[], 'family','guest',{reviewOnly:true});assert.ok(packet.plans.every(p=>p.review)&&packet.plans.every(p=>p.w.w!=='관찰자'));

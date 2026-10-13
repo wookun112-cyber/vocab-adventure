@@ -36,7 +36,7 @@ for(const fixture of fixtures){
   if(q.type!=='subjective_use'){
    alternatives++;for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key),'practice passages never repeat');seen.add(key)}
    assert.ok(!deliveryQuestionValid({...q,w:{...q.w,band:q.w.band===1?8:1}},plan,learner.difficulty,AUTHORED_OWNER));
-   assert.ok(!deliveryQuestionValid({...q,bankReaderLevel:learner.difficulty+1},plan,learner.difficulty,AUTHORED_OWNER));
+   assert.ok(!deliveryQuestionValid({...q,bankReaderLevel:learner.difficulty+1},{...plan,coveragePolicy:null,realtimeLevelPolicy:null},learner.difficulty,AUTHORED_OWNER));
   }else {assert.equal(q.ctx,'');assert.deepEqual(q.acceptedAnswers,[]);assert.equal(q.semanticGraderRequired,true)}
   ready.push(q);history.push({word:word.w,type:q.type,credit:0,contextSuccess:false});
  }
