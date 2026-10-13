@@ -9,11 +9,12 @@
   <div class="authbox">
     <div class="eyebrow">가족 전용 학습공간</div><h1>어휘 탐험</h1>
     <p class="muted">한 번 로그인하면 태블릿이 바뀌어도 아영·인성의 기록을 그대로 이어갑니다.</p>
-    <input id="email" type="email" placeholder="이메일">
-    <input id="password" type="password" placeholder="비밀번호 (6자 이상)">
+    <input id="email" type="email" autocomplete="username" aria-label="이메일" placeholder="이메일">
+    <input id="password" type="password" autocomplete="current-password" aria-label="비밀번호" placeholder="비밀번호 (6자 이상)">
     <div class="actions"><button id="signIn" class="primary">로그인</button><button id="signUp" class="secondary">처음 계정 만들기</button></div>
     <button id="resendConfirm" class="ghost wide" style="margin-top:10px">확인 메일 다시 보내기</button>
-    <div id="authMsg" class="authmsg"></div>
+    <button id="retryRecords" class="secondary wide hidden" style="margin-top:10px">기록 다시 불러오기</button>
+    <div id="authMsg" class="authmsg" role="status" aria-live="polite"></div>
   </div>
 </div>
 <div class="app">

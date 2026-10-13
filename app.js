@@ -7,7 +7,18 @@ import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
-const sb=createClient(SUPABASE_URL,SUPABASE_KEY);
+const AUTH_LOGIN_TIMEOUT_MS=12000;
+async function authFetch(input,options={}){
+ const url=new URL(typeof input==='string'?input:input?.url||String(input));
+ if(url.origin!==SUPABASE_URL||url.pathname!=='/auth/v1/token'||url.searchParams.get('grant_type')!=='password')return fetch(input,options);
+ const controller=new AbortController(),signal=options.signal||input?.signal;
+ const abort=()=>controller.abort(signal.reason);
+ if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(()=>controller.abort(),AUTH_LOGIN_TIMEOUT_MS);
+ try{return await fetch(input,{...options,signal:controller.signal})}
+ finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
+}
+const sb=createClient(SUPABASE_URL,SUPABASE_KEY,{global:{fetch:authFetch}});
 const $=id=>document.getElementById(id);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const today=()=>learningDay();
@@ -490,7 +501,7 @@ let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,sel
 let wordbookView='levels',vocabularyFilter={band:0,query:'',status:'all',page:0};
 let vocabularyIndex={account:null,rows:[],loaded:false,loading:false,error:'',task:null};
 let reportHistoryFilter={from:'',to:'',mode:'study'},reportHistoryPage=0;
-let loadedAccount=null,authEpoch=0,authLoadTask=null;
+let loadedAccount=null,authEpoch=0,authLoadTask=null,authSubmitPending=false;
 const canSaveLearning=()=>!!authUser&&loadedAccount===authUser.id;
 
 function child(){return state.users[state.selected]}
@@ -564,7 +575,7 @@ async function cloudSave(silent=true){
     if(account!==authUser?.id||epoch!==authEpoch)break;
     const conflict=error?.message?.includes('LEARNING_STATE_REGRESSION');
     $('cloudPill').textContent=conflict?'기존 기록 보호됨 · 새로고침 필요':error?'저장 오류':'클라우드 저장됨';$('cloudPill').classList.toggle('on',!error);
-    if(conflict){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('다른 기기의 최신 기록을 보호했어요. 새로고침하여 기록을 다시 불러와 주세요.',true)}
+    if(conflict){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('다른 기기의 최신 기록을 보호했어요. 아래의 “기록 다시 불러오기”를 눌러 주세요.',true);syncAuthControls()}
     if(error&&!silent)alert('클라우드 저장에 실패했어요. 인터넷 연결을 확인해 주세요.');
     if(error)break;
    }while(cloudSavePending&&authUser?.id===account&&epoch===authEpoch);
@@ -1916,7 +1927,39 @@ function renderReport(){
 }
 
 function show(id){if(!['learn','intro'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home')renderResumeButton();if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
-async function login(){setMsg('로그인 중…');const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)setMsg('로그인 실패: 이메일과 비밀번호를 확인해 주세요.',true)}
+function authErrorMessage(error){
+ const code=error?.code,status=Number(error?.status)||0;
+ if(status>=500||status===408||code==='request_timeout')return '로그인 서버 연결이 지연됐어요. 잠시 뒤 다시 시도해 주세요.';
+ if(status===429||code==='over_request_rate_limit')return '로그인 요청이 많아 잠시 기다려야 해요. 잠시 뒤 다시 시도해 주세요.';
+ if(code==='email_not_confirmed')return '이메일 확인이 필요해요. 받은 확인 메일의 링크를 눌러 주세요.';
+ if(code==='invalid_credentials')return '이메일 또는 비밀번호가 일치하지 않아요. 입력 내용을 확인해 주세요.';
+ if(error?.name==='AuthRetryableFetchError'||error?.name==='AbortError'||/network|failed to fetch|fetch failed|timed?\s*out/i.test(error?.message||''))return '로그인 서버에 연결하지 못했어요. 인터넷 연결을 확인하고 잠시 뒤 다시 시도해 주세요.';
+ return '로그인을 완료하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
+}
+function syncAuthControls(){
+ const busy=authSubmitPending||!!authLoadTask;
+ for(const id of ['signIn','signUp','resendConfirm','email','password'])$(id).disabled=busy;
+ $('signIn').textContent=authSubmitPending?'로그인 중…':authLoadTask?'기록 확인 중…':'로그인';
+ const retry=$('retryRecords');
+ if(retry){retry.classList.toggle('hidden',!authUser||canSaveLearning());retry.disabled=busy}
+}
+async function login(){
+ if(authSubmitPending||authLoadTask)return;
+ const email=$('email').value.trim(),password=$('password').value;
+ if(!email||!password)return setMsg('이메일과 비밀번호를 입력해 주세요.',true);
+ authSubmitPending=true;syncAuthControls();setMsg('로그인 중…');
+ try{
+  const {data,error}=await sb.auth.signInWithPassword({email,password});
+  if(error)return setMsg(authErrorMessage(error),true);
+  if(!data?.session?.user)return setMsg('로그인 상태를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요.',true);
+  await applyAuth(data.session);
+ }catch(error){setMsg(authErrorMessage(error),true)}
+ finally{authSubmitPending=false;syncAuthControls()}
+}
+async function retryRecords(){
+ if(authSubmitPending||authLoadTask||!authUser)return;
+ await applyAuth({user:authUser});
+}
 async function signup(){const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<6)return setMsg('이메일과 6자 이상의 비밀번호를 입력해 주세요.',true);setMsg('계정을 만드는 중…');const {data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg(data.session?'계정이 만들어졌어요.':'확인 메일을 보냈어요. 메일의 확인 링크를 눌러 주세요.')}
 async function resendConfirm(){const email=$('email').value.trim();if(!email)return setMsg('먼저 이메일을 입력해 주세요.',true);setMsg('확인 메일을 다시 보내는 중…');const {error}=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:location.origin}});if(error)return setMsg(error.message,true);setMsg('새 확인 메일을 보냈어요. 가장 최근 메일의 링크를 눌러 주세요.')}
 function setMsg(m,e=false){$('authMsg').textContent=m;$('authMsg').className='authmsg'+(e?' error':'')}
@@ -1937,7 +1980,7 @@ async function applyAuth(sessionObj){
   if(session?.preparation)session.preparation.cancel();session=null;
   state=mergeState(initial());
  }
- if(!nextUser){setMsg('로그인하면 저장된 기록을 불러옵니다.');renderAll();return}
+ if(!nextUser){authLoadTask=null;syncAuthControls();setMsg('로그인하면 저장된 기록을 불러옵니다.');renderAll();return}
  const account=nextUser.id;
  $('accountEmail').textContent=nextUser.email||'가족 계정';
  setMsg('저장된 학습 기록을 확인하고 있어요…');
@@ -1968,11 +2011,12 @@ async function applyAuth(sessionObj){
    if(epoch!==authEpoch)return;
    loadedAccount=null;++authEpoch;
    $('cloudPill').textContent='기록 불러오기 실패';$('cloudPill').classList.remove('on');
-   setMsg('기록을 불러오지 못했어요. 기존 기록은 보호됩니다. 인터넷 연결을 확인하고 다시 로그인하거나 새로고침해 주세요.',true);
+   setMsg('로그인은 확인됐지만 학습 기록을 불러오지 못했어요. 아래의 “기록 다시 불러오기”를 눌러 주세요.',true);
   }
  })();
  authLoadTask=task;
- try{return await task}finally{if(authLoadTask===task)authLoadTask=null}
+ syncAuthControls();
+ try{return await task}finally{if(authLoadTask===task)authLoadTask=null;syncAuthControls()}
 }
 
 function startVoice(){
@@ -2001,6 +2045,7 @@ $('startDaily').onclick=()=>buildSession('daily');$('startReview').onclick=()=>b
 $('submit').onclick=()=>gradeCurrent(false);$('hint').onclick=showHint;$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('introNext').onclick=nextIntro;
 if($('finishEarly')){$('finishEarly').textContent='잠시 쉬기';$('finishEarly').onclick=()=>{if(!session)return;if(session.mode==='level'){finishSession();return}pauseLearningClock();checkpointSession();localSave();cloudSave();show('home');renderResumeButton()}};$('mic').onclick=startVoice;
 $('signIn').onclick=login;$('signUp').onclick=signup;$('resendConfirm').onclick=resendConfirm;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
+if($('retryRecords'))$('retryRecords').onclick=retryRecords;
 $('signOut').onclick=()=>sb.auth.signOut();$('syncNow').onclick=()=>cloudSave(false);if($('buildCurriculum'))$('buildCurriculum').onclick=buildFixedCurriculum;
 let authSettled=false;
 const authTimer=setTimeout(()=>{
@@ -2015,7 +2060,7 @@ sb.auth.getSession()
     if(error){
       $('cloudPill').textContent='동기화 오류';
       $('authGate').classList.remove('hidden');
-      setMsg('연결 상태를 확인한 뒤 다시 로그인해 주세요.',true);
+      setMsg(authErrorMessage(error),true);
       return;
     }
     if(!data.session){
@@ -2025,10 +2070,11 @@ sb.auth.getSession()
     }
     applyAuth(data.session);
   })
-  .catch(()=>{
+  .catch(error=>{
     authSettled=true; clearTimeout(authTimer);
     $('cloudPill').textContent='동기화 오류';
     $('authGate').classList.remove('hidden');
+    setMsg(authErrorMessage(error),true);
   });
 sb.auth.onAuthStateChange((_e,s)=>setTimeout(()=>applyAuth(s),0));
 
