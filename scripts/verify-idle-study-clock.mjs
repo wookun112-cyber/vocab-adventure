@@ -92,6 +92,12 @@ function fixture({elapsed=0,type='subjective_use',saved=null}={}){
  return f;
 }
 
+const writing=fixture();
+for(let i=0;i<9;i++){writing.advance(10000);writing.run('markStudyActivity({isTrusted:true})')}
+assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),90000);
+writing.advance(60000);assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),120000);
+writing.run('markStudyActivity({isTrusted:false})');writing.advance(20000);
+assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),120000);
 // Actual question timer pauses at exactly 30s and saves the draft without scoring.
 let f=fixture();f.node('answer').value='입력하던 의견 문장';
 const words=f.run('JSON.stringify(child().words)');

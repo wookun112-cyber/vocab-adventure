@@ -21,7 +21,7 @@ export function buildStudyTopups(learner,account,excluded=[],seed='',count=5,opt
   .sort((a,b)=>Math.abs(a.band-level)-Math.abs(b.band-level)||fingerprint(seed+'|'+a.w)-fingerprint(seed+'|'+b.w))];
  const targets=[];
  for(const w of candidates){
-  const plan=buildDailyPlan([w],[],()=>({}),level)[0];
+  const plan=buildDailyPlan([w],[],()=>({}),level,{assessment:false})[0];
   if(!plan)continue;plan.id='time:'+w.w;
   const entry=authoredEntry(plan,learner,account);
   if(!entry?.question?.learningCard?.example)continue;

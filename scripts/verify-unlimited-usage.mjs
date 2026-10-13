@@ -12,7 +12,7 @@ const day=learningDay(),fresh=Array.from({length:5},(_,i)=>({w:'새어휘'+i,d:'
 const reviews=Array.from({length:10},(_,i)=>({w:'복습어휘'+i,d:'생각이나 행동을 나타내는 뜻',band:2,cat:'국어'}));
 const learner={difficulty:2,words:Object.fromEntries(reviews.map(w=>[w.w,{seen:1,correct:0,wrong:1,streak:0,introducedAt:'2026-09-01',nextReviewAt:day}])),recentProblems:[]};
 const original=JSON.stringify(learner),plans=buildDailyPlan(fresh,reviews,w=>learner.words[w]||{},2);
-assert.equal(plans.length,15);assert.equal(new Set(plans.map(p=>p.w.w)).size,15);assert.equal(plans.filter(p=>p.needsCard).length,5);assert.equal(plans.filter(p=>p.review).length,10);
+assert.equal(plans.length,15);assert.equal(new Set(plans.map(p=>p.w.w)).size,15);assert.equal(plans.filter(p=>p.realtimeProbe&&!p.needsCard&&p.type==='subjective_recall').length,5);assert.equal(plans.filter(p=>p.review).length,10);
 assert.equal(studyBudget(learner).limit,null);assert.equal(studyBudget(learner).newCount,5);
 assert.equal(studyBudget({words:Object.fromEntries(fresh.map(w=>[w.w,{introducedAt:day}]))}).newCount,0);
 const result=(p,credit=1)=>({word:p.w.w,type:p.type,credit,contextSuccess:credit===1,hintUsed:false,revealed:false,band:p.w.band,remedial:!!p.remedial});

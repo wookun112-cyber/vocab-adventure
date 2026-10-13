@@ -33,6 +33,18 @@ function fixture(local=new Map(),cloud=new Map(),account='family'){
     cloud.set(row.user_id,clone(row.state));return {error:null};
    }}),
    rpc:async(name,args)=>{
+    if(name==='save_learning_patch'){
+     if(blockWrites)await new Promise(resolve=>deferred.push(resolve));
+     const state=clone(cloud.get(account));
+     for(const op of args.p_operations){
+      let target=state;for(const part of op.path.slice(0,-1))target=target[part];
+      const key=op.path.at(-1),exists=Object.hasOwn(target,key);
+      if(!op.remove&&exists&&JSON.stringify(target[key])===JSON.stringify(op.value))continue;
+      if(exists!==op.exists||exists&&JSON.stringify(target[key])!==JSON.stringify(op.before))return {data:{conflict:true,path:op.path},error:null};
+      if(op.remove)delete target[key];else target[key]=clone(op.value);
+     }
+     calls.writes.push({user_id:account,state:clone(state)});cloud.set(account,state);return {data:{saved:true},error:null};
+    }
     if(name==='consume_prepared_lesson'){calls.consumes++;return {data:true,error:null}}
     if(!['get_prepared_lesson','ensure_prepared_lesson'].includes(name))throw Error('Unexpected RPC '+name);
     calls.reads++;return {data:run('typeof recoveryRemote==="undefined"?makeRemoteLesson():recoveryRemote'),error:null};
@@ -268,7 +280,7 @@ await lowPaused.run('cloudSave()');const lowAnswers=lowPaused.run('JSON.stringif
 const lowRestart=fixture(lowPaused.local,lowPaused.cloud);await lowRestart.run('cloudLoad()');await lowRestart.run('buildSession()');
 assert.equal(lowRestart.run('current'),10);assert.equal(lowRestart.run('JSON.stringify(session.results.slice(0,9))'),lowAnswers);
 assert.equal(lowRestart.run('session.results[9].exclusionReason'),'out_of_target_band');assert.equal(lowRestart.run('session.results[9].credit'),null);
-assert.equal(lowRestart.run('JSON.stringify(savedLesson().plans)'),lowOrder);assert.equal(lowRestart.calls.generation,0);
+assert.deepEqual(JSON.parse(lowRestart.run('JSON.stringify(savedLesson().plans)')),JSON.parse(lowOrder));assert.equal(lowRestart.calls.generation,0);
 assert.equal(lowRestart.node('qWord').textContent,'간주하다');assert.equal(lowRestart.node('difficulty').textContent,'출제 난이도 7.4 · 어휘 7단계');
 console.log('Actual 7.4 restart verified: old reservation task skipped without penalty or AI generation, all nine answers and original plans retained, next valid high-band question displayed with separate learner/word levels.');
 

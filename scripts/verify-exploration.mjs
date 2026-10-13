@@ -10,7 +10,12 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 const local=new Map(),cloud=new Map();
 function fixture(account='family'){
  const nodes=new Map();const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',value:'',style:{},classList:{toggle(){},add(){},remove(){}}});return nodes.get(id)};
- const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
+ const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({rpc:async(name,args)=>{
+   assert.equal(name,'save_learning_patch');const state=clone(cloud.get(account));
+   for(const op of args.p_operations){let target=state;for(const key of op.path.slice(0,-1))target=target[key];const key=op.path.at(-1);
+    if(op.remove)delete target[key];else target[key]=clone(op.value);
+   }cloud.set(account,state);return {data:{saved:true},error:null};
+  },from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
  const run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);run(`authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;warmDailyQuestions=()=>{};`);return {run,node};
 }
 const f=fixture();
@@ -40,7 +45,7 @@ assert.equal(f.run('exploration(child()).days[today()].keys.length'),30,'daily r
 assert.equal(f.run('rewardCompletion()'),40);assert.equal(f.run('rewardCompletion()'),0,'repeat completions do not duplicate a bonus');
 const before=f.run('exploration(child()).xp');f.run("session.mode='level';delete exploration(child()).days[today()];");assert.equal(f.run('rewardCompletion()'),0);assert.equal(f.run('exploration(child()).xp'),before);
 f.run('storeLearnerCheckpoint(state.selected);localSave()');await f.run('cloudSave()');
-const earned=fixture();await earned.run('cloudLoad()');assert.equal(earned.run('exploration(child()).xp'),before,'reward totals survive cloud and local checkpoint recovery');
+const earned=fixture();await earned.run('cloudLoad()');assert.equal(earned.run('exploration(state.users.ayoung).xp'),before,'reward totals survive cloud and local checkpoint recovery');
 const rivals=f.run('JSON.stringify(explorationRanking().filter(x=>x.virtual))');
 assert.equal(f.run('explorationRanking().length'),100);assert.equal(f.run('new Set(VIRTUAL_NAMES).size'),98);
 assert.equal(f.run('new Set(CHARACTERS.map(x=>x.id)).size'),20);
