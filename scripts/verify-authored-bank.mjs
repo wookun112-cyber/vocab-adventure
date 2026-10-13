@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
 import {archive} from '../api/authored-bank-data.js';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
+import {levelFourArchive} from '../lib/server/level-four-bank-data.js';
 import {AUTHORED_OWNER,AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,authoredQuestionValid} from '../lib/authored-policy.js';
 import {authoredStats,authoredCurriculum,authoredQuestion,resolveAuthoredQuestion,authoredEntry,authoredAvailability} from '../api/authored-bank.js';
 import questionHandler from '../api/questions.js';
@@ -10,8 +11,9 @@ import {bankCompatible} from '../lib/question-bank.js';
 import {calibratedWord,isLearningTarget,isRetiredVocabulary,isCoveragePlan} from '../lib/learning-model.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 const originals=JSON.parse(gunzipSync(Buffer.from(archive,'base64'))),supplement=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64'))),changed=new Set(supplement.map(r=>r.word));
-const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement];
-assert.equal(originals.length,1854);assert.equal(rows.length,1927);assert.equal(authoredStats.questions,19270);
+const levelFour=JSON.parse(gunzipSync(Buffer.from(levelFourArchive,'base64')));
+const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement,...levelFour];
+assert.equal(originals.length,1854);assert.equal(rows.length,2176);assert.equal(authoredStats.questions,21760);
 assert.equal(authoredStats.independentReviewComplete,false);
 assert.deepEqual(authoredCurriculum('another-account'),[]);
 assert.equal(authoredQuestion({word:'의견',readerLevel:2,type:'mc_context'},'another-account'),null);
@@ -42,7 +44,7 @@ assert.ok(recall.acceptedAnswers.filter(a=>a.text!=='능숙하다').every(a=>a.t
 assert.equal(authoredQuestion({word:'열심히',readerLevel:7.4,type:'mc_context',firstLearning:true},AUTHORED_OWNER),null);
 for(const word of ['의논하다','달성하다']){const q=authoredQuestion({id:'7',word,readerLevel:3,type:'subjective_recall',review:true},AUTHORED_OWNER);for(const a of q.acceptedAnswers)if(/질문|물어보|^키|상의|이루|이뤘|성취/.test(a.text)){assert.equal(a.credit,1);assert.equal(a.targetRecall,false)}}
 const cardWord=authoredCurriculum(AUTHORED_OWNER).find(r=>r.word==='회복');assert.ok(cardWord.example.includes('회복'));
-for(const difficulty of [1,2,3,7.4,8]){
+for(const difficulty of [1,2,3,4,4.4,7.4,8]){
  const learner={difficulty,words:{},levelTestCompleted:true};const before=JSON.stringify(learner);let calls=0;
  const packet=await prepare({id:'local',lease:'test',account:AUTHORED_OWNER,profile:'test',learner,curriculum:[],catalog:{}},'local',async()=>{calls++;throw Error('Unexpected live generation')},async()=>true);
  assert.equal(packet.ready.length,packet.plans.length);assert.equal(packet.newWords.length,5);assert.equal(calls,0);assert.equal(packet.bankRevision,AUTHORED_REVISION);assert.equal(JSON.stringify(learner),before);

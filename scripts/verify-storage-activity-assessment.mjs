@@ -27,4 +27,9 @@ for(const p of plans.slice(0,3)){
  lesson.results.push({word:p.w.w,band:4,type:p.type,result:'○',credit:1,contextSuccess:true,targetRecall:true,levelEligible:true});observeRealtimeLevel(learner,lesson);
 }
 assert.equal(lesson.adaptation.rows.length,3);assert.ok(learner.difficulty>4,'daily-plan questions actually supply promotion evidence');
+const uncertain={difficulty:4,words:{}},unknownLesson={mode:'daily',results:[]};initRealtimeLevel(uncertain,unknownLesson);
+for(const p of plans.slice(0,3)){
+ unknownLesson.results.push({word:p.w.w,band:4,type:p.type,result:'×',credit:0,contextSuccess:false,targetRecall:false,levelEligible:true,revealed:true,meaningUnknown:true});observeRealtimeLevel(uncertain,unknownLesson);
+}
+assert.equal(unknownLesson.adaptation.rows.length,3);assert.equal(uncertain.difficulty,3.7,'unassisted explicit unknown answers are meaning failures before feedback');
 console.log('Storage/activity/assessment verified: small child-only patches, no-op saves, 90-second writing, bounded idle gaps, and real daily-plan evaluation.');

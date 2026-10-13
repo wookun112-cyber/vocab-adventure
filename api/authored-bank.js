@@ -1,6 +1,7 @@
 import {gunzipSync} from 'node:zlib';
 import {archive} from './authored-bank-data.js';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
+import {levelFourArchive} from '../lib/server/level-four-bank-data.js';
 import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
 import {QUESTION_POLICY,calibratedWord,inTargetBand,isCoverageWord,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
 import {passageKeys} from '../lib/prepared-plan.js';
@@ -8,7 +9,9 @@ import {passageKeys} from '../lib/prepared-plan.js';
 const originalRows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
 const supplementalRows=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64')).toString('utf8'));
 const supplementalWords=new Set(supplementalRows.map(r=>r.word));
-const rows=[...originalRows.filter(r=>!supplementalWords.has(r.word)),...supplementalRows];
+const levelFourRows=JSON.parse(gunzipSync(Buffer.from(levelFourArchive,'base64')).toString('utf8'));
+const levelFourWords=new Set(levelFourRows.map(r=>r.word));
+const rows=[...originalRows.filter(r=>!supplementalWords.has(r.word)&&!levelFourWords.has(r.word)),...supplementalRows.filter(r=>!levelFourWords.has(r.word)),...levelFourRows];
 const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));

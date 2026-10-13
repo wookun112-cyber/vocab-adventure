@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {gunzipSync} from 'node:zlib';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
 import {ESSENTIAL_VOCABULARY,RESTORED_CORE_WORDS,LEVEL_ONE_RETIREMENT_ARCHIVE_WORDS,RETIRED_LEVEL_ONE_WORDS,GENERAL_SENSE_RESTORED_WORDS,calibratedWord,isLearningTarget,inTargetBand,isCoveragePlan,selectLevelReviews} from '../lib/learning-model.js';
-import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER,authoredQuestionValid} from '../lib/authored-policy.js';
+import {AUTHORED_REVISION,AUTHORED_ESSENTIAL_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER,authoredQuestionValid} from '../lib/authored-policy.js';
 import {authoredQuestion,authoredEntry,authoredStats,authoredCurriculum} from '../api/authored-bank.js';
 import {bankCompatible} from '../lib/question-bank.js';
 import {passageKeys} from '../lib/prepared-plan.js';
@@ -32,7 +32,7 @@ for(const row of rows){
   for(let i=0;i<(type==='subjective_use'?1:3);i++){
    const item={id:row.word+':'+type+':'+i,word:row.word,type,readerLevel:row.band,review:true,answerSlot:i%5};
    const q=authoredQuestion(item,AUTHORED_OWNER,used);assert.ok(q,`${row.word}: unavailable ${type} variant ${i}`);
-   assert.equal(q.authored.revision,AUTHORED_REVISION);
+   assert.equal(q.authored.revision,AUTHORED_ESSENTIAL_REVISION);
    assert.ok(!passageKeys(q.context,q.options.map(o=>o.text)).some(k=>used.some(p=>passageKeys(p.context,p.options.map(o=>o.text)).includes(k))),row.word+': repeated sentence');
    if(type.startsWith('mc_')){assert.equal(q.options.length,5);assert.equal(q.options.filter(o=>o.correct).length,1);assert.equal(q.options.findIndex(o=>o.correct),i%5);}
    if(type==='subjective_recall'){

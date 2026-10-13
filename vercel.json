@@ -1,9 +1,6 @@
 {
   "version": 2,
   "functions": {
-    "api/author-level-four.js": {
-      "maxDuration": 300
-    },
     "api/prepare-worker.js": {
       "maxDuration": 300
     },

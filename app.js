@@ -4,7 +4,7 @@ import {DELIVERY_POLICY,localPracticeQuestion} from './lib/local-delivery.js';
 import * as studyHistory from './lib/study-history.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
+import {LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -1002,7 +1002,7 @@ const SCENARIOS=['집에서 가족과 계획을 세우는 일','학교에서 친
 function preparationSnapshot(profile){
  const c=state.users[profile];
  const words=Object.entries(c.words||{}).filter(([,s])=>s.seen>0||s.introducedAt).sort(([a],[b])=>a.localeCompare(b)).map(([w,s])=>[w,s.seen,s.correct,s.wrong,s.streak,s.supportLevel,s.nextReviewAt,s.lastFeedbackDate,(s.usedPassageKeys||[]).length,s.introducedAt||null]);
- return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY]);
+ return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY]);
 }
 function preparationKey(mode,profile=state.selected,account=authUser?.id){return 'vocab-prepared-'+account+'-'+profile+'-'+mode}
 function assignScenarios(plans){
@@ -1420,8 +1420,8 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  st.mastered=st.streak>=5&&st.days.length>=3&&st.contextKeys.length>=3&&(st.independentCorrect||0)>=5&&(st.targetRecall||0)>=2&&st.recallDays.length>=2;
  if(session.model!==LEARNING_MODEL)scheduleReview(st,{credit,independent,revealed,hintUsed});
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
- const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,signature:q.signature||'',remedial:!!q.remedial,answeredAt:Date.now(),studyDate:today()};
- rec.levelEligible=!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
+ const rec={word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt:Date.now(),studyDate:today()};
+ rec.levelEligible=session.preparation?.plans[current]?.levelEligible!==false&&!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
  if(session.preparation?.plans[current]?.realtimeProbe&&!st.introducedAt)st.introducedAt=today();
  if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec);rec.evidence=evidence}
  rec.xp=rewardAnswer(q,independent);rec.stars=rec.xp?2:0;
@@ -1489,7 +1489,7 @@ async function gradeCurrent(dontKnow){
  if(dontKnow){
    const clue=q.feedbackCorrect||('정답은 “'+q.w.w+'”입니다.');
    applyResult(q,'×',clue+' 정답을 본 뒤 따라 쓰는 것은 숙달로 계산하지 않아요.','',{
-     credit:0,contextSuccess:false,targetRecall:false,independent:false,hintUsed,revealed:true
+     credit:0,contextSuccess:false,targetRecall:false,independent:false,hintUsed,revealed:true,meaningUnknown:q.type!=='subjective_use'&&!hintUsed
    });
    return;
  }
