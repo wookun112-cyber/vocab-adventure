@@ -48,5 +48,7 @@ export function patchStuckPreparation(source){
     try{await resumeLesson(savedLesson(profile));return}catch(resumeError){e=resumeError}
    }
    if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')`);
- return patchDailyRecovery(source);
+ source=patchDailyRecovery(source);
+ replace(" loadedAccount=account;\n const recovered=mergeLearnerCheckpoints();"," loadedAccount=account;cloudSaveError=null;\n const recovered=mergeLearnerCheckpoints();");
+ return source;
 }
