@@ -65,7 +65,15 @@ async function ask(prompt,schema,name,max=9000,effort='low'){
     })
   });
   if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,350));
-  return JSON.parse(extractText(await r.json()).trim());
+  const response=await r.json();
+  // Usage accounting never contains the problem text, answers or learner identity.
+  if(response?.usage)console.info(JSON.stringify({
+    event:'vocab_question_api_usage',kind:name,model,
+    inputTokens:Number(response.usage.input_tokens)||0,
+    cachedInputTokens:Number(response.usage.input_tokens_details?.cached_tokens)||0,
+    outputTokens:Number(response.usage.output_tokens)||0
+  }));
+  return JSON.parse(extractText(response).trim());
 }
 const norm=s=>String(s||'').replace(/[\s"'“”‘’.,!?()[\]{}]/g,'').toLowerCase();
 const sentenceCount=s=>(String(s||'').match(/[.!?]/g)||[]).length;
