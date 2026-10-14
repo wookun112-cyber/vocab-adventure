@@ -1,5 +1,6 @@
-// Production-only compatibility fix for a consumed cloud lesson with unsynced local completion.
-// Keep source checkpoint protection and student work unchanged; do not generate a replacement.
+import {patchDailyRecovery} from './patch-daily-recovery.mjs';
+// Production compatibility for a consumed cloud lesson with unsynced local completion.
+// Existing answers are protected; new-day changes use the owner-scoped archive RPC.
 export function patchStuckPreparation(source){
  const replace=(before,after)=>{
   const count=source.split(before).length-1;
@@ -9,8 +10,6 @@ export function patchStuckPreparation(source){
  replace(
   "     let remote=await serverLesson(profile,null,retry),tries=0;\n     const blocked=serverPreparationError(remote);if(blocked)throw blocked;",
   `     let remote=await serverLesson(profile,null,retry),tries=0;
-     // A consumed cloud packet means that no new problem is currently being built.
-     // The locally completed lesson must be safely synchronized before a new set.
      if(remote?.status==='consumed'){
        if(savedLesson(profile))throw Object.assign(new Error('저장된 학습 이어하기'),{resumeAvailable:true});
        if(child().lastDate===today()){
@@ -49,5 +48,7 @@ export function patchStuckPreparation(source){
     try{await resumeLesson(savedLesson(profile));return}catch(resumeError){e=resumeError}
    }
    if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')`);
+ source=patchDailyRecovery(source);
+ replace(" loadedAccount=account;\n const recovered=mergeLearnerCheckpoints();"," loadedAccount=account;cloudSaveError=null;\n const recovered=mergeLearnerCheckpoints();");
  return source;
 }
