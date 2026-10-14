@@ -23,6 +23,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node scripts/verify-bank-first-recovery.mjs
+      - run: node scripts/verify-bank-first-integration.mjs
       - run: node scripts/verify-no-runtime-generation.mjs
       - run: node scripts/verify-server-preparation.mjs
       - run: node scripts/verify-all.mjs
