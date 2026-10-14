@@ -1,0 +1,28 @@
+name: Bank-first PR regression
+
+on:
+  push:
+    branches:
+      - chore/bank-first-no-runtime-generation-20261014
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node scripts/verify-bank-first-recovery.mjs
+      - run: node scripts/verify-no-runtime-generation.mjs
+      - run: node scripts/verify-server-preparation.mjs
+      - run: node scripts/verify-all.mjs
