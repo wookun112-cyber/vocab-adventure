@@ -1,0 +1,27 @@
+name: Vocabulary bank verification
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: vocabulary-bank-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run existing and offline bank tests
+        run: node scripts/verify-all.mjs
+        env:
+          OPENAI_API_KEY: ''
+      - name: Check the real published frontend
+        run: node scripts/build-public.mjs
+        env:
+          OPENAI_API_KEY: ''
