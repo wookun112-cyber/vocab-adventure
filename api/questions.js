@@ -462,7 +462,7 @@ export default async function handler(req,res){
     const questions=[],missing=[];
     for(const item of items){
       let q=resolveAuthoredQuestion(item,user.id,questions)||sentenceUseQuestion(item);
-      if(!q&&item.allowBankTypeFallback&&item.review&&!item.firstLearning&&!item.needsCard){
+      if(!q&&item.allowBankTypeFallback&&item.review&&!item.firstLearning&&!item.needsCard&&['subjective_context','subjective_dialogue'].includes(item.type)){
         q=sentenceUseQuestion({...item,type:'subjective_use'});if(q)q.bankFallbackFrom=item.type;
       }
       if(q)questions.push(q);else missing.push(item);
