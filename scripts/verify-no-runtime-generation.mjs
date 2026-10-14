@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {prepare} from '../api/prepare-worker.js';
 
 const source=fs.readFileSync(new URL('../api/prepare-worker.js',import.meta.url),'utf8');
-assert.doesNotMatch(source,/\\bbuildValidated\\b|api\\.openai\\.com|OPENAI_API_KEY/);
+assert.doesNotMatch(source,/\bbuildValidated\b|api\.openai\.com|OPENAI_API_KEY/);
 assert.match(source,/bank_variant_unavailable/);
 
 // A depleted bank must not trigger paid generation from the learner workflow.
