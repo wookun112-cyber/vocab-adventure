@@ -36,7 +36,7 @@ const store=async(name,args)=>{assert.equal(name,'save_preparation');checkpoints
 const ready=await prepare(job,'key',generate,store);
 assert.equal(ready.ready.length,15);
 assert.equal(maxFlight,2);
-assert.equal(calls,2,'legacy reviews are immediately available; only five new-word cards need background generation');
+assert.equal(calls,2,'mock generator fills unmet authored MC tasks and new-word cards in two groups');
 assert.equal(JSON.stringify(learner),before);
 assert.equal(checkpoints.at(-1).p_payload.ready.length,15);
 assert.ok(checkpoints.every(c=>!c.p_failed));
@@ -141,7 +141,7 @@ const demandGenerate=async items=>{
  return items.map(answer);
 };
 const redesignedPacket=await prepare(advancedJob,'key',demandGenerate,async()=>true);
-assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.equal(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length,4);assert.equal(redesignedPacket.ready.length,8);
+assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.equal(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length,2);assert.equal(redesignedPacket.ready.length,8);
 const frozenPacket=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});frozenPacket.resumeId='advanced-paused';
 const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};const originalTypes=JSON.stringify(frozenPacket.plans.map(p=>p.type));wideOnce=false;redesigned=false;
 const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
@@ -154,7 +154,7 @@ const relation=relationPlan.plans.find(p=>p.type==='mc_usage');relation.type='mc
 const diversify=async items=>{if(!relationFailed&&items.some(i=>i.id===relation.id)){relationFailed=true;const out=items.filter(i=>i.id!==relation.id).map(answer);out.failed=[{id:relation.id,issues:['review_failed:levelDemandFit']}];return out;}return items.map(answer)};
 const diversified=await prepare({...advancedJob,payload:relationPlan},'key',diversify,async()=>true);
 assert.equal(diversified.plans.find(p=>p.id===relation.id).w.w,relation.w.w);
-assert.equal(relationFailed,false);assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,0);assert.equal(diversified.ready.length,8);
-assert.equal(diversified.plans.find(p=>p.id===relation.id).type,'subjective_use');
-console.log('Missing relation-bank task verified: vocabulary and ID retained, no generation request, canonical productive use supplied immediately.');
+assert.equal(relationFailed,true);assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,2);assert.equal(diversified.ready.length,8);
+assert.equal(diversified.plans.find(p=>p.id===relation.id).type,'mc_usage');
+console.log('Missing relation-bank task verified: rejected MC mock is retried and objective/written balance remains intact.');
 

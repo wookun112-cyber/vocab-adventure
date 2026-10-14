@@ -1,9 +1,9 @@
 import {DAILY_POLICY} from '../lib/daily-practice.js';
 import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand,isCoveragePlan,COVERAGE_POLICY,REVIEW_POLICY,reviewFloor,calibratedWord} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
-import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
 import {hydrateFromBank,withReservedHistory,bankCompatible} from '../lib/question-bank.js';
+import {findBankFallback} from '../lib/bank-first-recovery.js';
 import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-bank.js';
 import {AUTHORED_REVISION} from '../lib/authored-policy.js';
 import {sentenceUseQuestion,sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
@@ -17,10 +17,16 @@ export async function rpc(name,args){
  if(!r.ok)throw Error('Preparation storage '+r.status);
  return r.json();
 }
-const generatePrepared=async(items,recent,initialFeedback)=>{
+// Bank-first cost policy: lesson preparation is never allowed to call an LLM.
+// New content must be authored, quality-checked, and committed before delivery.
+// Existing fixed templates remain available without a provider key.
+const generatePrepared=async(items)=>{
  const questions=[],missing=[];
  for(const item of items){const q=sentenceUseQuestion(item);if(q)questions.push(q);else missing.push(item)}
- if(missing.length){const generated=await buildValidated(missing,recent,{maxAttempts:1,partial:true,initialFeedback});questions.push(...generated);questions.failed=generated.failed}
+ if(missing.length){
+  questions.failed=missing.map(item=>({id:item.id,issues:['bank_variant_unavailable']}))
+  console.warn(JSON.stringify({event:'preparation_bank_shortfall',count:missing.length}));
+ }
  return questions;
 };
 export function reviewSupply(job,curriculum){
@@ -50,16 +56,15 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   const reserved=[...(job.reserved||[]),...authored.map(e=>e.question)];
   const cached=trial=>hydrateFromBank({account:job.account,plans:[trial],ready:[]},job.learner,job.bank||[],reserved)>0;
   let e=authoredEntry(plan,job.learner,job.account,reserved);
-  // Keep the due target even when one question type has run out of fresh
-  // sentences. Try another supplied type before requesting live generation.
-  // Interrupted lessons retain their exact original tasks.
-  if(!e&&!recovering&&plan.review&&plan.type!=='subjective_recall'&&!cached(plan)){
-   for(const type of ['subjective_recall','subjective_use','mc_usage','mc_reading','mc_relation','mc_context'].filter(t=>t!==plan.type)){
-    const trial={...plan,type,stage:type==='subjective_recall'?'check':type==='subjective_use'?'use':'bridge'};
-    const alternative=authoredEntry(trial,job.learner,job.account,reserved);
-    if(alternative||cached(trial)){Object.assign(plan,trial);e=alternative;break}
-   }
-   if(!e&&!cached(plan))Object.assign(plan,{type:'subjective_use',stage:'use',needsCard:false});
+  // Resolve a shortage with a previously verified item for the SAME
+  // target and modality. Never turn a missing MC task into an ungraded
+  // sentence-use task or alter interrupted/new-word/card questions.
+  if(!e&&!recovering&&!cached(plan)){
+   const alternative=findBankFallback(plan,trial=>{
+    const entry=authoredEntry(trial,job.learner,job.account,reserved);
+    return !!(entry&&bankCompatible(entry,trial,job.learner,job.account))||cached(trial);
+   });
+   if(alternative){Object.assign(plan,alternative);e=authoredEntry(plan,job.learner,job.account,reserved)}
   }
   if(e)authored.push(e);
  }
@@ -106,7 +111,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
    while(cursor<groups.length&&!obsolete){
     const group=groups[cursor++];
     let missing=group;
-    for(let attempt=0;attempt<(remaining.length<=4?3:2)&&missing.length;attempt++){
+    for(let attempt=0;attempt<(generate===generatePrepared?1:remaining.length<=4?3:2)&&missing.length;attempt++){
      const known=[...ready];
      const items=generationItems(missing.map(([,p])=>p),generationLearner,known);
      const questions=await generate(items,[...(job.learner.recentProblems||[]),...known.map(([,q])=>q.signature)].slice(-40),feedback);
@@ -149,7 +154,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   if(failed)throw failed.reason;
   if(payload.ready.length<payload.plans.length)throw Error(duplicates?'Repeated sentence withheld':'Incomplete validated preparation');
  }catch(error){
-  if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);if(/credit_balance_exhausted|insufficient_quota/.test(payload.preparationError))payload.preparationBlocked='ai_credit_exhausted';checkpoint=checkpoint.catch(()=>{});await save(true)}
+  if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);if(/credit_balance_exhausted|insufficient_quota/.test(payload.preparationError))payload.preparationBlocked='ai_credit_exhausted';else if(generate===generatePrepared&&payload.preparationError==='Incomplete validated preparation')payload.preparationBlocked='bank_shortfall';checkpoint=checkpoint.catch(()=>{});await save(true)}
   throw error;
  }
  return payload;

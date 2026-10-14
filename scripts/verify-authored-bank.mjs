@@ -108,7 +108,7 @@ for(const type of ['subjective_recall','mc_context']){
  }
 }
 const useOnly=resolveAuthoredQuestion(exhaustedItem,AUTHORED_OWNER);
-assert.equal(useOnly.type,'subjective_use');assert.equal(useOnly.context,'');assert.deepEqual(useOnly.acceptedAnswers,[]);assert.equal(useOnly.semanticGraderRequired,true);
+assert.equal(useOnly,null,'exhausted MC bank must not silently become subjective use');
 // Execute the real route without an AI key. The only permitted network call
 // is mocked authentication, so an unexpected generation call fails the test.
 const originalFetch=globalThis.fetch,originalKey=process.env.OPENAI_API_KEY;
@@ -124,7 +124,7 @@ try{
 }finally{
  globalThis.fetch=originalFetch;if(originalKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=originalKey;
 }
-console.log('Adaptive bank API verified: exhausted same-type passages switch to unused same-word tasks without any AI request; complete exhaustion returns example-free own-sentence use; base tasks and owner isolation remain intact.');
+console.log('Adaptive bank API verified: exhausted same-type passages switch to unused same-word tasks without any AI request; complete exhaustion reports a bank shortfall without changing modality; base tasks and owner isolation remain intact.');
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
 console.log(`Authored bank verified: ${rows.length} words, ${authoredStats.questions.toLocaleString()} canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and eleven grade-matched preparations with zero AI generation or learner mutations.`);

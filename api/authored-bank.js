@@ -8,6 +8,7 @@ import {levelFourArchive} from '../lib/server/level-four-bank-data.js';
 import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
 import {QUESTION_POLICY,calibratedWord,inTargetBand,isCoverageWord,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
 import {passageKeys} from '../lib/prepared-plan.js';
+import {bankFallbackTypes} from '../lib/bank-first-recovery.js';
 // Inflate and index exactly once per worker instance, never per question.
 const originalRows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
 const supplementalRows=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64')).toString('utf8'));
@@ -92,7 +93,7 @@ export function resolveAuthoredQuestion(item,account,extra=[]){
  // Only newly appended practice tasks may change type. Base lessons and
  // interrupted questions keep the task that the learner was already given.
  if(!item.allowBankTypeFallback||!item.review||item.firstLearning||item.needsCard||item.type==='subjective_use')return null;
- for(const type of ['subjective_recall','mc_context','mc_usage','subjective_use'].filter(t=>t!==item.type)){
+ for(const type of bankFallbackTypes(item.type)){
   const fresh=authoredQuestion({...item,type},account,extra);
   if(fresh)return {...fresh,bankFallbackFrom:item.type};
  }
