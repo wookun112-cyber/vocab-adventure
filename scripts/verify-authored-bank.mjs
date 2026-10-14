@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {gunzipSync} from 'node:zlib';
+import {levelNineArchive} from '../lib/server/level-nine-bank-data.js';
 import {archive} from '../api/authored-bank-data.js';
 import {essentialArchive} from '../lib/server/essential-bank-data.js';
 import {levelFiveSixArchive} from '../lib/server/level-five-six-bank-data.js';
@@ -14,8 +15,9 @@ import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 const originals=JSON.parse(gunzipSync(Buffer.from(archive,'base64'))),supplement=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64'))),changed=new Set(supplement.map(r=>r.word));
 const levelFour=JSON.parse(gunzipSync(Buffer.from(levelFourArchive,'base64')));
 const levelFiveSix=JSON.parse(gunzipSync(Buffer.from(levelFiveSixArchive,'base64')));
-const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement,...levelFour,...levelFiveSix];
-assert.equal(originals.length,1854);assert.equal(rows.length,2788);assert.equal(authoredStats.questions,27880);
+const levelNine=JSON.parse(gunzipSync(Buffer.from(levelNineArchive,'base64')));
+const rows=[...originals.filter(r=>!changed.has(r.word)),...supplement,...levelFour,...levelFiveSix,...levelNine];
+assert.equal(originals.length,1854);assert.equal(rows.length,2815);assert.equal(authoredStats.questions,28150);
 assert.equal(authoredStats.independentReviewComplete,false);
 assert.deepEqual(authoredCurriculum('another-account'),[]);
 assert.equal(authoredQuestion({word:'의견',readerLevel:2,type:'mc_context'},'another-account'),null);
@@ -126,5 +128,6 @@ console.log('Adaptive bank API verified: exhausted same-type passages switch to 
 const config=JSON.parse((await import('node:fs')).readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 for(const path of ['/api/authored-bank-data.js','/api/authored-bank.js'])assert.equal(config.rewrites.find(r=>r.source===path)?.destination,path.slice(0,-3));
 console.log(`Authored bank verified: ${rows.length} words, ${authoredStats.questions.toLocaleString()} canonical slots, ${tested} runtime entries, owner isolation, truthful draft metadata, rotated correct markers, blank recall/inflection credit, example-free semantic sentence use, and eleven grade-matched preparations with zero AI generation or learner mutations.`);
+
 
 

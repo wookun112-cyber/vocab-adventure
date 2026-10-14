@@ -1,0 +1,118 @@
+import * as studyHistory from '../lib/study-history.js';
+import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
+import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
+import * as authoredPolicy from '../lib/authored-policy.js';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {DAILY_POLICY,MINIMUM_STUDY_POLICY} from '../lib/daily-practice.js';
+const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
+const clone=value=>JSON.parse(JSON.stringify(value));
+const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
+function fixture(local=new Map(),cloud=new Map(),account='family'){
+ const nodes=new Map(),alerts=[],calls={reads:0,consumes:0,generation:0,topups:0,writes:[]};
+ const node=id=>{
+  if(!nodes.has(id)){
+   const classes=new Set();
+   nodes.set(id,{textContent:'',innerHTML:'',value:'',disabled:false,style:{},children:[],appendChild(x){this.children.push(x)},classList:{add(...xs){xs.forEach(x=>classes.add(x))},remove(...xs){xs.forEach(x=>classes.delete(x))},contains:x=>classes.has(x),toggle(x,on){if(on??!classes.has(x))classes.add(x);else classes.delete(x)}}});
+  }
+  return nodes.get(id);
+ };
+ let run;const deferred=[];let blockWrites=false;
+ const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Date,Math,Map,Set,Promise,
+  document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>node('element-'+Math.random())},window:{scrollTo(){}},alert:x=>alerts.push(x),
+  localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)},
+  fetch:url=>{
+   if(url==='/api/study-topups'){calls.topups++;return Promise.resolve({ok:true,json:async()=>({policy:MINIMUM_STUDY_POLICY,level:run('child().difficulty'),targets:[],exhausted:true})})}
+   calls.generation++;throw Error('Resuming saved base questions must not use AI');
+  },
+  createClient:()=>({
+   auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},
+   from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>{calls.reads++;return {data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null}}})}),upsert:async row=>{
+    calls.writes.push(clone(row));if(blockWrites)await new Promise(resolve=>deferred.push(resolve));
+    cloud.set(row.user_id,clone(row.state));return {error:null};
+   }}),
+   rpc:async(name,args)=>{
+    if(name==='save_learning_patch'){
+     if(blockWrites)await new Promise(resolve=>deferred.push(resolve));
+     const state=clone(cloud.get(account));
+     for(const op of args.p_operations){
+      let target=state;for(const part of op.path.slice(0,-1))target=target[part];
+      const key=op.path.at(-1),exists=Object.hasOwn(target,key);
+      if(!op.remove&&exists&&JSON.stringify(target[key])===JSON.stringify(op.value))continue;
+      if(exists!==op.exists||exists&&JSON.stringify(target[key])!==JSON.stringify(op.before))return {data:{conflict:true,path:op.path},error:null};
+      if(op.remove)delete target[key];else target[key]=clone(op.value);
+     }
+     calls.writes.push({user_id:account,state:clone(state)});cloud.set(account,state);return {data:{saved:true},error:null};
+    }
+    if(name==='consume_prepared_lesson'){calls.consumes++;return {data:true,error:null}}
+    if(!['get_prepared_lesson','ensure_prepared_lesson'].includes(name))throw Error('Unexpected RPC '+name);
+    calls.reads++;return {data:run('typeof recoveryRemote==="undefined"?makeRemoteLesson():recoveryRemote'),error:null};
+   }
+  })
+ });
+ run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);
+ run(`state.selected='guest';authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;
+  globalThis.makeRemoteLesson=()=>{
+   const newWords=SEED_WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&inTargetBand(w,child().difficulty)).slice(0,5),plans=assignScenarios(makeQuestionPlan(newWords,[],20,'daily'));
+   const ready=plans.map((p,i)=>[i,{w:p.w,type:p.type,label:'문맥',q:'빈칸을 채우세요.',ctx:'기록'+i+'를 읽고 새로운 상황'+i+'의 ＿＿＿＿를 살폈어요.',open:p.type.startsWith('subjective_'),hideWord:true,showTarget:false,
+    opts:p.type.startsWith('mc_')?[{t:p.w.w,ok:true},...['가나다','라마바','사아자','차카타'].map(t=>({t,ok:false}))]:[],acceptedAnswers:[p.w.w],hints:['상황의 단서를 살펴보세요.','앞뒤 문장을 함께 살펴보세요.'],feedbackCorrect:'문맥에 맞는 말이에요.',signature:'새 상황'+i,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}}]);
+   return {id:'job-'+state.selected,status:'ready',payload:{selectionPolicy:SELECTION_POLICY,questionPolicy:QUESTION_POLICY,engine:PREPARATION_ENGINE,created:Date.now(),account:authUser.id,profile:state.selected,mode:'daily',snapshot:preparationSnapshot(state.selected),difficulty:child().difficulty,newWords:newWords.map(w=>w.w),baseWords:newWords,plans,ready}};
+  };
+ `);
+ run("getPreparation=async()=>{const remote=typeof recoveryRemote==='undefined'?makeRemoteLesson():recoveryRemote;const blocked=serverPreparationError(remote);if(blocked)throw blocked;return createServerPreparation({...remote.payload,key:preparationKey('daily'),serverId:remote.id},remote.payload.ready)}");
+ return {run,ctx,node,alerts,calls,local,cloud,block(){blockWrites=true},release(){blockWrites=false;deferred.splice(0).forEach(resolve=>resolve())}};
+}
+
+// Actual app transitions under simulated network failure, no paid calls.
+const f=fixture();await f.run('buildSession()');await flush();
+f.run(`session.queue[current]={...session.queue[current],type:'subjective_use',open:true,showTarget:true,opts:[]};session.preparation.plans[current].type='subjective_use';session.preparation.ready.set(current,session.queue[current]);renderQuestion();`);
+f.node('answer').value='나는 친구의 의견을 듣고 계획을 바꾸었다.';
+const seenBefore=f.run('wordState(session.queue[current].w.w).seen');
+f.ctx.fetch=async()=>{throw Error('offline')};
+await f.run('gradeCurrent(false)');
+assert.equal(f.run('session.gradingQueue.length'),1);
+assert.equal(f.run('session.results[0].gradingPending'),true);
+assert.equal(f.run('wordState(session.queue[0].w.w).seen'),seenBefore,'pending is not a wrong answer');
+assert.equal(f.run('session.gradingQueue[0].answer'),f.node('answer').value);
+await f.run('cloudSave()');
+const restarted=fixture(f.local,f.cloud);await restarted.run('cloudLoad()');await restarted.run('buildSession()');
+assert.equal(restarted.run('session.gradingQueue.length'),1,'queue survives restart');
+assert.equal(restarted.run('current>=1'),true,'other questions remain available');
+let calls=0;restarted.ctx.fetch=async()=>{calls++;return {ok:true,status:200,json:async()=>({score:1,contextSuccess:true,targetRecall:false,feedback:'뜻에 맞게 썼어요.',normalizedAnswer:'나는 친구의 의견을 듣고 계획을 바꾸었다.',exampleAnswer:'나는 친구의 의견을 듣고 계획을 바꾸었다.'})}};
+await restarted.run('processGradingQueue(session,true)');
+assert.equal(restarted.run('session.gradingQueue[0].status'),'ready');
+const index=restarted.run('session.preparation.plans.findIndex(p=>p.deferredGradeId===session.gradingQueue[0].id)');
+// Advance the fixture cursor to the delivered feedback without fabricating learning credit.
+restarted.run(`while(session.results.length<${index})session.results.push({excludedFromVocabulary:true,credit:null});current=${index};renderQuestion();`);
+assert.equal(restarted.run('session.gradingQueue[0].status'),'applied');
+assert.equal(restarted.run('session.results.filter(r=>!r.excludedFromVocabulary&&r.gradingJobId).length'),1);
+await restarted.run('processGradingQueue(session,true)');assert.equal(calls,1,'applied answers are not charged or counted twice');
+assert.equal(restarted.run('session.results.at(-1).credit'),1);
+// A copied model sentence remains practice, not completed use.
+restarted.run(`current=session.results.length;const q=session.queue[0];session.queue[current]=q;session.preparation.plans[current]={...session.preparation.plans[0],id:String(current)};wordState(q.w.w).shownExamples=['나는 친구의 의견을 듣고 계획을 바꾸었다.'];applyResult(q,'○','맞는 문장이에요.','나는 친구의 의견을 듣고 계획을 바꾸었다.',{credit:1,contextSuccess:true,rawAnswer:'나는 친구의 의견을 듣고 계획을 바꾸었다.'});`);
+assert.equal(restarted.run('session.results.at(-1).copiedExample'),true);
+assert.equal(restarted.run('usageCompleted([session.results.at(-1)]).size'),0);
+console.log('Grading recovery: persisted answer, other questions, restart, queued feedback once, and copied-example practice verified.');
+
+// Closing while the first server request is still in flight must not lose its answer.
+const flight=fixture();await flight.run('buildSession()');await flush();
+flight.run(`session.queue[current]={...session.queue[current],type:'subjective_use',open:true,showTarget:true,opts:[]};session.preparation.plans[current].type='subjective_use';session.preparation.ready.set(current,session.queue[current]);renderQuestion();`);
+flight.node('answer').value='나는 친구와 의견을 나누었다.';
+let release;flight.ctx.fetch=()=>new Promise(resolve=>{release=resolve});
+const inflight=flight.run('gradeCurrent(false)');await flush();await flight.run('cloudSave()');
+const afterClose=fixture(flight.local,flight.cloud);await afterClose.run('cloudLoad()');await afterClose.run('buildSession()');
+assert.equal(afterClose.run('session.gradingQueue[0].answer'),'나는 친구와 의견을 나누었다.');
+assert.equal(afterClose.run('session.results.filter(r=>r.gradingPending).length'),1,'unfinished first request becomes one pending cursor record');
+assert.equal(afterClose.run('current>=1'),true);
+release({ok:true,status:202,json:async()=>({code:'grading_pending'})});await inflight;
+console.log('Close during initial request verified: original answer recovered once and next problem remains available.');
+const boundary=fixture();await boundary.run('buildSession()');await flush();
+boundary.run(`session.queue[0]={...session.queue[0],type:'subjective_use',open:true,showTarget:true,opts:[]};session.preparation.plans=[{...session.preparation.plans[0],type:'subjective_use'}];session.preparation.ready=new Map([[0,session.queue[0]]]);session.queue.splice(1);session.target=1;session.preparation.baseCount=1;session.baseWords=[session.queue[0].w];session.completionPolicy=DAILY_POLICY;session.introDone=true;$('learn').classList.add('active');renderQuestion();$('answer').value='나는 친구의 의견을 존중했다.';`);
+boundary.ctx.fetch=async()=>{throw Error('offline')};await boundary.run('gradeCurrent(false)');await boundary.run('nextQuestion()');
+assert.equal(boundary.run('session.completed'),undefined);assert.equal(boundary.run('session.waitingForGradeResults'),true);
+assert.equal(boundary.run('session.clockStarted'),null,'boundary network wait cannot add study time');
+boundary.ctx.fetch=async()=>({ok:true,status:200,json:async()=>({score:1,contextSuccess:true,targetRecall:false,feedback:'좋아요',normalizedAnswer:'나는 친구의 의견을 존중했다.',exampleAnswer:'나는 친구의 의견을 존중했다.'})});
+await boundary.run('processGradingQueue(session,true)');
+assert.equal(boundary.run('session.gradingQueue[0].status'),'applied');assert.equal(boundary.run('session.waitingForGradeResults'),false);
+console.log('All-other-work-finished boundary verified: no false completion or wait-time credit, successful retry displays feedback and resumes.');

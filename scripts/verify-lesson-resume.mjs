@@ -290,13 +290,13 @@ creditBlocked.run('preparationBlock=null;authUser=null;renderResumeButton()');
 const gradeBlocked=fixture();await gradeBlocked.run('buildSession()');
 gradeBlocked.run(`session.queue[0]={...session.queue[0],w:{w:'의견',d:'어떤 일에 대한 생각이나 판단',band:2,cat:'국어'},type:'subjective_use',open:true,showTarget:true,opts:[],acceptedAnswers:[]};session.preparation.ready.set(0,session.queue[0]);session.preparation.plans[0]={...session.preparation.plans[0],w:session.queue[0].w,type:'subjective_use'};renderQuestion();$('answer').value='내 의견은 공원으로 소풍을 가자는 거야.';fetch=async()=>({ok:false,json:async()=>({code:'ai_credit_exhausted',error:'API 잔액 소진'})})`);
 const essayStats=gradeBlocked.run('JSON.stringify(child().words)');await gradeBlocked.run('gradeCurrent(false)');
-assert.equal(gradeBlocked.run('session.results.length'),0);assert.equal(gradeBlocked.run('JSON.stringify(child().words)'),essayStats);assert.ok(gradeBlocked.node('answer').value.includes('공원'));assert.ok(gradeBlocked.alerts.at(-1).includes('API 잔액'));assert.equal(gradeBlocked.node('submit').disabled,false);
+assert.equal(gradeBlocked.run('session.results.length'),1);assert.equal(gradeBlocked.run('session.results[0].gradingPending'),true);assert.equal(gradeBlocked.run('JSON.stringify(child().words)'),essayStats);assert.ok(gradeBlocked.node('answer').value.includes('공원'));assert.ok(gradeBlocked.node('feedback').textContent.includes('잔액'));assert.equal(gradeBlocked.node('submit').disabled,false);
 console.log('Actual app credit block verified: preparation shows the billing cause instead of indefinite loading; failed sentence grading keeps input and word statistics without a wrong result; signed-out rendering remains safe.');
 
 await gradeBlocked.run('cloudSave()');
 const pendingRestart=fixture(gradeBlocked.local,gradeBlocked.cloud);await pendingRestart.run('cloudLoad()');await pendingRestart.run('buildSession()');
-assert.equal(pendingRestart.run('current'),0);assert.equal(pendingRestart.run('session.results.length'),0);assert.equal(pendingRestart.node('answer').value,'내 의견은 공원으로 소풍을 가자는 거야.');assert.equal(pendingRestart.calls.generation,0);assert.equal(pendingRestart.calls.consumes,0);
-console.log('Failed grading draft verified: typed sentence and unfinished question survive local/cloud restart without result, automatic retry, regeneration or re-consumption.');
+assert.ok(pendingRestart.run('current')>=1);assert.equal(pendingRestart.run('session.results[0].gradingPending'),true);assert.equal(pendingRestart.run('session.gradingQueue[0].answer'),'내 의견은 공원으로 소풍을 가자는 거야.');assert.equal(pendingRestart.calls.generation,0);assert.equal(pendingRestart.calls.consumes,0);
+console.log('Failed grading draft verified: submitted sentence survives local/cloud restart in the retry queue, no score is invented, and other questions resume without regeneration or re-consumption.');
 
 // Skipping an excluded old target must not attach the previous DOM answer to
 // the next valid question, even though the skip itself saves a checkpoint.
@@ -312,3 +312,4 @@ draftSkip.run(`
 await draftSkip.run('nextQuestion()');
 assert.equal(draftSkip.run('current'),2);assert.equal(draftSkip.node('qWord').textContent,'기준');assert.equal(draftSkip.node('answer').value,'');assert.equal(draftSkip.run('savedLesson().pendingAnswer'),'');
 console.log('Draft isolation verified: answering opinion, skipping an excluded phrase, and opening criterion never carries the prior sentence to the next question or checkpoint.');
+

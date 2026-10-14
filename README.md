@@ -156,3 +156,17 @@
 ## 12.16.23 — Complete stage 5/6 bank
 
 Adds 377 stage-five and 235 stage-six words, each with three context questions, three usage questions, three definition-and-context recall questions, and one example-free sentence-writing task. Combined totals: stage five 387 words / 3,870 questions; stage six 246 words / 2,460 questions. AI editorial review and deterministic checks are not human standardization or empirical difficulty calibration. Existing revisions and learner records remain accepted.
+
+
+
+## 12.16.24 — Reliable grading, retained recall and stage nine
+
+Submitted AI answers are checkpointed before the request. After an 8-second foreground deadline or a service error, a pending marker advances the cursor without a score, word-counter change or reward. Other words remain available. A persisted retry queue uses bounded backoff (five minutes for quota errors), restores after closing even during the first request, and delivers each completed grade once through the normal feedback flow. Pending answers prevent final completion; waiting at the boundary does not count as study time. Retries require the app to be open. An owner-scoped server cache leases each semantic request, reuses completed responses and rejects a stale lease.
+
+Model examples actually displayed in feedback, introductions and target-visible contexts are retained per word. Exact or near-exact copying is practice only: it cannot complete daily usage or supply independent mastery evidence. A different accurate sentence remains required; existing accepted results are not rewritten.
+
+Fresh authored recall passages remain preferred. When finite passages are exhausted, deterministic, hidden-target definition recall is available on both server and device without generation, with canonical receipt checks. It has no example sentence to repeat, and preserves 7/30-day retention evidence instead of changing the task to target-visible writing.
+
+All 27 active stage-nine words have 270 authored tasks (3 context choice, 3 meaning-in-context choice, 3 definition/blank recall, 1 own sentence). Seeds and canonical curriculum snapshots are versioned; no claim of independent human or psychometric validation is made. All 270 production DB receipts were accepted and changed prompts rejected. Existing 4/5/6 bank and previous revision receipts remain accepted.
+
+Apply `database/grading-reliability.sql`, `database/recall-and-level-nine-runtime.sql`, and `database/level-nine-bank.sql` before publishing. These updates do not change `app_state` or learner histories. The existing OpenAI configuration is reused; tests simulate model/network failures and do not spend API credits. Build checks include actual-app queue/restart tests and server-cache concurrency tests.

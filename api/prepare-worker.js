@@ -53,7 +53,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   // Keep the due target even when one question type has run out of fresh
   // sentences. Try another supplied type before requesting live generation.
   // Interrupted lessons retain their exact original tasks.
-  if(!e&&!recovering&&plan.review&&!cached(plan)){
+  if(!e&&!recovering&&plan.review&&plan.type!=='subjective_recall'&&!cached(plan)){
    for(const type of ['subjective_recall','subjective_use','mc_usage','mc_reading','mc_relation','mc_context'].filter(t=>t!==plan.type)){
     const trial={...plan,type,stage:type==='subjective_recall'?'check':type==='subjective_use'?'use':'bridge'};
     const alternative=authoredEntry(trial,job.learner,job.account,reserved);
@@ -67,7 +67,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  const supplied=new Map(payload.ready||[]);
  for(const [i,plan] of payload.plans.entries()){
   if(supplied.has(i))continue;
-  const raw=sentenceUseQuestion(generationItems([plan],generationLearner)[0]);
+  const raw=sentenceUseQuestion({...generationItems([plan],generationLearner)[0],review:!!plan.review});
   if(!raw)continue;
   const q=browserQuestion(raw,plan);
   q.bankReaderLevel=Number(job.learner.difficulty)||2;q.bankSupportLevel=plan.supportLevel||0;q.bankPassageKeys=[];
@@ -167,3 +167,4 @@ export default async function handler(req,res){
   return res.status(202).json({accepted:true});
  }catch{return res.status(503).json({error:'Preparation unavailable'})}
 }
+

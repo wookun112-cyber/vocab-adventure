@@ -33,7 +33,7 @@ for(const w of targets){
   {validation:{...q.validation,aiVerified:true}},{validation:{...q.validation,sourceRevision:'old'}},{w:{...q.w,d:'다른 뜻'}}]){
   assert.equal(sentenceUseQuestionValid({...q,...patch},plan),false,'tampered instruction or target must be rejected');
  }
- for(const patch of [{type:'mc_usage'},{type:'subjective_recall'},{needsCard:true},{band:7.4},{word:'상징적 장치'}])assert.equal(sentenceUseQuestion({...item,...patch}),null);
+ for(const patch of [{type:'mc_usage'},{type:'subjective_recall',review:false},{needsCard:true},{band:7.4},{word:'상징적 장치'}])assert.equal(sentenceUseQuestion({...item,...patch}),null);
  const learner={difficulty:w.band,words:{[w.w]:{seen:2,correct:1,wrong:1,streak:1}}};
  const packet=makePreparedPlan(learner,{[w.w]:w},[],AUTHORED_OWNER,'test',{reviewOnly:true});
  packet.plans=[plan];packet.ready=[];packet.budget.target=1;packet.budget.availableReviews=1;packet.budget.waitingForReviews=false;
@@ -73,3 +73,4 @@ if(process.argv[2]){
  console.log('Private production fixtures verified: four 9/10 packets become 10/10 with zero generation requests; every existing question, plan and learner record preserved.');
 }
 console.log('Own-sentence templates verified: legacy targets, exact prompts, no examples or answer leaks, tamper rejection, no generation key, and semantic grading required.');
+

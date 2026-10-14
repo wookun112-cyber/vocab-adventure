@@ -36,6 +36,7 @@ for(let i=0;i<3;i++){
  assert.ok(entry);exhausted.words[low.w].usedPassageKeys.push(...passageKeys(entry.question.ctx,[]));
 }
 const packet=await prepare({id:'retention-exhausted',kind:'reserve',slot:1,account:AUTHORED_OWNER,profile:'test',learner:exhausted,curriculum:[],catalog:{}},'fixture',async()=>{throw Error('Retention must not wait for new generation')},async()=>true);
-assert.equal(packet.plans.find(p=>p.w.w===low.w).type,'subjective_use');
-assert.equal(packet.ready.length,packet.plans.length,'exhausted recall switches to fixed own-sentence work');
+assert.equal(packet.plans.find(p=>p.w.w===low.w).type,'subjective_recall');
+assert.equal(packet.ready.length,packet.plans.length,'exhausted recall stays unprompted without live generation');
 console.log('Long-term retention verified: overdue learned words survive promotion, share bounded slots with unfinished vocabulary, require recall then own sentences, accrue spaced evidence without grade inflation, and never revive retired words.');
+

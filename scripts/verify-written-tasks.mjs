@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {copiedUsageExample} from '../lib/learning-model.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import * as authoredPolicy from '../lib/authored-policy.js';
@@ -18,7 +20,7 @@ for(const mode of ['daily','level']){
  assert.ok(plans.every(p=>!['subjective_context','subjective_dialogue'].includes(p.type)));assert.equal(plans.filter(p=>p.type.startsWith('subjective_')).length,10);
  assert.ok(plans.some(p=>p.type==='subjective_recall'));assert.ok(plans.some(p=>p.type==='subjective_use'));
 }
-const backend=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process,Map,Set,AbortSignal});
+const backend=vm.createContext({createHash,copiedUsageExample,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process,Map,Set,AbortSignal});
 vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export default /g,'').replace(/export /g,''),backend);
 vm.runInContext(fs.readFileSync(new URL('../api/questions.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export default /g,'').replace(/export /g,''),backend);
 const run=s=>vm.runInContext(s,backend);
@@ -39,8 +41,8 @@ run(`item={...item,type:'subjective_use',word:'의견',definition:'어떤 일에
 assert.equal((await run('buildValidated([item],[])'))[0].acceptedAnswers.length,0);
 assert.ok(run('deterministic({...sample,context:"소풍 ＿＿＿＿을 말해요."},item).includes("usage_question_has_blank")'));
 const gradingPrompts=[];let modelReply={score:1,result:'○',targetRecall:true,contextSuccess:true,feedback:'의견을 자연스럽게 썼어요.'};
-const grade=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,process,console,fetch:async(url,opts)=>{gradingPrompts.push(JSON.parse(opts.body).input);return {ok:true,json:async()=>({output_text:JSON.stringify(modelReply)})}}});
-vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace(/export default /g,'').replace(/export /g,''),grade);
+const grade=vm.createContext({createHash,copiedUsageExample,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,process,console,fetch:async(url,opts)=>{gradingPrompts.push(JSON.parse(opts.body).input);return {ok:true,json:async()=>({output_text:JSON.stringify(modelReply)})}}});
+vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export default /g,'').replace(/export /g,''),grade);
 const gradeRun=s=>vm.runInContext(s,grade);
 let result=await gradeRun(`runGrade({question:'의견을 넣어 내 문장을 써 보세요.',answer:'내 의견은 공원으로 소풍을 가자는 거야.',targetWord:'의견',definition:'어떤 일에 대한 생각이나 판단',taskType:'sentence_use',readerLevel:2})`);
 assert.equal(result.score,1);assert.equal(result.targetRecall,false);assert.equal(result.contextSuccess,true);
@@ -54,3 +56,4 @@ const rec={credit:1,targetRecall:true,contextSuccess:true};
 assert.equal(recordLearningEvidence(learner,st,shown,rec,'2026-10-07').kind,'recall');
 assert.equal(recordLearningEvidence(learner,st,{w:opinions,type:'subjective_use',showTarget:true},rec,'2026-10-07').unpromptedRecall,false);
 console.log('Written tasks verified: tide meaning clues replace the reported ambiguous blank without mutating paused lessons; new daily/level plans use recall and sentences; separate review validates no blanks/leaks; grading accepts diverse sentences, rejects word-only answers, and separates meaning recall from cued use.');
+

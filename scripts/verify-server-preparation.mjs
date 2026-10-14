@@ -141,12 +141,12 @@ const demandGenerate=async items=>{
  return items.map(answer);
 };
 const redesignedPacket=await prepare(advancedJob,'key',demandGenerate,async()=>true);
-assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_use');assert.equal(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length,8);assert.equal(redesignedPacket.ready.length,8);
+assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.equal(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length,4);assert.equal(redesignedPacket.ready.length,8);
 const frozenPacket=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});frozenPacket.resumeId='advanced-paused';
 const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};const originalTypes=JSON.stringify(frozenPacket.plans.map(p=>p.type));wideOnce=false;redesigned=false;
 const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
 assert.equal(JSON.stringify(frozenOutput.plans.map(p=>p.type)),originalTypes);assert.equal(redesigned,false);
-console.log('Legacy review delivery verified: missing advanced bank content uses example-free sentence tasks with no generation; interrupted lessons keep their original tasks.');
+console.log('Legacy review delivery verified: missing advanced recall stays hidden-target recall, with other unsupplied practice using own sentences without generation; interrupted lessons keep their original tasks.');
 
 // A failed relation task keeps its vocabulary, ID, and objective/written balance.
 const relationPlan=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});
@@ -157,3 +157,4 @@ assert.equal(diversified.plans.find(p=>p.id===relation.id).w.w,relation.w.w);
 assert.equal(relationFailed,false);assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,0);assert.equal(diversified.ready.length,8);
 assert.equal(diversified.plans.find(p=>p.id===relation.id).type,'subjective_use');
 console.log('Missing relation-bank task verified: vocabulary and ID retained, no generation request, canonical productive use supplied immediately.');
+
