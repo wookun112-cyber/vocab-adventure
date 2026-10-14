@@ -1,7 +1,6 @@
 import {DAILY_POLICY} from '../lib/daily-practice.js';
 import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand,isCoveragePlan,COVERAGE_POLICY,REVIEW_POLICY,reviewFloor,calibratedWord} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
-import {buildValidated} from './questions.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
 import {hydrateFromBank,withReservedHistory,bankCompatible} from '../lib/question-bank.js';
 import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-bank.js';
@@ -17,10 +16,16 @@ export async function rpc(name,args){
  if(!r.ok)throw Error('Preparation storage '+r.status);
  return r.json();
 }
-const generatePrepared=async(items,recent,initialFeedback)=>{
+// Bank-first cost policy: lesson preparation is never allowed to call an LLM.
+// New content must be authored, quality-checked, and committed before delivery.
+// Existing fixed templates remain available without a provider key.
+const generatePrepared=async(items)=>{
  const questions=[],missing=[];
  for(const item of items){const q=sentenceUseQuestion(item);if(q)questions.push(q);else missing.push(item)}
- if(missing.length){const generated=await buildValidated(missing,recent,{maxAttempts:1,partial:true,initialFeedback});questions.push(...generated);questions.failed=generated.failed}
+ if(missing.length){
+  questions.failed=missing.map(item=>({id:item.id,issues:['bank_variant_unavailable']}))
+  console.warn(JSON.stringify({event:'preparation_bank_shortfall',count:missing.length}));
+ }
  return questions;
 };
 export function reviewSupply(job,curriculum){
