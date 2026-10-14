@@ -22,15 +22,17 @@ for(const mode of ['daily','review','level']){
 const curriculum=Array.from({length:25},(_,i)=>({word:'독립어휘'+i,definition:'독립된 뜻을 가진 단어',band:3,domain:'국어'}));
 const packet=makePreparedPlan(learner,{'상징적 장치':phrase},[...curriculum,{word:phrase.w,definition:phrase.d,band:3,domain:'국어'}],'family','guest');
 assert.ok(packet.plans.every(p=>p.w.w!==phrase.w));assert.equal(JSON.stringify(learner),before,'selection never deletes old history');
-// Actual vocabulary-generation endpoint rejects unseen phrases as well as audited
-// spelling variants; independent targets survive the same AI response.
+// The actual bank-backed endpoint rechecks eligibility even for malformed
+// imported rows. It must not ask an AI provider to replace rejected phrases.
 const replies=[{word:'상징적장치',definition:'설명구',band:3,domain:'국어'},{word:'새로운 설명 구절',definition:'설명구',band:3,domain:'국어'},{word:'성찰적관점',definition:'설명구',band:3,domain:'국어'},{word:'상징',definition:core.d,band:3,domain:'국어'},{word:'시행착오',definition:'실패하며 방법을 찾음',band:3,domain:'국어'}];
-let prompt='';
-const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process:{env:{OPENAI_API_KEY:'test'}},Map,Set,fetch:async(url,opts)=>{if(url.includes('/auth/'))return {ok:true};prompt=JSON.parse(opts.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({words:replies})})}}});
+let authCalls=0;
+const ctx=vm.createContext({AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Map,Set,authoredCurriculum:()=>replies,
+ fetch:async url=>{assert.ok(String(url).includes('/auth/'),'no paid generation request');authCalls++;return {ok:true,json:async()=>({id:authoredPolicy.AUTHORED_OWNER})}}});
 vm.runInContext(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''),ctx);
 vm.runInContext(fs.readFileSync(new URL('../api/vocab.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export default ',''),ctx);
 let response;
-ctx.req={method:'POST',headers:{authorization:'Bearer test'},body:{band:3,count:12}};ctx.res={status(code){this.code=code;return this},json(data){response=data;return data}};
+ctx.req={method:'POST',headers:{authorization:'Bearer test'},body:{band:3,count:12,mode:'diagnostic'}};ctx.res={status(code){this.code=code;return this},json(data){response=data;return data}};
 await vm.runInContext('handler(req,res)',ctx);
-assert.equal(ctx.res.code,200);assert.deepEqual(Array.from(response.words,w=>w.w),['상징','시행착오']);assert.ok(prompt.includes('붙여 써서 합성어처럼 보이게 해도 금지'));
-console.log('Descriptive targets verified: 1,511 audited phrases and joined spellings excluded; unseen phrases and adjective-noun compounds blocked in generation; core words, lexical compounds and independent idioms retained; all plan modes/review selection preserve old records.');
+assert.equal(ctx.res.code,200);assert.deepEqual(Array.from(response.words,w=>w.w).sort(),['상징','시행착오'].sort());
+assert.equal(response.paidGenerationCalls,0);assert.equal(authCalls,1);
+console.log('Descriptive targets verified: 1,511 audited phrases and joined spellings excluded; imported invalid phrases blocked without paid generation; core words, lexical compounds and independent idioms retained; all plan modes/review selection preserve old records.');
