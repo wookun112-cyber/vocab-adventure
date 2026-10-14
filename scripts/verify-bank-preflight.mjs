@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import vm from 'node:vm';
+import {spawnSync} from 'node:child_process';
+import {AUTHORED_OWNER} from '../lib/authored-policy.js';
+import {authoredCurriculum} from '../api/authored-bank.js';
+import {preflightNewTargets} from '../lib/server/bank-only-policy.js';
+import {calibratedWord,isLearningTarget,COVERAGE_POLICY} from '../lib/learning-model.js';
+import {patchStuckPreparation} from './patch-stuck-preparation.mjs';
+
+const candidates=authoredCurriculum(AUTHORED_OWNER).filter(r=>r.band===3&&r.example&&isLearningTarget(r.word,r.domain,r.band));
+assert.ok(candidates.length>5);
+const missing={w:'검증어휘',d:'고립된 테스트용 어휘',band:3,cat:'국어',source:'fixed'};
+const plan={id:'0',w:missing,type:'mc_usage',stage:'practice',review:false,firstLearning:true,needsCard:true,taskDemand:'initial-practice',supportLevel:0,answerSlot:0};
+const job={account:AUTHORED_OWNER,learner:{difficulty:3,words:{}},bank:[],reserved:[]};
+const packet=()=>({plans:[structuredClone(plan)],ready:[],baseWords:[missing],newWords:[missing.w]});
+const fresh=packet(),before=JSON.stringify(job.learner);
+const result=preflightNewTargets(fresh,job,candidates);
+assert.equal(result.replacements,1);assert.equal(result.requests.length,1);
+assert.notEqual(fresh.plans[0].w.w,missing.w);assert.equal(fresh.plans[0].w.band,3);
+assert.equal(fresh.plans[0].type,plan.type);assert.equal(fresh.plans[0].needsCard,true);
+assert.equal(fresh.baseWords[0].w,fresh.newWords[0]);assert.equal(JSON.stringify(job.learner),before);
+const due=packet();Object.assign(due.plans[0],{review:true,firstLearning:false});
+assert.equal(preflightNewTargets(due,job,candidates).replacements,0);assert.equal(due.plans[0].w.w,missing.w);
+const paused=packet();paused.resumeId='retained-original';
+assert.equal(preflightNewTargets(paused,job,candidates).replacements,0);assert.equal(paused.plans[0].w.w,missing.w);
+const ready=packet();ready.ready=[[0,{w:missing,type:plan.type,signature:'preserved'}]];
+const readyBefore=JSON.stringify(ready.ready);assert.equal(preflightNewTargets(ready,job,candidates).replacements,0);assert.equal(JSON.stringify(ready.ready),readyBefore);
+const production=patchStuckPreparation(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8'));
+const errorFunction=production.slice(production.indexOf('function serverPreparationError('),production.indexOf('let preparingSession=false;'));
+const ctx=vm.createContext({creditMessage:'credit'});vm.runInContext(errorFunction,ctx);
+const blocked=vm.runInContext("serverPreparationError({payload:{preparationBlocked:'bank_supply_required'}})",ctx);
+assert.equal(blocked.code,'bank_supply_required');assert.ok(!blocked.message.includes('충전'));
+assert.equal(vm.runInContext("serverPreparationError({payload:{preparationBlocked:'ai_credit_exhausted'}}).code",ctx),'ai_credit_exhausted');
+assert.ok(production.includes("if(error.code==='bank_supply_required'){clearTimeout(preparationRetryTimer)"));
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'offline-bank-export-'));
+try{
+ const out=path.join(dir,'bank.json');
+ const check=spawnSync(process.execPath,[new URL('./export-offline-bank.mjs',import.meta.url).pathname,out],{encoding:'utf8',env:{...process.env,OPENAI_API_KEY:''}});
+ assert.equal(check.status,0,check.stderr);
+ const saved=JSON.parse(fs.readFileSync(out,'utf8'));assert.equal(saved.questionCount,30);assert.equal(saved.paidGenerationCalls,0);assert.equal(saved.independentHumanReview,false);
+}finally{fs.rmSync(dir,{recursive:true,force:true})}
+console.log('Preflight PASS: same-band/same-task/card replacement, protected due/paused/ready work, explicit non-credit shortage state and 30-slot offline export.');
