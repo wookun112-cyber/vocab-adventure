@@ -108,7 +108,15 @@ ${question}
     })
   });
   if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,220));
-  const graded=JSON.parse(extractText(await r.json()).trim());
+  const response=await r.json();
+  // Aggregate token counts only: never log children's answers or lesson contents.
+  if(response?.usage)console.info(JSON.stringify({
+    event:'vocab_grade_usage',model,taskType,
+    inputTokens:Number(response.usage.input_tokens)||0,
+    cachedInputTokens:Number(response.usage.input_tokens_details?.cached_tokens)||0,
+    outputTokens:Number(response.usage.output_tokens)||0
+  }));
+  const graded=JSON.parse(extractText(response).trim());
   if(![0,.5,1].includes(graded.score))throw new Error('Invalid grade response');
   graded.copiedExample=sentenceMode&&copiedUsageExample(answer,payload.previousExamples||[]);
   if(sentenceMode){
@@ -119,6 +127,12 @@ ${question}
   if(recallMode)graded.contextSuccess=graded.score===1;
   graded.exampleAnswer=sentenceMode&&typeof graded.exampleAnswer==='string'?graded.exampleAnswer.trim().slice(0,400):'';
   return {...graded,model};
+}
+function gradeForRequest(result,payload){
+  // Previous lesson examples affect copied-answer credit, not semantic grading.
+  // Re-evaluate this flag for the current submission, including cache hits.
+  if(payload.taskType!=='sentence_use')return result;
+  return {...result,copiedExample:copiedUsageExample(payload.answer,payload.previousExamples||[])};
 }
 async function gradeRPC(auth,name,args){
  const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(4000)});
@@ -133,15 +147,15 @@ export default async function handler(req,res){
    const payload=req.body||{};
    if(typeof payload.answer!=='string'||payload.answer.length>3000||typeof payload.question!=='string'||payload.question.length>12000)return res.status(400).json({error:'Invalid answer'});
    // Stable across reloads and repeated submissions; include grading policy/model.
-   hash=createHash('sha256').update(JSON.stringify(['usage-grade-12.16.24',process.env.OPENAI_MODEL||'gpt-6-luna',payload.taskType,payload.targetWord,payload.definition,payload.question,payload.answer,payload.source,payload.readerLevel,payload.acceptedAnswers,payload.allowNaturalDerivations,payload.previousExamples])).digest('hex');
+   hash=createHash('sha256').update(JSON.stringify(['usage-grade-12.16.24',process.env.OPENAI_MODEL||'gpt-6-luna',payload.taskType,payload.targetWord,payload.definition,payload.question,payload.answer,payload.source,payload.readerLevel,payload.acceptedAnswers,payload.allowNaturalDerivations,payload.gradingContext||''])).digest('hex');
    const cached=await gradeRPC(auth,'claim_vocab_grade',{p_hash:hash});
-   if(cached.result)return res.status(200).json({...cached.result,cached:true});
+   if(cached.result)return res.status(200).json({...gradeForRequest(cached.result,payload),cached:true});
    if(cached.pending)return res.status(202).json({code:'grading_pending'});
    lease=cached.lease;
    if(!process.env.OPENAI_API_KEY)throw Error('AI not configured');
    const result=await runGrade(payload);
    await gradeRPC(auth,'finish_vocab_grade',{p_hash:hash,p_lease:lease,p_result:result});
-   return res.status(200).json(result);
+   return res.status(200).json(gradeForRequest(result,payload));
   }catch(e){
    if(lease)await gradeRPC(auth,'finish_vocab_grade',{p_hash:hash,p_lease:lease,p_result:null}).catch(()=>{});
    if(/credit_balance_exhausted|insufficient_quota/.test(String(e?.message||e)))return res.status(503).json({code:'ai_credit_exhausted',error:'채점 잔액 확인이 필요해요. 제출한 답안은 저장되어 있어요.'});

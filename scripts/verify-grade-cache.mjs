@@ -22,7 +22,17 @@ try{
  const [first,second]=await Promise.all([call(),call()]);
  assert.equal(first.status,200);assert.equal(second.status,202);assert.equal(charges,1,'concurrent submissions charge once');
  const again=await call();assert.equal(again.result.cached,true);assert.equal(charges,1);
- const copied=await call({...body,previousExamples:[body.answer]});assert.equal(copied.result.copiedExample,true);
+ const copied=await call({...body,previousExamples:[body.answer]});
+ assert.equal(copied.status,200);
+ assert.equal(copied.result.cached,true,'display-only examples reuse prior semantic decision');
+ assert.equal(copied.result.copiedExample,true,'copying is evaluated with the CURRENT shown examples');
+ assert.equal(charges,1,'adding a previously shown example must NOT trigger an extra paid grade');
+ const repeated=await call({...body,previousExamples:[]});
+ assert.equal(repeated.result.copiedExample,false,'prior cache flags must not stick to a new submission');
+ assert.equal(charges,1,'removing shown examples must not trigger extra API work');
+ const newAnswer=await call({...body,answer:'친구들은 저마다 다른 의견을 말했다.'});
+ assert.equal(newAnswer.status,200);
+ assert.equal(charges,2,'a distinct student response still requires semantic grading');
  assert.equal((await call({...body,answer:'a'.repeat(3001)})).status,400);
- console.log('Server grading: idempotent cache, concurrent lease, repeated response, copied example and input bounds verified without paid calls.');
+ console.log('Server grading: idempotent cache, concurrent lease, repeated response, no duplicate billing on shown-example changes, copied example and input bounds verified without paid calls.');
 }finally{globalThis.fetch=originalFetch;if(originalKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=originalKey}
