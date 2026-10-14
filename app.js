@@ -957,7 +957,11 @@ const QUESTION_BATCH_SIZE=4;
 const FIRST_QUESTION_COUNT=1;
 let preparationBlock=null;
 const creditMessage='문제 생성·문장 채점 서비스의 API 잔액이 소진됐어요. 관리자 충전 후 다시 시도해 주세요. 학습 기록은 유지됩니다.';
-function serverPreparationError(remote){return remote?.payload?.preparationBlocked==='ai_credit_exhausted'||/credit_balance_exhausted|insufficient_quota/.test(remote?.payload?.preparationError||'')?Object.assign(new Error(creditMessage),{code:'ai_credit_exhausted'}):null}
+function serverPreparationError(remote){
+ if(remote?.payload?.preparationBlocked==='ai_credit_exhausted'||/credit_balance_exhausted|insufficient_quota/.test(remote?.payload?.preparationError||''))return Object.assign(new Error(creditMessage),{code:'ai_credit_exhausted'});
+ if(remote?.payload?.preparationBlocked==='bank_shortfall')return Object.assign(new Error('검증된 문제은행 문항이 부족해 이번 학습을 준비하지 못했어요. 기존 학습 기록은 유지됩니다. 관리자에게 문항 보충을 요청해 주세요.'),{code:'bank_shortfall'});
+ return null;
+}
 let preparingSession=false;
 const QUESTION_WAIT_MS=15000;
 function withDeadline(task,milliseconds,message){
