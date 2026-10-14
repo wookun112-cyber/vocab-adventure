@@ -1,9 +1,8 @@
-import {authoredEntry} from './authored-bank.js';
+import {offlineAuthoredEntry as authoredEntry} from '../lib/server/offline-bank-runtime.js';
 import {hydrateFromBank} from '../lib/question-bank.js';
 import {DELIVERY_POLICY,localSentenceQuestion} from '../lib/local-delivery.js';
 
-// Carry every fresh alternative with the lesson, rather than fetching after an
-// incorrect answer. The immutable bank stays on the server.
+// Carry fresh alternatives with the lesson; no paid generation after an error.
 export function bundlePractice(payload,learner,account,entries=[],reserved=[]){
  const pool=[],base=(payload.ready||[]).map(([,q])=>q),seen=new Set();
  for(const p of payload.plans){
