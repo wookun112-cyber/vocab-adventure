@@ -154,7 +154,7 @@ const relation=relationPlan.plans.find(p=>p.type==='mc_usage');relation.type='mc
 const diversify=async items=>{if(!relationFailed&&items.some(i=>i.id===relation.id)){relationFailed=true;const out=items.filter(i=>i.id!==relation.id).map(answer);out.failed=[{id:relation.id,issues:['review_failed:levelDemandFit']}];return out;}return items.map(answer)};
 const diversified=await prepare({...advancedJob,payload:relationPlan},'key',diversify,async()=>true);
 assert.equal(diversified.plans.find(p=>p.id===relation.id).w.w,relation.w.w);
-assert.equal(relationFailed,true);assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,2);assert.equal(diversified.ready.length,8);
-assert.equal(diversified.plans.find(p=>p.id===relation.id).type,'mc_relation');
-console.log('Missing relation-bank task verified: MC type retained; mock verification retries rejected tasks without silently converting them to subjective use.');
+assert.equal(relationFailed,false);assert.equal(diversified.plans.filter(p=>p.type.startsWith('mc_')).length,2);assert.equal(diversified.ready.length,8);
+assert.equal(diversified.plans.find(p=>p.id===relation.id).type,'mc_usage');
+console.log('Missing relation-bank task verified: objective slot preserved using a verified matching alternative, with no subjective downgrade.');
 
