@@ -1,4 +1,5 @@
 import {patchDailyRecovery} from './patch-daily-recovery.mjs';
+import {patchBankCosts} from './patch-bank-costs.mjs';
 // Production compatibility for a consumed cloud lesson with unsynced local completion.
 // Existing answers are protected; new-day changes use the owner-scoped archive RPC.
 export function patchStuckPreparation(source){
@@ -50,5 +51,5 @@ export function patchStuckPreparation(source){
    if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')`);
  source=patchDailyRecovery(source);
  replace(" loadedAccount=account;\n const recovered=mergeLearnerCheckpoints();"," loadedAccount=account;cloudSaveError=null;\n const recovered=mergeLearnerCheckpoints();");
- return source;
+ return patchBankCosts(source);
 }
