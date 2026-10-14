@@ -1,7 +1,7 @@
 import {DAILY_POLICY} from '../lib/daily-practice.js';
 import {LEARNING_MODEL,QUESTION_POLICY,isLearningTarget,SELECTION_POLICY,inTargetBand,isCoveragePlan,COVERAGE_POLICY,REVIEW_POLICY,reviewFloor,calibratedWord} from '../lib/learning-model.js';
 import {waitUntil} from '@vercel/functions';
-import {buildValidated} from './questions.js';
+import {BANK_COST_POLICY,templateOnlyQuestions,preflightNewTargets,supplyRequest,deduplicateSupplyRequests} from '../lib/server/bank-only-policy.js';
 import {makePreparedPlan,learnerSnapshot,generationItems,browserQuestion,passageKeys} from '../lib/prepared-plan.js';
 import {hydrateFromBank,withReservedHistory,bankCompatible} from '../lib/question-bank.js';
 import {authoredCurriculum,authoredEntry,authoredAvailability} from './authored-bank.js';
@@ -17,12 +17,7 @@ export async function rpc(name,args){
  if(!r.ok)throw Error('Preparation storage '+r.status);
  return r.json();
 }
-const generatePrepared=async(items,recent,initialFeedback)=>{
- const questions=[],missing=[];
- for(const item of items){const q=sentenceUseQuestion(item);if(q)questions.push(q);else missing.push(item)}
- if(missing.length){const generated=await buildValidated(missing,recent,{maxAttempts:1,partial:true,initialFeedback});questions.push(...generated);questions.failed=generated.failed}
- return questions;
-};
+const generatePrepared=templateOnlyQuestions;
 export function reviewSupply(job,curriculum){
  const supply=authoredAvailability(job.learner,job.account,job.reserved||[]);
  for(const row of curriculum){
@@ -43,6 +38,12 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  payload.bankRevision=AUTHORED_REVISION;
  if(!recovering)payload.reviewPolicy=REVIEW_POLICY;
  payload.supplySelection='due-first-bank-ties-12.16.4';
+ if(generate===generatePrepared){
+  const preflight=preflightNewTargets(payload,job,curriculum);
+  payload.bankCostPolicy=BANK_COST_POLICY;
+  payload.bankSupplyRequests=preflight.requests;
+  payload.bankPreflightReplacements=preflight.replacements;
+ }
  if(payload.budget?.waitingForReviews)payload.budget.waitingStudiedTotal=Object.values(job.learner.words||{}).filter(s=>s.seen||s.introducedAt).length;
  const authored=[];
  for(const [i,plan] of payload.plans.entries()){
@@ -50,9 +51,6 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   const reserved=[...(job.reserved||[]),...authored.map(e=>e.question)];
   const cached=trial=>hydrateFromBank({account:job.account,plans:[trial],ready:[]},job.learner,job.bank||[],reserved)>0;
   let e=authoredEntry(plan,job.learner,job.account,reserved);
-  // Keep the due target even when one question type has run out of fresh
-  // sentences. Try another supplied type before requesting live generation.
-  // Interrupted lessons retain their exact original tasks.
   if(!e&&!recovering&&plan.review&&plan.type!=='subjective_recall'&&!cached(plan)){
    for(const type of ['subjective_recall','subjective_use','mc_usage','mc_reading','mc_relation','mc_context'].filter(t=>t!==plan.type)){
     const trial={...plan,type,stage:type==='subjective_recall'?'check':type==='subjective_use'?'use':'bridge'};
@@ -97,15 +95,24 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   return checkpoint;
  };
  try{
-  await save(false);
   const ready=new Map(payload.ready||[]),remaining=payload.plans.map((p,i)=>[i,p]).filter(([i])=>!ready.has(i));
+  if(generate===generatePrepared&&remaining.length){
+   payload.preparationBlocked='bank_supply_required';
+   payload.preparationError='BANK_SUPPLY_REQUIRED: approved offline content required';
+   payload.bankSupplyRequests=deduplicateSupplyRequests([...(payload.bankSupplyRequests||[]),...remaining.map(([,p])=>supplyRequest(p,recovering?'preserve_original_interrupted_task':'no_compatible_reviewed_question'))]);
+   await save(true);
+   console.info(JSON.stringify({event:'vocab_bank_only_preparation',ready:ready.size,missing:remaining.length,paidGenerationCalls:0}));
+   return payload;
+  }
+  await save(false);
+  // Injectable generation is retained for isolated engine tests. The deployed
+  // handler supplies no generator and cannot reach a paid provider here.
   const groupSize=remaining.some(([,p])=>p.taskDemand==='advanced')?2:4;
   const groups=[];for(let i=0;i<remaining.length;i+=groupSize)groups.push(remaining.slice(i,i+groupSize));
   let cursor=0,duplicates=false;
   const work=async()=>{
    while(cursor<groups.length&&!obsolete){
-    const group=groups[cursor++];
-    let missing=group;
+    const group=groups[cursor++];let missing=group;
     for(let attempt=0;attempt<(remaining.length<=4?3:2)&&missing.length;attempt++){
      const known=[...ready];
      const items=generationItems(missing.map(([,p])=>p),generationLearner,known);
@@ -115,38 +122,33 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
       for(const f of questions.failed){
        feedback[f.id]=failureFeedback(f);
        const plan=payload.plans.find(p=>p.id===f.id);
-       // Preserve ten written activities while replacing an overly broad blank
-       // with independently reviewed productive use. Never rewrite a paused lesson.
        if(!recovering&&plan?.taskDemand==='advanced'&&['subjective_context','subjective_dialogue','subjective_recall'].includes(plan.type)&&f.issues.includes('review_failed:levelDemandFit')){
         plan.type='subjective_use';plan.stage='use';
-        feedback[f.id].push('이 문항은 이제 subjective_use입니다. 빈칸을 만들지 말고 목표어를 보여준 뒤, 예문이나 상황 설명 없이 그 단어로 자신의 문장 하나를 직접 쓰게 하세요.');
+        feedback[f.id].push('이 문항은 이제 subjective_use입니다. 빈칸을 만들지 말고 목표어를 보여준 뒤, 예문이나 상황 설명 없이 그 단어로 자신의 문장 하나를 쓰게 하세요.');
        }else if(!recovering&&plan?.taskDemand==='advanced'&&plan.type==='mc_relation'&&f.issues.includes('review_failed:levelDemandFit')){
         plan.type=Number(plan.id)%4===0?'mc_usage':'mc_reading';plan.stage=plan.type==='mc_reading'?'transfer':'bridge';
-        feedback[f.id].push('이 문항의 새 유형은 '+plan.type+'입니다. 목표 어휘는 그대로 유지하세요. 엉뚱한 오답이나 정의 재진술 대신, 가까운 상황의 조건·의도·결과를 구별하는 보기 다섯 개를 만드세요. 정답은 반드시 하나이며 이미 사용한 사건은 피하세요.');
+        feedback[f.id].push('새 유형은 '+plan.type+'입니다. 목표 어휘는 유지하고 가까운 뜻을 구별하는 보기 다섯 개를 만드세요.');
        }
       }
      }
      if(obsolete)return;
      const retry=[];
      for(const [i,p] of missing){
-      const raw=questions.find(q=>String(q.id)===p.id);
-      if(!raw){retry.push([i,p]);continue}
+      const raw=questions.find(q=>String(q.id)===p.id);if(!raw){retry.push([i,p]);continue}
       const q=browserQuestion(raw,p);q.bankReaderLevel=Number(job.learner.difficulty)||2;q.bankSupportLevel=p.supportLevel||0;q.bankPassageKeys=passageKeys(q.ctx,q.opts.map(o=>o.t));
       if(!sentenceUseQuestionValid(q,p)&&(!raw?.validation?.aiVerified||!raw.validation.deterministic||!raw.validation.checks?.coherentSituation||!raw.validation.checks?.levelDemandFit))throw Error('Unverified prepared question');
       const used=new Set([...(generationLearner.words?.[p.w.w]?.usedPassageKeys||[]),...(generationLearner.words?.[p.w.w]?.problemHistory||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...[...ready.values()].filter(v=>v.w.w===p.w.w).flatMap(v=>passageKeys(v.ctx,v.opts.map(o=>o.t)))]);
-      if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){duplicates=true;feedback[p.id]=['이미 사용한 문장이 중복되었습니다. 이전 문장을 재사용하지 말고 다른 사건으로 새 지문을 작성하세요.','이전 실패 지문: '+q.ctx];retry.push([i,p]);continue}
+      if(passageKeys(q.ctx,q.opts.map(o=>o.t)).some(k=>used.has(k))){duplicates=true;feedback[p.id]=['이미 사용한 문장이 중복되었습니다.','이전 실패 지문: '+q.ctx];retry.push([i,p]);continue}
       ready.set(i,q);
      }
      payload.ready=[...ready].sort(([a],[b])=>a-b);
      bundlePractice(payload,job.learner,job.account,job.bank||[],job.reserved||[]);
-     await save(false);
-     missing=retry;
+     await save(false);missing=retry;
     }
    }
   };
   const results=await Promise.allSettled(Array.from({length:Math.min(3,groups.length)},work));
-  const failed=results.find(r=>r.status==='rejected');
-  if(failed)throw failed.reason;
+  const failed=results.find(r=>r.status==='rejected');if(failed)throw failed.reason;
   if(payload.ready.length<payload.plans.length)throw Error(duplicates?'Repeated sentence withheld':'Incomplete validated preparation');
  }catch(error){
   if(!obsolete){payload.preparationError=String(error?.message||error).slice(0,1000);if(/credit_balance_exhausted|insufficient_quota/.test(payload.preparationError))payload.preparationBlocked='ai_credit_exhausted';checkpoint=checkpoint.catch(()=>{});await save(true)}
@@ -158,13 +160,10 @@ export default async function handler(req,res){
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
  const id=req.body?.id,key=req.headers['x-preparation-key'];
  if(!uuid(id)||!uuid(key))return res.status(401).json({error:'Unauthorized'});
- // Stored authored questions need no generation-provider key.
-
  try{
   const job=await rpc('claim_preparation',{p_id:id,p_key:key});
   if(!job)return res.status(202).json({accepted:false});
-  waitUntil(prepare(job,key).catch(error=>{console.error(JSON.stringify({event:'preparation_retry',profile:job.profile,reason:String(error?.message||error).slice(0,300)}))}));
+  waitUntil(prepare(job,key).catch(error=>{console.error(JSON.stringify({event:'preparation_retry',reason:String(error?.message||error).slice(0,200)}))}));
   return res.status(202).json({accepted:true});
  }catch{return res.status(503).json({error:'Preparation unavailable'})}
 }
-
