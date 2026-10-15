@@ -1,0 +1,27 @@
+name: Recovery test fixture
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  source-fixture:
+    if: github.head_ref == 'fix-storage-grade-feedback-20261015'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Bundle tracked source and pinned test dependencies only
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          git archive --format=tar HEAD > /tmp/source.tar
+          tar --append --file=/tmp/source.tar node_modules
+          gzip /tmp/source.tar
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: recovery-source-fixture
+          path: /tmp/source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
