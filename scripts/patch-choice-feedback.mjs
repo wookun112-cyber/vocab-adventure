@@ -18,9 +18,18 @@ async function recoverStoredChoiceFeedback(q,selected,active,index,record){
   choiceFeedbackRequests.set(key,pending);
  }
  const reasons=await pending;
+ if(!reasons.length&&choiceFeedbackRequests.get(key)===pending)choiceFeedbackRequests.delete(key);
  if(session!==active||authUser?.id!==account||active.results[index]!==record)return;
+ if(!reasons.length&&current===index){
+  let retry=$('retryChoiceFeedback');
+  if(!retry){retry=document.createElement('button');retry.id='retryChoiceFeedback';retry.className='secondary';$('feedback').appendChild(retry)}
+  retry.textContent='해설 다시 불러오기';retry.disabled=false;
+  retry.onclick=async()=>{retry.disabled=true;await recoverStoredChoiceFeedback(q,selected,active,index,record);retry.disabled=false;};
+  return;
+ }
  for(const option of q.opts){const row=reasons.find(r=>r.text===option.t&&typeof r.reason==='string');if(row)option.reason=row.reason}
  if(!selected.reason)return;
+ if(current===index)$('retryChoiceFeedback')?.remove();
  record.feedback=(selected.reason+' '+(q.feedbackCorrect||'')).slice(0,800);
  if(current===index){const text=$('feedback').querySelector?.('.feedback-explanation p');if(text)text.textContent=record.feedback}
  checkpointSession();localSave();cloudSave();

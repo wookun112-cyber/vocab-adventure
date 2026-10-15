@@ -22,7 +22,11 @@ const levelNineRows=JSON.parse(gunzipSync(Buffer.from(levelNineArchive,'base64')
 const rows=[...previousRows.filter(r=>!levelFiveSixWords.has(r.word)),...levelFiveSixRows,...levelNineRows];
 export const choiceFeedbackStats=Object.freeze(enrichChoiceReasons(rows));
 const feedbackRows=[...originalRows,...supplementalRows,...levelFourRows,...levelFiveSixRows,...levelNineRows];
-export const bankWideFeedbackStats=Object.freeze(enrichBankWideReasons(feedbackRows));
+const feedbackLexicon=new Map();for(const row of feedbackRows)if(!feedbackLexicon.has(row.word))feedbackLexicon.set(row.word,row.definition);
+const enrichedRows=new WeakSet();
+function ensureRowFeedback(row){if(!enrichedRows.has(row)){enrichBankWideReasons([row],feedbackLexicon);enrichedRows.add(row);}}
+// Preserve introspection without eagerly generating every historical explanation.
+export const bankWideFeedbackStats=Object.freeze({lazy:true,registeredRows:feedbackRows.length});
 const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));
@@ -41,6 +45,7 @@ function targetRecallAnswer(row,q,text){
  return text===row.word||text===q.answer||q.allowNaturalInflections===true;
 }
 function rawFromSlot(row,q,item){
+ ensureRowFeedback(row);
  const revision=row.revision||AUTHORED_LEGACY_REVISION;
  const own=q.type==='subjective_use';
  const task=own?sentenceWritingTask(row.word):null;

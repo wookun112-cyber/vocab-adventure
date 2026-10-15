@@ -124,7 +124,7 @@ assert.equal(f.run('child().difficulty'),4.8);assert.equal(f.run('child().league
 assert.equal(f.run('session.results.slice(3,6).every(r=>r.levelEligible&&!r.practiceOnly)'),true);
 assert.equal(f.run('session.results.slice(3,6).every(r=>child().words[r.word].introducedAt===today())'),true);
 assert.ok(f.requests.every(url=>url==='/api/study-topups'),'transitions continue from cached prompts even when background bank downloads fail');
-f.run("pauseLearningClock();session.activeMs=25*60000;session.results.push(...session.baseWords.map(w=>({word:w.w,type:'subjective_use',band:w.band,result:'○',credit:1,contextSuccess:true,remedial:true})));current=session.results.length;session.target=current;finishSession()");
+f.run("pauseLearningClock();session.activeMs=25*60000;session.studyDays={[today()]:{activeMs:session.activeMs,timeKnown:true}};session.results.push(...session.baseWords.map(w=>({word:w.w,type:'subjective_use',band:w.band,result:'○',credit:1,contextSuccess:true,remedial:true})));current=session.results.length;session.target=current;finishSession()");
 assert.equal(f.run('child().difficulty'),4.8);assert.equal(f.run('child().leagueLevel'),4.8);assert.equal(f.run('child().sessions.length'),1);
 f.run('finishSession()');assert.equal(f.run('child().sessions.length'),1);assert.equal(f.run('child().activeLesson'),null);
 console.log('Realtime levels verified: three-word .3/.5 promotion, supported-band ceiling, distinct meaning failures, no choice/feedback/typing-error inflation, delayed league finalization, idempotent restart/completion, parent reconciliation, fixed neighboring-bank probes, unchanged prefix/input, five-new budget and instantaneous client transitions.');

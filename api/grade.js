@@ -1,5 +1,6 @@
 import {waitUntil} from '@vercel/functions';
 import {createGradeDelivery} from '../lib/server/grade-delivery.js';
+import {requireGradingAccount,authorizeGradeTask} from '../lib/server/grade-access.js';
 import {copiedUsageExample} from '../lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
@@ -138,10 +139,13 @@ function gradeForRequest(result,payload){
 }
 async function gradeRPC(auth,name,args,timeout=2500){
  const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(timeout)});
- if(!r.ok)throw Error('Grade storage unavailable');return r.json();
+ if(!r.ok){let problem={};try{problem=await r.json()}catch{};const code=String(problem.message||'');throw Error(/GRADE_(DAILY|RATE|CONCURRENCY)_LIMIT/.test(code)?code:'Grade storage unavailable');}return r.json();
 }
 let reliableDelivery=null;
 export default async function handler(req,res){
- if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,keepAlive:waitUntil});
- return reliableDelivery(req,res);
+ res.setHeader?.('Cache-Control','private, no-store');
+ if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,keepAlive:waitUntil});
+ const started=Date.now();let code=200;
+ const response={status(n){code=n;res.status(n);return this},json(value){console.info(JSON.stringify({event:'vocab_grade_delivery',status:code,code:value.code||null,cached:value.cached===true,cachePending:value.cachePending===true,elapsedMs:Date.now()-started}));return res.json(value);}};
+ return reliableDelivery(req,response);
 }

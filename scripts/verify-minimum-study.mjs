@@ -119,7 +119,7 @@ function response(){return {headers:{},code:0,body:null,setHeader(k,v){this.head
 let res=response();await topupHandler({method:'POST',headers:{},body:{profile:'ayoung',level}},res);assert.equal(res.code,401);
 const originalFetch=globalThis.fetch;let calls=0;
 try{
- globalThis.fetch=async url=>{calls++;return url.endsWith('/auth/v1/user')?{ok:true,json:async()=>({id:AUTHORED_OWNER})}:{ok:true,json:async()=>[{state:{users:{ayoung:learner}}}]}};
+ globalThis.fetch=async url=>{calls++;return url.endsWith('/auth/v1/user')?{ok:true,json:async()=>({id:AUTHORED_OWNER})}:{ok:true,json:async()=>[{difficulty:learner.difficulty,words:learner.words,baseWords:[]}]}};
  res=response();await topupHandler({method:'POST',headers:{authorization:'Bearer fixture'},body:{profile:'ayoung',level,excluded:[w.w]}},res);
  assert.equal(res.code,200);assert.equal(calls,2);assert.equal(res.headers['Cache-Control'],'private, no-store');assert.equal(res.body.targets.length,5);
  assert.ok(res.body.targets.every(t=>t.plan.w.w!==w.w&&(isCoveragePlan(t.plan)||inTargetBand(t.plan.w,level))));
