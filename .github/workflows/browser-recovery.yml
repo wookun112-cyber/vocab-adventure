@@ -1,11 +1,13 @@
 name: Browser storage recovery
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 permissions:
   contents: read
 concurrency:
-  group: browser-recovery-${{ github.event.pull_request.number }}
+  group: browser-recovery-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   chromium:

@@ -1,11 +1,13 @@
 name: Vocabulary bank verification
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 permissions:
   contents: read
 concurrency:
-  group: vocabulary-bank-${{ github.event.pull_request.number }}
+  group: vocabulary-bank-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   regression:

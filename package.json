@@ -1,6 +1,6 @@
 {
   "name": "vocab-adventure",
-  "version": "12.16.24",
+  "version": "12.16.31",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,5 +10,3 @@
     "@vercel/functions": "3.9.11"
   }
 }
-
-

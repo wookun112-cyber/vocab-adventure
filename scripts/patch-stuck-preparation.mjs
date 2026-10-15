@@ -1,4 +1,5 @@
 import {patchChoiceFeedback} from './patch-choice-feedback.mjs';
+import {patchInteractionSafety} from './patch-interaction-safety.mjs';
 import {patchGradeReceipts} from './patch-grade-receipts.mjs';
 import {patchStorageSafety} from './patch-storage-safety.mjs';
 import {patchDailyRecovery} from './patch-daily-recovery.mjs';
@@ -54,5 +55,5 @@ export function patchStuckPreparation(source){
    if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')`);
  source=patchDailyRecovery(source);
  replace(" loadedAccount=account;\n const recovered=mergeLearnerCheckpoints();"," loadedAccount=account;cloudSaveError=null;\n const recovered=mergeLearnerCheckpoints();");
- return patchChoiceFeedback(patchGradeReceipts(patchStorageSafety(patchBankCosts(source))));
+ return patchInteractionSafety(patchChoiceFeedback(patchGradeReceipts(patchStorageSafety(patchBankCosts(source)))));
 }

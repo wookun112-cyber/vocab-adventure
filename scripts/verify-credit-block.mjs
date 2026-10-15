@@ -20,9 +20,9 @@ const sql=fs.readFileSync(new URL('../database/preparation-credit-block.sql',imp
 const oldFetch=globalThis.fetch,oldKey=process.env.OPENAI_API_KEY;
 try{
  process.env.OPENAI_API_KEY='test-only-not-sent';
- globalThis.fetch=async url=>url.includes('/auth/v1/user')?{ok:true,json:async()=>({id:'test-family'})}:url.includes('/rest/v1/rpc/')?{ok:true,json:async()=>url.includes('claim_')?{lease:'test-lease'}:true}:{ok:false,status:429,text:async()=>'{{"code":"credit_balance_exhausted"}}'};
+ globalThis.fetch=async url=>url.includes('/auth/v1/user')?{ok:true,json:async()=>({id:authoredPolicy.AUTHORED_OWNER})}:url.includes('/rest/v1/rpc/')?{ok:true,json:async()=>url.includes('claim_')?{lease:'test-lease'}:true}:{ok:false,status:429,text:async()=>'{{"code":"credit_balance_exhausted"}}'};
  const reply={status(n){this.code=n;return this},json(body){this.body=body;return body}};
- await gradeHandler({method:'POST',headers:{authorization:'Bearer test'},body:{question:'의견을 넣어 문장을 써 보세요.',answer:'내 의견은 공원에서 놀자는 거야.',targetWord:'의견',taskType:'sentence_use'}},reply);
+ await gradeHandler({method:'POST',headers:{authorization:'Bearer test'},body:{source:'typed',definition:'어떤 일에 대한 생각이나 판단',question:'의견을 넣어 문장을 써 보세요.',answer:'내 의견은 공원에서 놀자는 거야.',targetWord:'의견',taskType:'sentence_use'}},reply);
  assert.equal(reply.code,503);assert.equal(reply.body.code,'ai_credit_exhausted');assert.equal(reply.body.score,undefined,'provider failure must not become an incorrect student answer');
 }finally{globalThis.fetch=oldFetch;if(oldKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=oldKey}
 console.log('Credit failure verified: accepted questions and learner records retained, billing failure marked distinctly, automatic jobs stop at the retry cap, explicit retry can resume buffers, and essay grading returns an actionable service error without awarding or deducting a score.');

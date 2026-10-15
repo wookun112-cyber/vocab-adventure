@@ -68,9 +68,11 @@ export default async function handler(req,res){
   if(!auth.ok)return res.status(401).json({error:'Login required'});
   const user=await auth.json();
   if(user.id!==AUTHORED_OWNER)return res.status(403).json({error:'Question bank unavailable for this account'});
-  const stored=await fetch(SUPABASE_URL+'/rest/v1/app_state?user_id=eq.'+encodeURIComponent(user.id)+'&select=state',{headers,signal:AbortSignal.timeout(10000)});
+  const profile=req.body.profile;
+  const fields='difficulty:state->users->'+profile+'->difficulty,words:state->users->'+profile+'->words,baseWords:state->users->'+profile+'->activeLesson->baseWords';
+  const stored=await fetch(SUPABASE_URL+'/rest/v1/app_state?user_id=eq.'+encodeURIComponent(user.id)+'&select='+encodeURIComponent(fields),{headers,signal:AbortSignal.timeout(10000)});
   if(!stored.ok)throw Error('State unavailable');
-  const rows=await stored.json(),learner=rows[0]?.state?.users?.[req.body.profile];
+  const rows=await stored.json(),row=rows[0],learner=row?.difficulty!=null?{difficulty:row.difficulty,words:row.words||{},activeLesson:{baseWords:row.baseWords||[]}}:null;
   if(!learner)return res.status(409).json({error:'Learner unavailable'});
   if(Math.abs(Number(req.body.level)-Number(learner.difficulty))>.35)return res.status(409).json({error:'Learner level changed; reload the saved lesson'});
   const excluded=(Array.isArray(req.body.excluded)?req.body.excluded:[]).slice(0,4000).filter(x=>typeof x==='string'&&x.length<=80);

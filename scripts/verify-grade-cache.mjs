@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import handler from '../api/grade.js';
+import {AUTHORED_OWNER} from '../lib/authored-policy.js';
 const originalFetch=globalThis.fetch,originalKey=process.env.OPENAI_API_KEY;
 const cache=new Map();let charges=0;
 process.env.OPENAI_API_KEY='test-only-not-a-real-key';
 globalThis.fetch=async(url,options={})=>{
- if(url.endsWith('/auth/v1/user'))return {ok:true,json:async()=>({id:'test-family'})};
+ if(url.endsWith('/auth/v1/user'))return {ok:true,json:async()=>({id:AUTHORED_OWNER})};
  const args=JSON.parse(options.body||'{}');
+ if(url.endsWith('/get_vocab_grade_assignment'))return {ok:true,json:async()=>true};
  if(url.endsWith('/claim_vocab_grade')){
   if(cache.has(args.p_hash))return {ok:true,json:async()=>cache.get(args.p_hash)};
   cache.set(args.p_hash,{pending:true});return {ok:true,json:async()=>({lease:'test-lease'})};
@@ -17,7 +19,7 @@ globalThis.fetch=async(url,options={})=>{
  }
  throw Error('Unexpected network '+url);
 };
-const body={taskType:'sentence_use',targetWord:'의견',definition:'어떤 일에 대한 생각',question:'의견을 넣어 문장을 쓰세요.',answer:'친구의 의견을 존중했다.',previousExamples:[]};
+const body={taskType:'sentence_use',source:'typed',targetWord:'의견',definition:'어떤 일에 대한 생각',question:'의견을 넣어 문장을 쓰세요.',answer:'친구의 의견을 존중했다.',previousExamples:[]};
 async function call(payload=body){let status=200,result;await handler({method:'POST',headers:{authorization:'Bearer test'},body:payload},{status(n){status=n;return this},json(v){result=v;return this}});return {status,result}}
 try{
  const [first,second]=await Promise.all([call(),call()]);
