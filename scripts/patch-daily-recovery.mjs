@@ -74,7 +74,7 @@ function renderDayChoice(saved=savedLesson()){
  const archived=child().pausedLessonIndex||[];
  if(archived.length){
   const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='보관된 미완료 학습 '+archived.length+'건';details.appendChild(summary);
-  const info=document.createElement('p');info.className='muted';info.textContent='이어하기를 선택하면 현재 진행 중인 학습도 먼저 보관합니다. 채점 대기 답안은 해당 학습에서 다시 확인합니다.';details.appendChild(info);
+  const info=document.createElement('p');info.className='muted';info.textContent='이어하기를 선택하면 현재 진행 중인 학습도 먼저 보관합니다. 이전 답안의 저장된 채점 결과는 접속하거나 학습 날짜가 바뀔 때 자동으로 확인합니다.';details.appendChild(info);
   for(const row of archived){
    const button=document.createElement('button');button.className='ghost';button.style.display='block';button.disabled=preparingSession||daySwitchBusy;
    button.textContent=(row.day||'이전 학습')+' · 기록 '+(row.answered||0)+'개'+(row.pendingGrades?' · 채점 대기 '+row.pendingGrades+'개':'')+' · 이어하기';

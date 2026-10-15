@@ -150,7 +150,7 @@ console.log('New materials verified: whole inflected Korean forms, teaching-card
 // The server enforces the distinction even if the model accidentally reports recall.
 let sentPrompt='';
 const grader=vm.createContext({createHash,copiedUsageExample,studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,process:{env:{}},fetch:async(url,options)=>{sentPrompt=JSON.parse(options.body).input;return {ok:true,json:async()=>({output_text:JSON.stringify({score:.5,result:'△',normalizedAnswer:'협력',contextSuccess:true,targetRecall:true,feedback:'문장으로 써 보세요.',correctionApplied:false,correctionNote:''})})}}});
-vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace('export async function runGrade','async function runGrade').replace('export default async function handler','async function handler'),grader);
+vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export (?=async function)/g,'').replace('export default async function handler','async function handler'),grader);
 const sentenceGrade=await vm.runInContext("runGrade({question:'내 문장을 써요.',answer:'협력',targetWord:'협력',definition:'힘을 합침',taskType:'sentence_use'})",grader);
 assert.equal(sentenceGrade.targetRecall,false);assert.equal(sentenceGrade.contextSuccess,false);assert.ok(sentPrompt.includes('단어만 썼으면 0'));
 console.log('Sentence grading verified: target exposure never counts as recall, partial use cannot become full context success, word-only answers explicitly rejected.');

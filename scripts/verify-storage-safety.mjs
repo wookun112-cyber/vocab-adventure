@@ -40,3 +40,19 @@ recover.ctx.recoveredJob=job;
 assert.equal((await recover.run('requestGrade(recoveredJob)')).score,1,'received grade never requests another provider');
 assert.equal(recover.calls.generation,0);
 console.log('Storage safety PASS: quota does not block cloud write, both failures retain retry state and honest warning, recovery survives reload, saved grade reuse makes zero provider calls.');
+
+// Cache reconciliation runs only after device-only changes have reached cloud.
+const archived=fixture();await archived.run('cloudSave()');
+archived.run("child().pausedLessonIndex=[{id:'old',pendingGrades:1}];child().unsentDraftMarker='keep';storeLearnerCheckpoint(state.selected);localSave();session=null");
+let recoveredCalls=0,flushedMarker;
+archived.ctx.fetch=async url=>{
+ assert.equal(url,'/api/recover-grades');recoveredCalls++;
+ const remote=archived.cloud.get('family');
+ flushedMarker=remote.users.guest.unsentDraftMarker;
+ remote.users.guest.recoveredGradeMarker='ready';remote.users.guest.daySwitchSequence=(remote.users.guest.daySwitchSequence||0)+1;
+ return {ok:true};
+};
+await archived.run('cloudLoad()');
+assert.equal(recoveredCalls,1);assert.equal(flushedMarker,'keep');assert.equal(archived.run('child().recoveredGradeMarker'),'ready');
+assert.equal(archived.run('child().unsentDraftMarker'),'keep');
+console.log('Load-boundary archived recovery: flush unsynced draft first, read committed recovery, keep learner state.');

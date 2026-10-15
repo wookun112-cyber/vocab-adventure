@@ -11,7 +11,7 @@ function extractText(data){
   for(const item of data?.output||[])for(const c of item?.content||[])if(typeof c?.text==='string')parts.push(c.text);
   return parts.join('\n');
 }
-async function verifyUser(auth){
+export async function verifyUser(auth){
   if(!auth?.startsWith('Bearer '))return false;
   const r=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:{apikey:SUPABASE_KEY,Authorization:auth},signal:AbortSignal.timeout(5000)});
   if(!r.ok)return null;
@@ -137,7 +137,7 @@ function gradeForRequest(result,payload){
   if(payload.taskType!=='sentence_use')return result;
   return {...result,copiedExample:copiedUsageExample(payload.answer,payload.previousExamples||[])};
 }
-async function gradeRPC(auth,name,args,timeout=2500){
+export async function gradeRPC(auth,name,args,timeout=2500){
  const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(timeout)});
  if(!r.ok){let problem={};try{problem=await r.json()}catch{};const code=String(problem.message||'');throw Error(/GRADE_(DAILY|RATE|CONCURRENCY)_LIMIT/.test(code)?code:'Grade storage unavailable');}return r.json();
 }
