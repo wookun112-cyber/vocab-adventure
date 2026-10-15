@@ -22,6 +22,8 @@ const lateWrong=reconcileArchivedGrade(newer,{score:0,contextSuccess:false},stam
 assert.equal(lateWrong.learner.words.의견.nextReviewAt,'2026-11-15');assert.equal(lateWrong.learner.words.의견.streak,5);
 const lateRight=reconcileArchivedGrade(newer,grade,stamp+86400000);
 assert.equal(lateRight.learner.words.의견.usageConfirmedAt,'2026-10-15');
+const sameDay=structuredClone(newer);sameDay.learner.words.의견.lastExposureAt='2026-10-14';sameDay.learner.words.의견.lastFeedbackDate='2026-10-14';sameDay.learner.words.의견.usageConfirmedStamp=stamp+3600000;
+assert.equal(reconcileArchivedGrade(sameDay,{score:0,contextSuccess:false}).learner.words.의견.nextReviewAt,'2026-11-15','late error cannot undo a later success on the same day');
 const pendingToday=structuredClone(snapshot);pendingToday.learner.unfinishedUsage.의견.assignedAt=stamp+86400000;
 assert.ok(reconcileArchivedGrade(pendingToday,grade).learner.unfinishedUsage.의견,'old grade cannot complete a later assignment');
 assert.equal(reconcileArchivedGrade({...snapshot,job:{...job,status:'applied'}},grade),null);
