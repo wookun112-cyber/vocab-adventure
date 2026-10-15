@@ -521,8 +521,10 @@ async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  state=mergeState(data?.state||initial());
  loadedAccount=account;
  const recovered=mergeLearnerCheckpoints();
+ let settledRecovery=false;
+ if(!session)for(const c of Object.values(state.users))settledRecovery=settleReachedStudyDays(c.activeLesson)||settledRecovery;
  localSave();
- const flushed=(!data?.state||recovered)?await cloudSave():true;
+ const flushed=(!data?.state||recovered||settledRecovery)?await cloudSave():true;
  // Reconcile only at a load boundary, after flushing device-only work. Never
  // replace a learner while a live question or draft is being edited.
  if(flushed!==false&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
@@ -653,6 +655,7 @@ function checkpointSession(){
  const active=session,p=active?.preparation;
  if(!authUser||!p||active.completed||active.account!==authUser.id||active.profile!==state.selected)return false;
  recordStudyCheckpoint(active);
+ settleReachedStudyDays(active);
  syncUnfinishedUsage(state.users[active.profile],active);
  const nextIndex=active.results.length;
  state.users[active.profile].activeLesson={
@@ -884,10 +887,10 @@ function chooseNew(n=5){
 }
 function chooseReview(n=10,includeNotDue=false){return selectLevelReviews(WORDS,child(),n,today(),{includeNotDue})}
 
-function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={}){
+function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=false}={},day=today()){
  if(credit>=1&&!independent&&!revealed&&!hintUsed)return;
  let days=1;
- const alreadyReviewedToday=st.lastReviewAt===today();
+ const alreadyReviewedToday=st.lastReviewAt===day;
  if(revealed||credit<.5){
    st.reviewStage=0;days=1;
  }else if(hintUsed||credit<1){
@@ -899,8 +902,8 @@ function scheduleReview(st,{credit=0,independent=false,revealed=false,hintUsed=f
    days=intervals[stage];
    st.reviewStage=Math.min(stage+1,intervals.length-1);
  }
- st.lastReviewAt=today();
- st.nextReviewAt=dayOffset(days);
+ st.lastReviewAt=day;
+ st.nextReviewAt=dateAfter(day,days);
 }
 const QUIZ_TYPES=['mc_usage','mc_reading','subjective_recall','subjective_use'];
 const TYPE_SEQUENCE=[
@@ -1262,19 +1265,39 @@ let studyIdleTimer=null;
 function activeTime(active=session){return studyHistory.activeStudyTime(active,Date.now())}
 function dailyPracticeTime(active=session){return active?.mode==='level'?activeTime(active):studyHistory.dailyStudyTime(state.users[active?.profile],active,Date.now())}
 function dailyLimitBlocked(mode='daily',active=null){
+ if(settleReachedStudyDays(active||child().activeLesson)){storeLearnerCheckpoint(state.selected);localSave();cloudSave()}
  if(mode==='level'||studyHistory.dailyStudyTime(child(),active,Date.now())<studyHistory.DAILY_STUDY_MAX_MS)return false;
  alert('오늘의 실제 학습시간 30분을 채웠어요. 기록은 저장되어 있으며, 내일 다시 학습할 수 있어요.');return true;
 }
-function settleTimeLimitedSession(active=session){
+// Called from every durable checkpoint and load, including a close before the
+// timer fires. Only days with a recorded full daily budget are settled.
+function settleReachedStudyDays(active){
+ const c=state.users[active?.profile];
+ if(!c||!active||active.mode==='level'||active.completed||!(active.lessonId||active.id))return false;
+ let changed=false;
+ const days=Object.keys(active.studyDays||{});
+ if(!days.length&&active.studyFallbackDay)days.push(active.studyFallbackDay);
+ for(const day of days.sort()){
+  const now=Date.parse(day+'T12:00:00+09:00');
+  const own=Number(active.studyDays?.[day]?.activeMs)||(!Object.keys(active.studyDays||{}).length?Number(active.activeMs)||0:0);
+  if(own>0&&day<=today()&&studyHistory.dailyStudyTime(c,active,now)>=studyHistory.DAILY_STUDY_MAX_MS){
+   const snapshot={...active,lessonId:active.lessonId||active.id,clockStarted:null};
+   studyHistory.recordStudySession(c,snapshot,Date.now());
+   changed=settleTimeLimitedSession(snapshot,day)||changed;
+  }
+ }
+ return changed;
+}
+function settleTimeLimitedSession(active=session,day=today()){
  const c=state.users[active?.profile];if(!c||active.mode==='level')return;
- const day=today(),id=active.lessonId+':time-limit:'+day;
+ const id=active.lessonId+':time-limit:'+day;
  c.sessions=c.sessions||[];
  if(c.sessions.some(row=>row.lessonId===id))return;
  const r=active.results.filter(x=>isVocabularyResult(x)&&(x.studyDate||learningDay(new Date(x.answeredAt||Date.now())))===day);
- if((c.lastStudyDate||c.lastDate)!==day){c.learningDays=(c.learningDays||0)+1;c.lastStudyDate=day}
+ if((c.lastStudyDate||c.lastDate)!==day&&!c.sessions.some(row=>row.date===day)){c.learningDays=(c.learningDays||0)+1;c.lastStudyDate=[c.lastStudyDate||c.lastDate||'',day].sort().at(-1)}
  // Settle earned ability, never manufacture word mastery or a completion bonus.
  if(active.adaptation)active.adaptation.startLeague=Number(c.leagueLevel??c.difficulty);
- updateLearningLevels(c,r,day,{lessonId:id,active});
+ if(!(c.levelAdjustmentHistory||[]).some(row=>row.date>day))updateLearningLevels(c,r,day,{lessonId:id,active});
  c.sessions.unshift({lessonId:id,sourceLessonId:active.lessonId,date:day,mode:active.mode,status:'time_limit',
   score:r.length?Math.round(r.reduce((sum,x)=>sum+(x.credit??resultCredit(x.result)),0)/r.length*100):null,
   total:r.length,good:r.filter(x=>x.credit>=1).length,wrong:r.filter(x=>x.credit===0).length,
@@ -1284,6 +1307,7 @@ function settleTimeLimitedSession(active=session){
  c.sessions=c.sessions.slice(0,60);
  if(active.adaptation)active.adaptation.startLeague=Number(c.leagueLevel??c.difficulty);
  syncUnfinishedUsage(c,active);
+ return true;
 }
 function stopAtDailyLimit(){
  if(!session||session.mode==='level'||session.completed)return false;
@@ -1460,26 +1484,29 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  exploration(child());
  rememberQuestion(q);
  const st=wordState(q.w.w),priorExposure=st.lastExposureAt||st.lastFeedbackDate||st.introducedAt;
+ const answeredAt=meta.submittedAt||Date.now(),answerDay=meta.submittedDay||learningDay(new Date(answeredAt)),delayed=answerDay!==today();
+ const newer=(priorExposure||'')>answerDay||Number(st.usageConfirmedStamp)>answeredAt;
+ const protectedProgress=newer?Object.fromEntries(['last','lastFeedbackDate','streak','supportLevel','level','mastered'].map(k=>[k,st[k]])):null;
  let credit=Number.isFinite(meta.credit)?clamp(meta.credit,0,1):resultCredit(result);
  const hintUsed=Boolean(meta.hintUsed);
  const copiedExample=q.type==='subjective_use'&&(meta.copiedExample===true||copiedUsageExample(meta.rawAnswer??normalized,st.shownExamples||[]));
  const revealed=Boolean(meta.revealed)||copiedExample;
  const contextSuccess=meta.contextSuccess??credit>=.5;
  const targetRecall=q.showTarget||q.type==='subjective_use'?false:Boolean(meta.targetRecall);
- const practiceOnly=!!q.practiceOnly||st.introducedAt===today()||st.lastFeedbackDate===today()||session.results.some(r=>r.word===q.w.w);
+ const practiceOnly=delayed||newer||!!q.practiceOnly||st.introducedAt===answerDay||st.lastFeedbackDate===answerDay||session.results.some(r=>r.word===q.w.w);
  const independent=!practiceOnly&&Boolean(meta.independent??(!hintUsed&&!revealed&&credit>=1));
  if(hintUsed&&credit>=1){credit=.75;result='△'}
  st.seen++;st.last=result;st.types[q.type]=(st.types[q.type]||0)+1;
- st.lastFeedbackDate=today();
+ st.lastFeedbackDate=answerDay;
  if(credit>=1){st.correct++}else if(credit>0){st.assisted++}else{st.wrong++}
  if(independent&&contextSuccess&&credit>=1){
    st.streak++;st.independentCorrect++;
-   if(!st.days.includes(today()))st.days.push(today());
+   if(!st.days.includes(answerDay))st.days.push(answerDay);
  }else if(credit<1||hintUsed||revealed)st.streak=0;
  if(contextSuccess)st.contextSuccess++;
  if(targetRecall){
    st.targetRecall++;
-   if(independent&&!st.recallDays.includes(today()))st.recallDays.push(today());
+   if(independent&&!st.recallDays.includes(answerDay))st.recallDays.push(answerDay);
  }
  if(hintUsed&&contextSuccess)st.hintedCorrect++;
  if(revealed)st.revealed++;
@@ -1491,13 +1518,14 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  st.level=clamp(1+Math.floor((st.independentCorrect||0)/2)-Math.floor(st.wrong/2),1,5);
  st.mastered=st.streak>=5&&st.days.length>=3&&st.contextKeys.length>=3&&(st.independentCorrect||0)>=5&&(st.targetRecall||0)>=2&&st.recallDays.length>=2;
- if(session.model!==LEARNING_MODEL)scheduleReview(st,{credit,independent,revealed,hintUsed});
+ if(session.model!==LEARNING_MODEL&&!newer)scheduleReview(st,{credit,independent,revealed,hintUsed},answerDay);
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
- const rec={rawAnswer:meta.rawAnswer??normalized,feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt:meta.submittedAt||Date.now(),studyDate:meta.submittedDay||today()};
+ const rec={rawAnswer:meta.rawAnswer??normalized,feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt,studyDate:answerDay};
  rec.levelEligible=session.preparation?.plans[current]?.levelEligible!==false&&!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
- if(session.preparation?.plans[current]?.realtimeProbe&&!st.introducedAt)st.introducedAt=today();
- if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec);rec.evidence=evidence}
- rec.xp=rewardAnswer(q,independent);rec.stars=rec.xp?2:0;
+ if(session.preparation?.plans[current]?.realtimeProbe&&!st.introducedAt)st.introducedAt=answerDay;
+ if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec,answerDay);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec,answerDay);rec.evidence=evidence}
+ if(protectedProgress)Object.assign(st,protectedProgress);
+ rec.xp=delayed?0:rewardAnswer(q,independent);rec.stars=rec.xp?2:0;
  session.results.push(rec);
  const levelCheck=session.model===LEARNING_MODEL&&session.preparation?observeRealtimeLevel(child(),session):null;
  if(levelCheck?.change){

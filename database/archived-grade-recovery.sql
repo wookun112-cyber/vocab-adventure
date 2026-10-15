@@ -20,7 +20,10 @@ begin
  cross join lateral jsonb_array_elements(coalesce(p.payload->'gradingQueue','[]')) g(job)
  where p.user_id=owner_id and p.profile=p_profile and p.status='paused'
  and g.job->>'status' is distinct from 'applied' and not (g.job->>'id'=any(p_skip))
- and exists(select 1 from jsonb_array_elements(coalesce(p.payload->'results','[]')) r where r->>'gradingJobId'=g.job->>'id' and r->>'gradingPending'='true')
+ and (exists(select 1 from jsonb_array_elements(coalesce(p.payload->'results','[]')) r where r->>'gradingJobId'=g.job->>'id' and r->>'gradingPending'='true')
+  or (g.job->>'index'=jsonb_array_length(coalesce(p.payload->'results','[]'))::text
+   and p.payload->'plans'->((g.job->>'index')::integer)->'w'->>'w'=g.job->>'word'
+   and not exists(select 1 from jsonb_array_elements(coalesce(p.payload->'results','[]')) r where r->>'gradingJobId'=g.job->>'id')))
  order by p.paused_at,g.job->>'id' limit 1;
  if not found or learner is null then return null;end if;
  return jsonb_build_object('learner',learner,'expected',md5(learner::text),'job',item.job,
@@ -48,10 +51,15 @@ begin
  or p_record->>'studyDate' is distinct from job->>'submittedDay'
  or p_record->>'credit' not in ('0','0.5','0.75','1')
  or p_learner->'activeLesson' is distinct from previous->'activeLesson' then raise exception 'Recovery mismatch';end if;
- if not exists(select 1 from jsonb_array_elements(lesson->'results') r where r->>'gradingJobId'=p_job_id and r->>'gradingPending'='true') then return false;end if;
+ if not exists(select 1 from jsonb_array_elements(lesson->'results') r where r->>'gradingJobId'=p_job_id and r->>'gradingPending'='true') then
+  if job->>'index' is distinct from jsonb_array_length(coalesce(lesson->'results','[]'))::text
+   or lesson->'plans'->((job->>'index')::integer)->'w'->>'w' is distinct from job->>'word'
+   or exists(select 1 from jsonb_array_elements(lesson->'results') r where r->>'gradingJobId'=p_job_id) then return false;end if;
+  lesson:=jsonb_set(lesson,'{results}',coalesce(lesson->'results','[]')||jsonb_build_array(jsonb_build_object('gradingPending',true,'gradingJobId',p_job_id)));
+ end if;
  select jsonb_agg(case when r->>'gradingJobId'=p_job_id and r->>'gradingPending'='true' then p_record else r end order by ord) into rows from jsonb_array_elements(lesson->'results') with ordinality x(r,ord);
  select jsonb_agg(case when g->>'id'=p_job_id then g||jsonb_build_object('status','applied','recoveredFromArchive',true) else g end order by ord) into jobs from jsonb_array_elements(lesson->'gradingQueue') with ordinality x(g,ord);
- lesson:=jsonb_set(jsonb_set(lesson,'{results}',rows),'{gradingQueue}',jobs);
+ lesson:=jsonb_set(jsonb_set(jsonb_set(lesson,'{results}',rows),'{gradingQueue}',jobs),'{nextIndex}',to_jsonb(jsonb_array_length(rows)));
  update vocab_private.paused_lessons set payload=lesson where user_id=owner_id and profile=p_profile and lesson_id=p_lesson_id;
  select coalesce(jsonb_agg(jsonb_build_object('id',p.lesson_id,'day',p.study_day,'answered',jsonb_array_length(coalesce(p.payload->'results','[]')),'target',p.payload->'target','activeMs',p.payload->'activeMs',
   'pendingGrades',(select count(*) from jsonb_array_elements(coalesce(p.payload->'gradingQueue','[]')) g where g->>'status' is distinct from 'applied')) order by p.paused_at desc),'[]'::jsonb) into archive_index
