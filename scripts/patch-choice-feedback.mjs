@@ -1,0 +1,34 @@
+export function patchChoiceFeedback(source){
+ const replace=(a,b)=>{if(source.split(a).length!==2)throw Error('Choice feedback anchor mismatch: '+a.slice(0,80));source=source.replace(a,b)};
+ const runtime=String.raw`
+const choiceFeedbackWords=new Set(['근거','기준','의견','객관적','예측하다','추측','가늠하다','가루','도시화','재진술','함축']);
+const choiceFeedbackRequests=new Map();
+async function recoverStoredChoiceFeedback(q,selected,active,index,record){
+ if(!q.authored||!choiceFeedbackWords.has(q.w.w)||selected.reason)return;
+ const account=active.account,key=account+'|'+q.signature;
+ let pending=choiceFeedbackRequests.get(key);
+ if(!pending){
+  pending=(async()=>{
+   const {data}=await sb.auth.getSession();const token=data.session?.access_token;if(!token)return [];
+   const question={w:{w:q.w.w,d:q.w.d},type:q.type,q:q.q,ctx:q.ctx,opts:q.opts.map(o=>({t:o.t,ok:o.ok})),authored:q.authored};
+   const r=await fetch('/api/choice-feedback',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({question}),signal:AbortSignal.timeout(4000)});
+   if(!r.ok)return [];const value=await r.json();return Array.isArray(value.reasons)?value.reasons:[];
+  })().catch(()=>[]);
+  if(choiceFeedbackRequests.size>=50)choiceFeedbackRequests.delete(choiceFeedbackRequests.keys().next().value);
+  choiceFeedbackRequests.set(key,pending);
+ }
+ const reasons=await pending;
+ if(session!==active||authUser?.id!==account||active.results[index]!==record)return;
+ for(const option of q.opts){const row=reasons.find(r=>r.text===option.t&&typeof r.reason==='string');if(row)option.reason=row.reason}
+ if(!selected.reason)return;
+ record.feedback=(selected.reason+' '+(q.feedbackCorrect||'')).slice(0,800);
+ if(current===index){const text=$('feedback').querySelector?.('.feedback-explanation p');if(text)text.textContent=record.feedback}
+ checkpointSession();localSave();cloudSave();
+}
+`;
+ replace('async function gradeCurrent(dontKnow){',runtime+'\nasync function gradeCurrent(dontKnow){');
+ replace('const rec={rawAnswer:meta.rawAnswer??normalized,',"const rec={...(meta.selectedOptionText?{selectedOptionText:meta.selectedOptionText}:{}),rawAnswer:meta.rawAnswer??normalized,");
+ replace("   applyResult(q,ok?'○':'×',feedback,'',{\n     credit:ok?1:0,contextSuccess:ok,targetRecall:false,independent:ok&&!hintUsed,hintUsed,revealed:false\n   });\n   return;",
+ "   const answeredIndex=current;\n   applyResult(q,ok?'○':'×',feedback,'',{\n     credit:ok?1:0,contextSuccess:ok,targetRecall:false,independent:ok&&!hintUsed,hintUsed,revealed:false,rawAnswer:selected.t,selectedOptionText:selected.t\n   });\n   if(!ok&&!selected.reason)void recoverStoredChoiceFeedback(q,selected,active,answeredIndex,active.results[answeredIndex]);\n   return;");
+ return source;
+}

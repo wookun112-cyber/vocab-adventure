@@ -1,4 +1,5 @@
-import {createHash} from 'node:crypto';
+import {waitUntil} from '@vercel/functions';
+import {createGradeDelivery} from '../lib/server/grade-delivery.js';
 import {copiedUsageExample} from '../lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
@@ -12,7 +13,8 @@ function extractText(data){
 async function verifyUser(auth){
   if(!auth?.startsWith('Bearer '))return false;
   const r=await fetch(SUPABASE_URL+'/auth/v1/user',{headers:{apikey:SUPABASE_KEY,Authorization:auth},signal:AbortSignal.timeout(5000)});
-  return r.ok;
+  if(!r.ok)return null;
+  return r.json();
 }
 export async function runGrade(payload){
   const {
@@ -33,7 +35,7 @@ export async function runGrade(payload){
 허용할 자연스러운 파생형(문장 의미가 알맞을 때만): ${JSON.stringify(allowNaturalDerivations)}
 학생 문장: ${answer}
 입력 방식: ${source}
-규칙: 목표어 또는 같은 어휘의 자연스러운 활용형을 포함하고, 문장 전체가 실제 상황에서 해당 뜻으로 적절하게 쓰였으면 score 1입니다. 단어만 쓴 답, 뜻만 복사한 답, 목표어 없이 다른 표현만 쓴 답은 완전 정답이 아닙니다. 뜻을 일부 반영했으나 사용이 불완전하면 0.5, 뜻과 쓰임이 틀리거나 단어만 썼으면 0입니다. 의미가 분명한 사소한 오타/띄어쓰기는 허용합니다. 목표어를 화면에 보여준 활동이므로 targetRecall은 항상 false입니다. contextSuccess는 score 1일 때만 true입니다. 의견의 도덕성이나 문체 취향은 평가하지 않습니다. feedback은 단어가 왜 맞게/부족하게 쓰였는지와 개선 단서 하나를 1~2문장으로 주세요. voice는 명백한 인식 오류만 보정하며 발음은 평가하지 않습니다. JSON으로 normalizedAnswer,result(○|△|×),score(0|0.5|1),contextSuccess,targetRecall,feedback,correctionApplied,correctionNote를 반환하세요.`:recallMode?`당신은 한국어 어휘의 뜻 회상 답을 확인합니다.
+규칙: 목표어 또는 같은 어휘의 자연스러운 활용형을 포함하고, 문장 전체가 실제 상황에서 해당 뜻으로 적절하게 쓰였으면 score 1입니다. 단어만 쓴 답, 뜻만 복사한 답, 목표어 없이 다른 표현만 쓴 답은 완전 정답이 아닙니다. 뜻을 일부 반영했으나 사용이 불완전하면 0.5, 핵심 뜻과 쓰임이 틀리거나 단어만 썼으면 0입니다. 의미가 분명한 사소한 오타/띄어쓰기는 허용합니다. 목표어를 화면에 보여준 활동이므로 targetRecall은 항상 false입니다. contextSuccess는 score 1일 때만 true입니다. 의견의 도덕성이나 문체 취향은 평가하지 않습니다. feedback은 단어가 왜 맞게/부족하게 쓰였는지와 개선 단서 하나를 1~2문장으로 주세요. voice는 명백한 인식 오류만 보정하며 발음은 평가하지 않습니다. JSON으로 normalizedAnswer,result(○|△|×),score(0|0.5|1),contextSuccess,targetRecall,feedback,correctionApplied,correctionNote를 반환하세요.`:recallMode?`당신은 한국어 어휘의 뜻 회상 답을 확인합니다.
 목표 어휘: ${targetWord}
 기준 뜻: ${definition}
 뜻 설명과 질문: ${question}
@@ -56,7 +58,7 @@ ${question}
 3. 의미가 일부만 맞거나 핵심 단서 하나만 반영하면 부분정답(score 0.5)입니다.
 4. 관련어이지만 핵심 의미가 다르거나 문맥에 어색하면 오답(score 0)입니다.
 5. 띄어쓰기, 조사, 활용형 차이는 허용합니다. 의미가 명확한 사소한 오타는 이해와 별도로 보정하고 정답으로 인정할 수 있습니다.
-6. targetRecall은 학생이 목표 어휘 자체 또는 명백한 활용형/사소한 오타 형태를 직접 떠올린 경우에만 true입니다. 다른 완전한 대체 표현이면 contextSuccess=true, targetRecall=false입니다.
+6. targetRecall은 학생이 목표 어휘 자체 또는 명백한 활용형/사소한 오타 형태를 직접 떠올린 경우에만 true입니다. 다른 완전한 대체 표현이면 contextSuccess=true,targetRecall=false입니다.
 7. contextSuccess는 score 1이면 true, score 0.5이면 부분 이해로 false, score 0이면 false입니다.
 8. source가 voice이면 명백한 STT 오인식만 보정합니다. 발음은 평가하지 않습니다.
 9. feedback은 문맥의 핵심 단서와 학생 답이 왜 맞거나 부족한지 1~2문장으로 설명합니다.
@@ -134,31 +136,12 @@ function gradeForRequest(result,payload){
   if(payload.taskType!=='sentence_use')return result;
   return {...result,copiedExample:copiedUsageExample(payload.answer,payload.previousExamples||[])};
 }
-async function gradeRPC(auth,name,args){
- const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(4000)});
+async function gradeRPC(auth,name,args,timeout=2500){
+ const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(timeout)});
  if(!r.ok)throw Error('Grade storage unavailable');return r.json();
 }
+let reliableDelivery=null;
 export default async function handler(req,res){
-  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
-  let lease=null,hash=null;
-  const auth=req.headers.authorization;
-  try{
-   if(!(await verifyUser(auth)))return res.status(401).json({error:'Login required'});
-   const payload=req.body||{};
-   if(typeof payload.answer!=='string'||payload.answer.length>3000||typeof payload.question!=='string'||payload.question.length>12000)return res.status(400).json({error:'Invalid answer'});
-   // Stable across reloads and repeated submissions; include grading policy/model.
-   hash=createHash('sha256').update(JSON.stringify(['usage-grade-12.16.24',process.env.OPENAI_MODEL||'gpt-6-luna',payload.taskType,payload.targetWord,payload.definition,payload.question,payload.answer,payload.source,payload.readerLevel,payload.acceptedAnswers,payload.allowNaturalDerivations,payload.gradingContext||''])).digest('hex');
-   const cached=await gradeRPC(auth,'claim_vocab_grade',{p_hash:hash});
-   if(cached.result)return res.status(200).json({...gradeForRequest(cached.result,payload),cached:true});
-   if(cached.pending)return res.status(202).json({code:'grading_pending'});
-   lease=cached.lease;
-   if(!process.env.OPENAI_API_KEY)throw Error('AI not configured');
-   const result=await runGrade(payload);
-   await gradeRPC(auth,'finish_vocab_grade',{p_hash:hash,p_lease:lease,p_result:result});
-   return res.status(200).json(gradeForRequest(result,payload));
-  }catch(e){
-   if(lease)await gradeRPC(auth,'finish_vocab_grade',{p_hash:hash,p_lease:lease,p_result:null}).catch(()=>{});
-   if(/credit_balance_exhausted|insufficient_quota/.test(String(e?.message||e)))return res.status(503).json({code:'ai_credit_exhausted',error:'채점 잔액 확인이 필요해요. 제출한 답안은 저장되어 있어요.'});
-   return res.status(503).json({code:'grading_temporarily_unavailable',error:'채점을 잠시 뒤 다시 시도해요.'});
-  }
+ if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,keepAlive:waitUntil});
+ return reliableDelivery(req,res);
 }

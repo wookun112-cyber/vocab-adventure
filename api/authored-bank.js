@@ -1,3 +1,4 @@
+import {enrichChoiceReasons} from '../lib/server/choice-feedback.js';
 import {levelNineArchive} from '../lib/server/level-nine-bank-data.js';
 import {recallQuestion} from '../lib/sentence-use-template.js';
 import {gunzipSync} from 'node:zlib';
@@ -19,6 +20,7 @@ const levelFiveSixWords=new Set(levelFiveSixRows.map(r=>r.word));
 const previousRows=[...originalRows.filter(r=>!supplementalWords.has(r.word)&&!levelFourWords.has(r.word)),...supplementalRows.filter(r=>!levelFourWords.has(r.word)),...levelFourRows];
 const levelNineRows=JSON.parse(gunzipSync(Buffer.from(levelNineArchive,'base64')).toString('utf8'));
 const rows=[...previousRows.filter(r=>!levelFiveSixWords.has(r.word)),...levelFiveSixRows,...levelNineRows];
+export const choiceFeedbackStats=Object.freeze(enrichChoiceReasons(rows));
 const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));
@@ -116,7 +118,16 @@ export function authoredEntry(plan,learner,account,reserved=[]){
  const st=learner.words?.[plan.w.w]||{};
  const raw=authoredQuestion({id:plan.id,type:plan.type,word:plan.w.w,readerLevel:learner.difficulty,coveragePolicy:plan.coveragePolicy,review:!!plan.review,firstLearning:!!plan.firstLearning,needsCard:!!plan.needsCard,answerSlot:plan.answerSlot,usedPassageKeys:st.usedPassageKeys||[],previousContexts:st.problemHistory||[]},account,reserved.map(q=>({authored:q.authored,context:q.ctx,options:(q.opts||[]).map(o=>({text:o.t}))})));
  if(!raw)return null;
- return {readerLevel:Number(learner.difficulty),supportLevel:plan.supportLevel||0,question:{w:plan.w,type:raw.type,taskDemand:plan.taskDemand,ctx:raw.context,q:raw.prompt,opts:raw.options.map(o=>({t:o.text,ok:o.correct})),acceptedAnswers:raw.acceptedAnswers,showTarget:raw.showTarget,open:raw.type.startsWith('subjective_'),hideWord:!raw.showTarget,label:raw.type==='subjective_recall'?'뜻 보고 떠올리기':raw.type==='subjective_use'?'내 문장 만들기':'뜻과 쓰임',answerForm:raw.answerForm,hints:raw.hints,feedbackCorrect:raw.feedbackCorrect,signature:raw.signature,learningCard:raw.learningCard,authored:raw.authored,semanticGraderRequired:raw.semanticGraderRequired,allowNaturalDerivations:raw.allowNaturalDerivations,validation:raw.validation,bankReaderLevel:Number(learner.difficulty),bankSupportLevel:plan.supportLevel||0}};
+ return {readerLevel:Number(learner.difficulty),supportLevel:plan.supportLevel||0,question:{w:plan.w,type:raw.type,taskDemand:plan.taskDemand,ctx:raw.context,q:raw.prompt,opts:raw.options.map(o=>({t:o.text,ok:o.correct,reason:o.reason||''})),acceptedAnswers:raw.acceptedAnswers,showTarget:raw.showTarget,open:raw.type.startsWith('subjective_'),hideWord:!raw.showTarget,label:raw.type==='subjective_recall'?'뜻 보고 떠올리기':raw.type==='subjective_use'?'내 문장 만들기':'뜻과 쓰임',answerForm:raw.answerForm,hints:raw.hints,feedbackCorrect:raw.feedbackCorrect,signature:raw.signature,learningCard:raw.learningCard,authored:raw.authored,semanticGraderRequired:raw.semanticGraderRequired,allowNaturalDerivations:raw.allowNaturalDerivations,validation:raw.validation,bankReaderLevel:Number(learner.difficulty),bankSupportLevel:plan.supportLevel||0}};
+}
+export function savedChoiceFeedback(q,account){
+ if(account!==AUTHORED_OWNER||q?.authored?.owner!==account)return null;
+ const row=byWord.get(q.w?.w),slot=row?.questions.find(item=>item.slot===q.authored.slot);
+ if(!row||!slot||!slot.type.startsWith('mc_')||q.authored.revision!==(row.revision||AUTHORED_LEGACY_REVISION))return null;
+ const raw=rawFromSlot(row,slot,{id:'explanation',answerSlot:0});
+ const key=options=>JSON.stringify(options.map(o=>[o.text,!!o.correct]).sort((a,b)=>a[0].localeCompare(b[0])));
+ if(q.type!==raw.type||q.w.d!==row.definition||q.q!==raw.prompt||q.ctx!==raw.context||key((q.opts||[]).map(o=>({text:o.t,correct:o.ok})))!==key(raw.options))return null;
+ return raw.options.filter(o=>!o.correct&&o.reason).map(o=>({text:o.text,reason:o.reason}));
 }
 export default function handler(req,res){return res.status(404).json({error:'Not found'})}
 
