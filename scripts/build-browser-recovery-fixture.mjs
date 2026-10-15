@@ -7,5 +7,7 @@ const local=effective.split('\n').find(line=>line.startsWith('function localSave
 if(!local)throw Error('Production local save boundary changed');
 const r0=effective.indexOf('function gradeReceiptKey('),r1=effective.indexOf('\nfunction applyGradedAnswer',r0);
 if(r0<0||r1<0)throw Error('Production receipt boundary changed');
+const p0=effective.indexOf('function renderParentRecovery(){'),p1=effective.indexOf('const voiceController=',p0);
+if(p0<0||p1<0)throw Error('Production recovery display boundary changed');
 fs.mkdirSync(new URL('../test-results/',import.meta.url),{recursive:true});
-fs.writeFileSync(new URL('../test-results/browser-cloud.js',import.meta.url),effective.slice(a,b)+'\n'+local+'\n'+effective.slice(r0,r1));
+fs.writeFileSync(new URL('../test-results/browser-cloud.js',import.meta.url),effective.slice(p0,p1)+'\n'+effective.slice(a,b)+'\n'+local+'\n'+effective.slice(r0,r1));
