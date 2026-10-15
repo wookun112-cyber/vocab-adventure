@@ -15,7 +15,7 @@ with sync_playwright() as p:
  browser=p.chromium.launch(headless=True)
  context=browser.new_context(viewport={'width':1024,'height':768},has_touch=True,is_mobile=True)
  page=context.new_page();page.goto(f'http://127.0.0.1:{srv.server_port}/')
- page.evaluate(factory+'\nwindow.createCheckpointStore=createCheckpointStore;')
+ page.evaluate(factory+'\nwindow.createCheckpointStore=createCheckpointStore;void 0;')
  result=page.evaluate('''async()=>{
   const key='vocab-account-synthetic-A',old={savedAt:1,state:{answer:'확인용'}};
   localStorage.setItem(key,JSON.stringify(old));
@@ -28,7 +28,7 @@ with sync_playwright() as p:
   if(!await store.set(key,{savedAt:2,state:{large:'가'.repeat(6000000),pendingAnswers:['답1','답2'],account:'A'}}))throw Error('Large IndexedDB save failed');
   await store.flush();return {realQuota:true,confirmed:store.isConfirmed(key)};
  }''');checks.append({'test':'real_quota_and_large_indexeddb_commit','result':result})
- page.reload();page.evaluate(factory+'\nwindow.createCheckpointStore=createCheckpointStore;')
+ page.reload();page.evaluate(factory+'\nwindow.createCheckpointStore=createCheckpointStore;void 0;')
  result=page.evaluate('''async()=>{
   window.store=createCheckpointStore({idb:indexedDB,legacy:localStorage});
   await store.hydrate(['vocab-account-synthetic-A','vocab-account-synthetic-B']);await store.flush();
@@ -63,7 +63,7 @@ window.exerciseCloud=async()=>{
  const saved=await requestGrade({receivedGrade:{score:1,contextSuccess:true,feedback:'already saved'}});
  if(saved.score!==1)throw Error('Previously received grade was not reused');
  return {cloudWrites:writes,deviceFailureDidNotBlockCloud:true,bothFailedWarning:warning,recovered:true,receivedGradeNoNetwork:true};
-};
+};void 0;
 ''')
  checks.append({'test':'production_save_and_grade_recovery_functions','result':page.evaluate('exerciseCloud()')})
  page.screenshot(path=str(ROOT/'test-results/browser-storage.png'))
