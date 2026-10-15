@@ -1,3 +1,4 @@
+import gradeHandler from '../api/grade.js';
 import {createHash} from 'node:crypto';
 import {copiedUsageExample} from '../lib/learning-model.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
@@ -16,10 +17,13 @@ const first=JSON.stringify(payload.ready[0]),saves=[];
 await assert.rejects(()=>prepare({id:'job',account:'family',profile:'ayoung',learner,catalog:{},curriculum:[],payload:{...payload,plans:payload.plans.map((p,i)=>i===0?p:{...p,review:false,firstLearning:true,needsCard:true,type:'mc_usage'})},kind:'daily'},'key',async()=>{throw Error('OpenAI 429: {"code":"credit_balance_exhausted","type":"insufficient_quota"}')},async(name,args)=>{saves.push(args);return true}),/credit_balance_exhausted/);
 assert.equal(saves.at(-1).p_failed,true);assert.equal(saves.at(-1).p_payload.preparationBlocked,'ai_credit_exhausted');assert.equal(JSON.stringify(saves.at(-1).p_payload.ready[0]),first);assert.equal(JSON.stringify(learner),before);
 const sql=fs.readFileSync(new URL('../database/preparation-credit-block.sql',import.meta.url),'utf8');assert.ok(sql.includes("then 8 else attempts"));assert.ok(sql.includes("if p_retry then"));assert.ok(!/update public\.app_state/i.test(sql));
-const ctx=vm.createContext({createHash,copiedUsageExample,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,process:{env:{OPENAI_API_KEY:'test'}},fetch:async url=>url.includes('/auth/v1/user')?{ok:true}:url.includes('/rest/v1/rpc/')?{ok:true,json:async()=>url.includes('claim_')?{lease:'test-lease'}:true}:{ok:false,status:429,text:async()=>'{"code":"credit_balance_exhausted"}'}});
-vm.runInContext(fs.readFileSync(new URL('../api/grade.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export default /g,'').replace(/export /g,''),ctx);
-vm.runInContext(`globalThis.reply={status(n){this.code=n;return this},json(body){this.body=body;return body}}`,ctx);
-await vm.runInContext(`handler({method:'POST',headers:{authorization:'Bearer test'},body:{question:'의견을 넣어 문장을 써 보세요.',answer:'내 의견은 공원에서 놀자는 거야.',targetWord:'의견',taskType:'sentence_use'}},reply)`,ctx);
-assert.equal(vm.runInContext('reply.code',ctx),503);assert.equal(vm.runInContext('reply.body.code',ctx),'ai_credit_exhausted');assert.equal(vm.runInContext('reply.body.score',ctx),undefined,'provider failure must not become an incorrect student answer');
+const oldFetch=globalThis.fetch,oldKey=process.env.OPENAI_API_KEY;
+try{
+ process.env.OPENAI_API_KEY='test-only-not-sent';
+ globalThis.fetch=async url=>url.includes('/auth/v1/user')?{ok:true,json:async()=>({id:'test-family'})}:url.includes('/rest/v1/rpc/')?{ok:true,json:async()=>url.includes('claim_')?{lease:'test-lease'}:true}:{ok:false,status:429,text:async()=>'{{"code":"credit_balance_exhausted"}}'};
+ const reply={status(n){this.code=n;return this},json(body){this.body=body;return body}};
+ await gradeHandler({method:'POST',headers:{authorization:'Bearer test'},body:{question:'의견을 넣어 문장을 써 보세요.',answer:'내 의견은 공원에서 놀자는 거야.',targetWord:'의견',taskType:'sentence_use'}},reply);
+ assert.equal(reply.code,503);assert.equal(reply.body.code,'ai_credit_exhausted');assert.equal(reply.body.score,undefined,'provider failure must not become an incorrect student answer');
+}finally{globalThis.fetch=oldFetch;if(oldKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=oldKey}
 console.log('Credit failure verified: accepted questions and learner records retained, billing failure marked distinctly, automatic jobs stop at the retry cap, explicit retry can resume buffers, and essay grading returns an actionable service error without awarding or deducting a score.');
 
