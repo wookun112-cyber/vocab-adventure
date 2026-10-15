@@ -58,3 +58,17 @@ assert.equal(Object.keys(many.unfinishedUsage).length,12,'overflow stays pending
 many.difficulty=3;const overflow=selectDailyTargets(Object.values(many.unfinishedUsage).map(x=>x.word),many,'2026-10-15');
 assert.equal(overflow.newWords.length,0,'unattempted overflow is not relabeled as fresh vocabulary');
 console.log('Unfinished usage verified: wrong/unanswered carryover, level changes, strict completion, old-checkpoint protection, 10-review backlog, reserve invalidation, 1/3/7/14/30/60-day reviews and failure reset.');
+
+const balanced={difficulty:3,words:{근거:{seen:3,nextReviewAt:'2026-10-01'},의견:{seen:3,nextReviewAt:'2026-10-01',useDays:['2026-10-01'],usageConfirmedAt:'2026-10-01'}},unfinishedUsage:structuredClone(many.unfinishedUsage)};
+const protectedPlan=selectDailyTargets([basis,opinion],balanced,'2026-10-15');
+assert.equal(protectedPlan.reviewWords.length,10);
+assert.equal(protectedPlan.reviewWords.filter(w=>w.carryoverPolicy).length,8);
+assert.ok(protectedPlan.reviewWords.some(w=>w.w==='근거'));
+assert.ok(protectedPlan.reviewWords.some(w=>w.w==='의견'));
+assert.equal(Object.keys(balanced.unfinishedUsage).length,12);
+console.log('Balanced review: 8 unfinished + 2 due words; pending overflow preserved.');
+
+const orderedProtected=buildDailyPlan([],protectedPlan.reviewWords,w=>balanced.words[w],3);
+assert.ok(orderedProtected.slice(0,4).some(p=>p.w.w==='근거'&&p.type==='subjective_recall'));
+assert.ok(orderedProtected.slice(0,4).some(p=>p.w.w==='의견'&&p.type==='subjective_recall'));
+console.log('Protected due reviews appear in the first four targets as recall tasks.');

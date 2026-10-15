@@ -521,8 +521,22 @@ async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  state=mergeState(data?.state||initial());
  loadedAccount=account;
  const recovered=mergeLearnerCheckpoints();
- localSave();renderAll();
- if(!data?.state||recovered)await cloudSave();
+ localSave();
+ const flushed=(!data?.state||recovered)?await cloudSave():true;
+ // Reconcile only at a load boundary, after flushing device-only work. Never
+ // replace a learner while a live question or draft is being edited.
+ if(flushed!==false&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
+  try{
+   const {data:auth}=await sb.auth.getSession();
+   if(auth.session?.access_token){
+    await fetch('/api/recover-grades',{method:'POST',headers:{Authorization:'Bearer '+auth.session.access_token},signal:AbortSignal.timeout(18000)});
+    const fresh=await withDeadline(sb.from('app_state').select('state').eq('user_id',account).maybeSingle(),10000,'이전 답안 확인 지연');
+    if(account!==authUser?.id||epoch!==authEpoch)return false;
+    if(!session&&!fresh.error&&fresh.data?.state){cloudBaseline=JSON.parse(JSON.stringify(fresh.data.state));state=mergeState(fresh.data.state);localSave()}
+   }
+  }catch{/* Saved drafts and the ordinary load remain usable. Retry next load. */}
+ }
+ renderAll();
  return true;
 }
 function rebuildCatalog(){
@@ -1013,7 +1027,7 @@ const SCENARIOS=['집에서 가족과 계획을 세우는 일','학교에서 친
 function preparationSnapshot(profile){
  const c=state.users[profile];
  const words=Object.entries(c.words||{}).filter(([,s])=>s.seen>0||s.introducedAt).sort(([a],[b])=>a.localeCompare(b)).map(([w,s])=>[w,s.seen,s.correct,s.wrong,s.streak,s.supportLevel,s.nextReviewAt,s.lastFeedbackDate,(s.usedPassageKeys||[]).length,s.introducedAt||null]);
- return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,Object.entries(c.unfinishedUsage||{}).sort(([a],[b])=>a.localeCompare(b)), 'unfinished-usage-12.16.32',AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY]);
+ return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,Object.entries(c.unfinishedUsage||{}).sort(([a],[b])=>a.localeCompare(b)), 'balanced-carryover-12.16.33',AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY]);
 }
 function preparationKey(mode,profile=state.selected,account=authUser?.id){return 'vocab-prepared-'+account+'-'+profile+'-'+mode}
 function assignScenarios(plans){
@@ -1251,14 +1265,34 @@ function dailyLimitBlocked(mode='daily',active=null){
  if(mode==='level'||studyHistory.dailyStudyTime(child(),active,Date.now())<studyHistory.DAILY_STUDY_MAX_MS)return false;
  alert('오늘의 실제 학습시간 30분을 채웠어요. 기록은 저장되어 있으며, 내일 다시 학습할 수 있어요.');return true;
 }
+function settleTimeLimitedSession(active=session){
+ const c=state.users[active?.profile];if(!c||active.mode==='level')return;
+ const day=today(),id=active.lessonId+':time-limit:'+day;
+ c.sessions=c.sessions||[];
+ if(c.sessions.some(row=>row.lessonId===id))return;
+ const r=active.results.filter(x=>isVocabularyResult(x)&&(x.studyDate||learningDay(new Date(x.answeredAt||Date.now())))===day);
+ if((c.lastStudyDate||c.lastDate)!==day){c.learningDays=(c.learningDays||0)+1;c.lastStudyDate=day}
+ // Settle earned ability, never manufacture word mastery or a completion bonus.
+ if(active.adaptation)active.adaptation.startLeague=Number(c.leagueLevel??c.difficulty);
+ updateLearningLevels(c,r,day,{lessonId:id,active});
+ c.sessions.unshift({lessonId:id,sourceLessonId:active.lessonId,date:day,mode:active.mode,status:'time_limit',
+  score:r.length?Math.round(r.reduce((sum,x)=>sum+(x.credit??resultCredit(x.result)),0)/r.length*100):null,
+  total:r.length,good:r.filter(x=>x.credit>=1).length,wrong:r.filter(x=>x.credit===0).length,
+  difficulty:c.difficulty,model:active.model,activeMinutes:Math.round((active.studyDays?.[day]?.activeMs||activeTime(active))/6000)/10,
+  recognition:r.filter(x=>x.type.startsWith('mc_')).length,recall:r.filter(x=>x.evidence?.kind==='recall').length,use:r.filter(x=>x.evidence?.kind==='use').length,
+  levelAdjustment:c.lastLevelAdjustment});
+ c.sessions=c.sessions.slice(0,60);
+ if(active.adaptation)active.adaptation.startLeague=Number(c.leagueLevel??c.difficulty);
+ syncUnfinishedUsage(c,active);
+}
 function stopAtDailyLimit(){
  if(!session||session.mode==='level'||session.completed)return false;
  const learner=state.users[session.profile];if(!learner)return false;
  studyHistory.bindDailyStudyLimit(learner,session,Date.now());
  if(session.dailyStudyLimit.remainingMs>0)return false;
  pauseLearningClock();
- if(!session.timeLimitStopped){
-  session.timeLimitStopped=true;checkpointSession();localSave();cloudSave();show('home');renderResumeButton();
+ if(session.timeLimitStoppedDay!==today()){
+  session.timeLimitStopped=true;session.timeLimitStoppedDay=today();recordStudyCheckpoint(session);settleTimeLimitedSession(session);checkpointSession();localSave();cloudSave();show('home');renderResumeButton();
   alert('오늘의 실제 학습시간 30분을 채웠어요. 답안과 학습 기록을 저장했습니다. 아직 익히지 못한 내용은 숙달로 처리하지 않고 다음 학습에서 다시 확인해요.');
  }
  return true;

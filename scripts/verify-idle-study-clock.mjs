@@ -205,3 +205,17 @@ multiple.advance(10000);assert.equal(multiple.run('session.timeLimitStopped'),tr
 assert.equal(multiple.run('dailyPracticeTime()'),30*60000);
 assert.equal(multiple.run('activeTime()'),5*60000,'separate sessions share one daily budget');
 console.log('Cumulative daily minimum/maximum verified across separate sessions.');
+
+// A time limit settles ability once without marking unfinished words mastered.
+const settled=fixture({elapsed:1799000});
+settled.run('initRealtimeLevel(child(),session);child().leagueLevel=3;child().difficulty=3.5;');
+settled.advance(1000);
+assert.equal(settled.run('child().leagueLevel'),3.5);
+assert.equal(settled.run('child().learningDays'),1);
+assert.equal(settled.run('child().sessions.length'),1);
+assert.equal(settled.run('child().sessions[0].status'),'time_limit');
+assert.equal(settled.run('child().lastDate'),null);
+settled.run('settleTimeLimitedSession();stopAtDailyLimit()');
+assert.equal(settled.run('child().sessions.length'),1);
+assert.equal(settled.run('studyHistory.dailyStudyTime(child(),session,Date.now())'),1800000);
+console.log('Time-limit settlement: ranking/day statistics, unfinished-word preservation, idempotence and no double time.');
