@@ -31,4 +31,15 @@ assert.equal(restart.get('lesson').draft,'미제출 답안');assert.equal(restar
 const preserved=new Map([['blocked',JSON.stringify(prior)]]);
 const fail=createCheckpointStore({idb:{open(){throw Error('IDB unavailable')}},legacy:{...legacy,getItem:k=>preserved.get(k)||null,removeItem:k=>preserved.delete(k)}});
 assert.equal(await fail.set('blocked',{savedAt:5,draft:'new'}),false);assert.ok(preserved.has('blocked'));assert.equal(fail.get('blocked').draft,'new');
+// A read failure on restart must not replace unread unsent work with an older cloud snapshot.
+let reloadWrites=0;
+const unreadDb={objectStoreNames:{contains:()=>true},close(){},transaction(names,mode){
+ if(mode==='readwrite'){reloadWrites++;throw Error('Unexpected overwrite of unread backup')}
+ const tx={error:Error('Read unavailable'),objectStore(){return {get(){return {}}}},abort(){}};
+ queueMicrotask(()=>tx.onerror?.());return tx;
+}};
+const unread=createCheckpointStore({idb:{open(){const req={result:unreadDb};queueMicrotask(()=>req.onsuccess?.());return req}},legacy});
+await unread.hydrate(['unread-account']);
+assert.equal(await unread.set('unread-account',{savedAt:1,draft:'older remote state'}),false);
+assert.equal(reloadWrites,0,'never overwrite an unread device backup');
 console.log('Device store PASS: transaction acknowledgement (not request completion), copy-before-delete migration, 6M-character mock checkpoint, latest-write ordering, restart, account key isolation and failure backup retention.');

@@ -1,6 +1,6 @@
 // Self-contained factory: release build embeds this into the browser bundle.
 export function createCheckpointStore({idb,legacy,onState=()=>{},timeoutMs=2500}={}){
- const memory=new Map(),pending=new Map(),confirmed=new Map(),waiters=new Map();
+ const memory=new Map(),pending=new Map(),confirmed=new Map(),waiters=new Map(),unreadKeys=new Set();
  let database=null,opening=null,flushing=null,serial=0;
  const notify=(key,status,error=null)=>{try{onState({key,status,error})}catch{}};
  const stamp=text=>{try{const x=JSON.parse(text);return Number(x.savedAt??x.state?.updatedAt)||0}catch{return -1}};
@@ -67,6 +67,8 @@ export function createCheckpointStore({idb,legacy,onState=()=>{},timeoutMs=2500}
   let row;
   try{row={key,text:JSON.stringify(value),id:++serial};memory.set(key,row)}
   catch(error){notify(key,'failed',error);return Promise.resolve(false)}
+  // A failed reload must never overwrite an unread, possibly newer backup.
+  if(unreadKeys.has(key)){notify(key,'failed',Error('Existing device backup could not be read'));return Promise.resolve(false)}
   if(!idb)return Promise.resolve(fallback(row,Error('IndexedDB unavailable')));
   const acknowledgement=new Promise(resolve=>{const list=waiters.get(key)||[];list.push({id:row.id,resolve});waiters.set(key,list)});
   pending.set(key,row);notify(key,'pending');void flush();return acknowledgement;
@@ -89,13 +91,14 @@ export function createCheckpointStore({idb,legacy,onState=()=>{},timeoutMs=2500}
     tx=db.transaction(['snapshots'],'readonly');tx.oncomplete=()=>finish();tx.onerror=()=>finish(tx.error||Error('Device read failed'));tx.onabort=()=>finish(tx.error||Error('Device read aborted'));
     for(const key of keys){const req=tx.objectStore('snapshots').get(key);req.onsuccess=()=>{if(req.result)records.push(req.result)}}
    });
-  }catch(error){notify(keys[0]||'', 'read_failed',error)}
+   for(const key of keys)unreadKeys.delete(key);
+  }catch(error){for(const key of keys)unreadKeys.add(key);notify(keys[0]||'', 'failed',error)}
   for(const row of records){
    const current=memory.get(row.key);
    if(!current||stamp(row.text)>stamp(current.text))memory.set(row.key,{...row,id:++serial});
   }
   // Migration is copy-then-acknowledge. Keep every legacy backup on failure.
-  for(const key of keys){const value=get(key);if(value!==null)void set(key,value)}
+  for(const key of keys){if(unreadKeys.has(key))continue;const value=get(key);if(value!==null)void set(key,value)}
   return keys.map(key=>get(key));
  }
  async function drain(){let okay=true;while(flushing||pending.size){if(!await flush())okay=false}return okay}
