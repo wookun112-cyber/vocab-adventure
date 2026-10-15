@@ -4,7 +4,7 @@ import {DELIVERY_POLICY,localPracticeQuestion} from './lib/local-delivery.js';
 import * as studyHistory from './lib/study-history.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
+import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -639,6 +639,7 @@ function checkpointSession(){
  const active=session,p=active?.preparation;
  if(!authUser||!p||active.completed||active.account!==authUser.id||active.profile!==state.selected)return false;
  recordStudyCheckpoint(active);
+ syncUnfinishedUsage(state.users[active.profile],active);
  const nextIndex=active.results.length;
  state.users[active.profile].activeLesson={
   version:1,engine:active.engine||PREPARATION_ENGINE,id:active.lessonId,account:active.account,profile:active.profile,
@@ -1012,7 +1013,7 @@ const SCENARIOS=['집에서 가족과 계획을 세우는 일','학교에서 친
 function preparationSnapshot(profile){
  const c=state.users[profile];
  const words=Object.entries(c.words||{}).filter(([,s])=>s.seen>0||s.introducedAt).sort(([a],[b])=>a.localeCompare(b)).map(([w,s])=>[w,s.seen,s.correct,s.wrong,s.streak,s.supportLevel,s.nextReviewAt,s.lastFeedbackDate,(s.usedPassageKeys||[]).length,s.introducedAt||null]);
- return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY]);
+ return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,Object.entries(c.unfinishedUsage||{}).sort(([a],[b])=>a.localeCompare(b)), 'unfinished-usage-12.16.32',AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY]);
 }
 function preparationKey(mode,profile=state.selected,account=authUser?.id){return 'vocab-prepared-'+account+'-'+profile+'-'+mode}
 function assignScenarios(plans){
