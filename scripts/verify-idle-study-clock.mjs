@@ -169,3 +169,39 @@ const other=fixture();other.run('session=null;state.selected="inseong"');other.a
 const old={difficulty:2,sessions:[{date:'2026-10-11',activeMinutes:15,total:10,good:8,wrong:2}]};
 assert.equal(studyHistory.dailyStudyRows(old)[0].activeMs,15*60000);
 console.log('Idle study clock verified: 29s/30s boundary, legacy 60-second draft migration, delayed timer cap, automatic pause and draft save, typing/hints/repaint/reopen cannot renew time, restart retains allowance, valid typed/objective submissions resume, grading/background waits excluded, midnight split, minimum-25m continuation, profile/history isolation.');
+
+// Daily cap is enforced by the real UI timer, saves the current draft, and
+// neither scores an unanswered item nor declares mastery/completion.
+const capped=fixture({elapsed:29*60000+50000});
+capped.node('answer').value='아직 쓰고 있는 문장';
+capped.advance(9000);assert.equal(capped.run('activeTime()'),30*60000-1000);
+capped.advance(1000);assert.equal(capped.run('activeTime()'),30*60000);
+assert.equal(capped.run('session.timeLimitStopped'),true);
+assert.equal(capped.run('session.completed'),undefined);
+assert.equal(capped.run('session.results.length'),0);
+assert.equal(capped.run('child().activeLesson.pendingAnswer'),'아직 쓰고 있는 문장');
+assert.equal(capped.run('child().studyHistory.entries["idle-fixture"].status'),'in_progress');
+capped.advance(60000);assert.equal(capped.run('activeTime()'),30*60000);
+assert.equal(capped.run("dailyLimitBlocked('daily')"),true);
+assert.equal(capped.run("dailyLimitBlocked('level')"),false);
+const cappedSaved=JSON.parse(capped.run('JSON.stringify(state)'));
+const reopenedCap=fixture({saved:cappedSaved});
+await reopenedCap.run('resumeLesson(child().activeLesson)');
+assert.equal(reopenedCap.run('session'),null,'reopening cannot bypass daily limit');
+capped.advance(86400000);
+assert.equal(capped.run("dailyLimitBlocked('daily')"),false,'next learning day has a new allowance');
+capped.run('state.selected="inseong"');
+assert.equal(capped.run("dailyLimitBlocked('daily')"),false,'other profile keeps its own allowance');
+const lateCap=fixture({elapsed:29*60000+50000});lateCap.advance(300000,false);
+assert.equal(lateCap.run('activeTime()'),30*60000,'late browser timers cannot overshoot');
+lateCap.run('markStudyActivity({isTrusted:true})');assert.equal(lateCap.run('session.timeLimitStopped'),true);
+console.log('Daily 25–30 minute cap verified: exact boundary, delayed timer, draft persistence, no false mastery, restart lock, next day and profile isolation.');
+
+const multiple=fixture({elapsed:4*60000+50000});
+multiple.run(`child().sessions.push({lessonId:'earlier-today',date:today(),mode:'daily',activeMinutes:25,total:10,good:8,wrong:2});stopAtDailyLimit();armStudyIdleTimer()`);
+assert.equal(multiple.run('dailyPracticeTime()'),29*60000+50000);
+assert.equal(multiple.run('minimumStudyReached(session,dailyPracticeTime())'),true);
+multiple.advance(10000);assert.equal(multiple.run('session.timeLimitStopped'),true);
+assert.equal(multiple.run('dailyPracticeTime()'),30*60000);
+assert.equal(multiple.run('activeTime()'),5*60000,'separate sessions share one daily budget');
+console.log('Cumulative daily minimum/maximum verified across separate sessions.');

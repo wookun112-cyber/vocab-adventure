@@ -622,6 +622,7 @@ function renderResumeButton(){
  const blocked=preparationBlock&&preparationBlock.account===authUser?.id&&preparationBlock.profile===state.selected||p?.jobs?.some(j=>j.error?.code==='ai_credit_exhausted');
  const pendingGrades=(saved?.gradingQueue||[]).filter(j=>j.status!=='applied').length;
  $('startDaily').textContent=saved&&pendingGrades&&saved.nextIndex>=saved.target?'채점 대기 '+pendingGrades+'개 · 이어서 확인':saved?(saved.nextIndex>=saved.target?(minimumStudyReached(saved,saved.activeMs)?'학습 완료 확인':'이어서 학습 · 25분까지 새 단어 추가'):'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):blocked?'문제 생성 서비스 확인 필요':p&&!p.cancelled&&p.ready.size<p.baseCount?'문제 준비 중 · '+p.ready.size+'/'+p.baseCount+'개':p?.budget?.reviewShortfall?'학습 시작 · '+p.baseCount+'개 (복습 '+p.budget.availableReviews+'개) 준비':done?'계속 학습하기':'오늘의 학습 시작';
+ if(studyHistory.dailyStudyTime(child(),saved,Date.now())>=studyHistory.DAILY_STUDY_MAX_MS){$('startDaily').textContent='오늘 30분 학습 완료 · 내일 다시 시작';$('startDaily').disabled=true}
 }
 function storeLearnerCheckpoint(profile){
  if(!canSaveLearning())return;
@@ -694,6 +695,7 @@ function applyVocabularyRetirement(saved){
    currentDraft:currentRemoved?{word:plans[next].w.w,index:next,answer:saved.pendingAnswer||'',hintLevel:saved.hintLevel||0}:saved.deferredVocabulary?.currentDraft||null}};
 }
 async function resumeLesson(saved){
+ if(dailyLimitBlocked(saved.mode,saved))return;
  const profile=state.selected,account=authUser?.id;
  if(saved.version!==1||![PREPARATION_ENGINE,'10.8.0'].includes(saved.engine)||saved.profile!==profile||saved.account!==account||
   !Array.isArray(saved.plans)||!saved.plans.length||
@@ -1243,11 +1245,29 @@ function warmDailyQuestions(){
 }
 let studyIdleTimer=null;
 function activeTime(active=session){return studyHistory.activeStudyTime(active,Date.now())}
+function dailyPracticeTime(active=session){return active?.mode==='level'?activeTime(active):studyHistory.dailyStudyTime(state.users[active?.profile],active,Date.now())}
+function dailyLimitBlocked(mode='daily',active=null){
+ if(mode==='level'||studyHistory.dailyStudyTime(child(),active,Date.now())<studyHistory.DAILY_STUDY_MAX_MS)return false;
+ alert('오늘의 실제 학습시간 30분을 채웠어요. 기록은 저장되어 있으며, 내일 다시 학습할 수 있어요.');return true;
+}
+function stopAtDailyLimit(){
+ if(!session||session.mode==='level'||session.completed)return false;
+ const learner=state.users[session.profile];if(!learner)return false;
+ studyHistory.bindDailyStudyLimit(learner,session,Date.now());
+ if(session.dailyStudyLimit.remainingMs>0)return false;
+ pauseLearningClock();
+ if(!session.timeLimitStopped){
+  session.timeLimitStopped=true;checkpointSession();localSave();cloudSave();show('home');renderResumeButton();
+  alert('오늘의 실제 학습시간 30분을 채웠어요. 답안과 학습 기록을 저장했습니다. 아직 익히지 못한 내용은 숙달로 처리하지 않고 다음 학습에서 다시 확인해요.');
+ }
+ return true;
+}
 function renderStudyClock(){
  if(!session)return;
  const idle=studyHistory.studyWindowRemaining(session,Date.now())<=0;
- if($('studyTime'))$('studyTime').textContent=Math.floor(activeTime()/60000)+'분 · '+(idle?'측정 일시정지 · 입력하거나 학습을 계속하면 재개':session.mode==='level'?'시작 수준 확인':'최소 25분 · 부족하면 새 단어 추가');
- if($('breakNotice')){$('breakNotice').textContent='25분 이상 학습했어요. 남은 단어의 문장 사용까지 확인하면 완료돼요. 잠시 쉬었다 이어서 해도 괜찮아요.';$('breakNotice').classList.toggle('hidden',session.mode==='level'||activeTime()<MINIMUM_STUDY_MS)}
+ const elapsed=session.mode==='level'?activeTime():studyHistory.dailyStudyTime(state.users[session.profile],session,Date.now());
+ if($('studyTime'))$('studyTime').textContent=Math.floor(elapsed/60000)+'분 · '+(idle?'측정 일시정지 · 입력하거나 학습을 계속하면 재개':session.mode==='level'?'시작 수준 확인':'하루 25~30분 · 30분에 자동 저장 후 종료');
+ if($('breakNotice')){$('breakNotice').textContent='25분 이상 학습했어요. 남은 내용을 확인하되, 하루 30분에 도달하면 자동 저장하고 마쳐요.';$('breakNotice').classList.toggle('hidden',session.mode==='level'||elapsed<MINIMUM_STUDY_MS)}
 }
 function armStudyIdleTimer(){
  clearTimeout(studyIdleTimer);studyIdleTimer=null;
@@ -1256,7 +1276,7 @@ function armStudyIdleTimer(){
  studyIdleTimer=setTimeout(()=>{
   studyIdleTimer=null;
   if(session!==active||active.completed||authUser?.id!==active.account||state.selected!==active.profile)return;
-  studyHistory.captureStudyClock(active,Date.now());renderStudyClock();
+  studyHistory.captureStudyClock(active,Date.now());if(stopAtDailyLimit())return;renderStudyClock();
   if(studyHistory.studyWindowRemaining(active,Date.now())>0){armStudyIdleTimer();return}
   if(checkpointSession()){localSave();cloudSave()}
  },Math.ceil(remaining));
@@ -1265,6 +1285,7 @@ function armStudyIdleTimer(){
 }
 function resumeLearningClock(){
  if(!session||session.completed||session.waitingForGrading||session.waitingForGradeResults||session.waitingForTopup||document.hidden)return;
+ if(stopAtDailyLimit())return;
  if(studyHistory.studyWindowRemaining(session,Date.now())<=0){studyHistory.captureStudyClock(session,Date.now());renderStudyClock();return}
  if(!Number.isFinite(session.clockStarted))session.clockStarted=Date.now();
  armStudyIdleTimer();renderStudyClock();
@@ -1279,9 +1300,11 @@ function beginLearningWindow(key,renew=false){
 function markStudyActivity(event){
  if(event?.isTrusted===false||!session||session.completed||session.waitingForGrading||session.waitingForGradeResults||session.waitingForTopup||document.hidden||
   !['learn','intro'].some(id=>$(id)?.classList.contains('active')))return;
+ if(stopAtDailyLimit())return;
  studyHistory.recordStudyActivity(session,Date.now());armStudyIdleTimer();renderStudyClock();
 }
 function renderIntro(){
+ if(stopAtDailyLimit())return;
  const active=session,list=active?.introWords||[];
  if(!active||active.introCursor>=list.length){if(active)active.introDone=true;show('learn');renderQuestion();return}
  const name=list[active.introCursor],q=active.queue.find(q=>q.w.w===name&&q.learningCard?.example),w=q?.w||byWord(name),card=q?.learningCard;
@@ -1300,6 +1323,7 @@ function nextIntro(){if(!session)return;session.introCursor++;checkpointSession(
 
 async function buildSession(mode='daily'){
  if(preparingSession)return;
+ if(dailyLimitBlocked(mode))return;
  preparingSession=true;
  const profile=state.selected,account=authUser?.id,button=mode==='level'?'levelTest':mode==='review'?'startReview':'startDaily',oldText=$(button).textContent;
  for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=true;
@@ -1342,6 +1366,7 @@ async function buildSession(mode='daily'){
  }
 }
 function renderQuestion(savedHint=0){
+ if(stopAtDailyLimit())return;
  session.waitingForGradeResults=false;
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
@@ -1499,6 +1524,7 @@ function showHint(){
 const normalizeTyped=s=>String(s||'').replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
 
 async function gradeCurrent(dontKnow){
+ if(stopAtDailyLimit())return;
  const active=session,q=presentWrittenQuestion(active.queue[current]);if(active.waitingForGrading||active.results.length>current||!$('next').classList.contains('hidden'))return;
  const hintUsed=hintLevel>0;
  if(dontKnow){
@@ -1681,7 +1707,7 @@ function availableStudyTopups(active){
  });
 }
 function prefetchStudyTopups(active,force=false){
- if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode==='level'||active.completionPolicy!==DAILY_POLICY||active.completed||minimumStudyReached(active,activeTime(active)))return Promise.resolve(null);
+ if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode==='level'||active.completionPolicy!==DAILY_POLICY||active.completed||minimumStudyReached(active,dailyPracticeTime(active)))return Promise.resolve(null);
  if(active.topupRequest)return active.topupRequest;
  if(!force&&active.topupErrorLevel===child().difficulty&&active.topupRetryAt>Date.now())return Promise.resolve(null);
  const held=availableStudyTopups(active);
@@ -1718,7 +1744,7 @@ function prefetchStudyTopups(active,force=false){
  return active.topupRequest;
 }
 function appendStudyTopup(active){
- if(minimumStudyReached(active,activeTime(active))||!sessionUsageComplete(active))return false;
+ if(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active))return false;
  const held=availableStudyTopups(active),target=held.find(t=>isCoveragePlan(t.plan))||takeAdaptiveTarget(active)||held[0];if(!target)return false;
  const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index)},w=plan.w;
  if(active.studyTopups)active.studyTopups.targets=active.studyTopups.targets.filter(t=>t.plan.w.w!==w.w);
@@ -1799,6 +1825,7 @@ function prefetchQuestions(){
 }
 async function nextQuestion(){
  if($('next').disabled||!session)return;
+ if(stopAtDailyLimit())return;
  if(session.waitingForTopup){await waitForStudyTopup(session);return}
  const active=session,nextIndex=current+1,oldText=$('next').textContent;
  $('next').disabled=true;
@@ -1826,6 +1853,7 @@ function levelAdjustmentLabel(c){
 
 function finishSession(){
  if(!session||session.completed)return;
+ if(stopAtDailyLimit())return;
  if((session.gradingQueue||[]).some(j=>j.status!=='applied')){
   appendReadyGrades(session);
   if(current<session.target&&current<session.queue.length){renderQuestion();return}
@@ -1834,7 +1862,7 @@ function finishSession(){
   $('submit').classList.add('hidden');$('hint').classList.add('hidden');$('next').classList.add('hidden');$('finishEarly').classList.remove('hidden');processGradingQueue(session);return;
  }
  if(session.completionPolicy===DAILY_POLICY&&!sessionUsageComplete(session)){checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return}
- if(!minimumStudyReached(session,activeTime())){
+ if(!minimumStudyReached(session,dailyPracticeTime())){
   if(appendStudyTopup(session)){show('learn');renderQuestion()}
   else waitForStudyTopup(session);
   return;
@@ -1880,7 +1908,7 @@ function renderAll(){
 function renderStudySummary(){
  const c=child(),budget=studyBudget(c),saved=savedLesson(),summary=summarizeEvidence(c);
  if($('dailyTitle'))$('dailyTitle').textContent=budget.newCount?'새 단어 '+budget.newCount+'개 + 복습 최대 '+budget.reviewCount+'개':'오늘은 배운 단어를 단단하게';
- if($('dailyDescription'))$('dailyDescription').textContent='기본 새 단어 5개 + 복습 최대 10개 · 최소 25분 · 부족하면 새 단어 추가';
+ if($('dailyDescription'))$('dailyDescription').textContent='기본 새 단어 5개 + 복습 최대 10개 · 하루 25~30분 · 30분에 자동 종료';
  if($('dailyBudget'))$('dailyBudget').textContent=(c.lastDate===today()&&!saved?'오늘 기본 학습 완료 · 원하는 만큼 계속 학습할 수 있어요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개 · 복습 시점이 된 단어부터 확인 · 부족하면 가능한 분량부터 학습';
  if($('learningEvidenceHome'))$('learningEvidenceHome').textContent='장기 확인 '+summary.mastered+'개 · '+(summary.retention7.attempts?'7일 이상 회상 '+summary.retention7.percent+'%':'7일 뒤 기억을 확인할 기록을 모으고 있어요.');
  if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';
@@ -2002,7 +2030,7 @@ function renderReport(){
  $('reportBody').innerHTML=`<div class="grid4"><div class="stat"><strong>${studied.length}</strong><span>학습 단어</span></div><div class="stat"><strong>${stats.mastered}</strong><span>장기 확인 단어</span></div><div class="stat"><strong>${c.difficulty.toFixed(1)}</strong><span>출제 난이도</span></div><div class="stat"><strong>${Number(c.leagueLevel??c.difficulty).toFixed(1)}</strong><span>리그 등급</span></div></div>
  <div class="card"><div class="eyebrow">맞히는 방식과 기억을 따로 확인</div><h3>어휘 학습의 네 가지 모습</h3><div class="evidence-grid">${metric('보기로 알아보기',stats.recognition,'첫 답 기준')}${metric('다른 날 직접 회상',stats.recall,'보기·힌트 없이')}${metric('새 글 이해',stats.transfer,'처음 보는 글의 뜻과 쓰임')}${metric('내 문장에 사용',stats.use,'목표어를 보여준 사용 활동')}</div></div>
  <div class="card"><h3>시간이 지나도 기억하나요?</h3><div class="evidence-grid">${metric('7일 이상 뒤 회상',stats.retention7,'마지막 노출 후 7~29일')}${metric('30일 이상 뒤 회상',stats.retention30,'마지막 노출 후 30일 이상')}</div><p class="muted">장기 확인은 3일 이상 직접 회상, 7일 이상 뒤 성공, 내 문장 사용을 모두 확인한 단어예요. 기존 정오답·숙달 기록은 단어장에 보관하고 새 확인 기록과 구분합니다. 도움 없이 회상하기 전 뜻이나 보기를 본 단어는 지연 회상 검사에 넣지 않아요.</p></div>
- <div class="card"><h3>오늘의 적정 분량</h3><p>기본 새 단어 ${budget.newCount}개 · 복습 예정 ${budget.due}개 · 최소 25분</p><p class="muted">기본 학습은 새 단어 5개와 복습 단어 10개입니다. 기본 단어의 문장 사용을 모두 확인해도 실제 학습시간이 25분 미만이면 현재 수준에 맞는 새 단어를 한 개씩 추가합니다. 25분 이상 학습하고 추가 단어까지 뜻과 쓰임이 드러나는 문장을 완성하면 완료됩니다. 각 문제에서 답안을 제출하지 않고 30초를 넘겨 대기한 시간과 쉬는 시간·백그라운드 시간·채점 및 추가 문제를 기다리는 시간은 제외합니다. 답안 제출 없이 30초가 지나면 시간 측정을 멈추고 제출 후 다시 측정합니다. 현재 수준에서 복습 예정일과 최근 약점을 우선하며, 일반 복습의 낮은 단계 약점은 최대 2개·일반 복습의 20% 이하로 제한합니다. 이와 별도로 기본 분량 안에서 최대 2자리를 낮은 단계의 미완료 어휘에 배정합니다. 시작했던 어휘를 먼저 마치고, 아직 배우지 않은 어휘는 낮은 단계부터 순서대로 배웁니다. 이 목표는 실시간 난이도가 올라도 교체하지 않으며, 직접 정확한 문장을 작성해야 완료됩니다. 낮은 단계 보충 결과는 난이도 조정에 넣지 않습니다. 후보가 부족하면 가능한 분량만 준비합니다. 문제 수 제한 없이 모든 단어로 뜻과 쓰임이 드러나는 문장을 만들 때까지 진행합니다. 오답은 다른 유형으로 연습한 뒤 문장 사용을 다시 확인하며, 중간에 쉬어도 이어서 할 수 있어요.</p><small class="muted">최근 학습 시간: ${c.sessions[0]?.activeMinutes!=null?c.sessions[0].activeMinutes+'분':'개편 후 기록 대기'}</small></div>
+ <div class="card"><h3>오늘의 적정 분량</h3><p>기본 새 단어 ${budget.newCount}개 · 복습 예정 ${budget.due}개 · 하루 25~30분</p><p class="muted">기본 학습은 새 단어 5개와 복습 단어 10개입니다. 기본 단어의 문장 사용을 모두 확인해도 실제 학습시간이 25분 미만이면 현재 수준에 맞는 새 단어를 한 개씩 추가합니다. 하루 25분 이상 학습하고 추가 단어까지 문장 사용을 확인하면 완료됩니다. 아직 남은 내용이 있어도 실제 학습시간 30분에 도달하면 답안과 기록을 저장하고 오늘 학습을 마칩니다. 미완료 내용은 숙달로 처리하지 않습니다. 각 문제에서 답안을 제출하지 않고 30초를 넘겨 대기한 시간과 쉬는 시간·백그라운드 시간·채점 및 추가 문제를 기다리는 시간은 제외합니다. 답안 제출 없이 30초가 지나면 시간 측정을 멈추고 제출 후 다시 측정합니다. 현재 수준에서 복습 예정일과 최근 약점을 우선하며, 일반 복습의 낮은 단계 약점은 최대 2개·일반 복습의 20% 이하로 제한합니다. 이와 별도로 기본 분량 안에서 최대 2자리를 낮은 단계의 미완료 어휘에 배정합니다. 시작했던 어휘를 먼저 마치고, 아직 배우지 않은 어휘는 낮은 단계부터 순서대로 배웁니다. 이 목표는 실시간 난이도가 올라도 교체하지 않으며, 직접 정확한 문장을 작성해야 완료됩니다. 낮은 단계 보충 결과는 난이도 조정에 넣지 않습니다. 후보가 부족하면 가능한 분량만 준비합니다. 최대시간에 도달하기 전에는 각 단어를 문장에서 사용할 수 있는지 확인합니다. 오답은 다른 유형으로 연습한 뒤 문장 사용을 다시 확인하며, 중간에 쉬어도 이어서 할 수 있어요.</p><small class="muted">최근 학습 시간: ${c.sessions[0]?.activeMinutes!=null?c.sessions[0].activeMinutes+'분':'개편 후 기록 대기'}</small></div>
  <div class="card"><h3>다음 우선순위</h3><div class="list">${weak.length?weak.map(w=>`<div class="item"><strong>${escapeHtml(w.w)}</strong> <small>${escapeHtml(w.d)} · 다음 복습 ${escapeHtml(c.words[w.w].nextReviewAt||'곧 확인')}</small></div>`).join(''):'<p class="muted">학습 기록이 쌓이면 개인별 복습을 안내해요.</p>'}</div></div>
  <div class="card"><h3>학습 중 난이도 조정</h3><p>${escapeHtml(levelAdjustmentLabel(c)||'다음 학습을 마치면 이 회차의 등급 변화를 보여 드려요.')}</p><p class="muted">답안마다 이해 수준을 확인하고, 서로 다른 어휘 3개를 평가할 때마다 다음 출제 난이도를 조정해요. 현재 수준을 수월하게 이해하면 0.2~0.3, 다음 단계 어휘를 직접 떠올리거나 사용한 근거가 있으면 최대 0.5씩 올립니다. 적절한 수준에 가까워지면 0.1씩 조정해요. 객관식만 맞히거나 해설을 보고 반복한 정답은 승급 근거로 충분하지 않아요. 서로 다른 어휘 3개에서 뜻 이해의 어려움이 확인되면 0.2~0.3씩 낮추고, 문장 구성의 어려움은 그 단어의 연습을 보강합니다. 현재 문제와 이미 공부한 목표 단어는 유지하고, 아직 배우지 않은 다음 어휘부터 새 수준을 적용해요. 순위 등급은 학습을 마칠 때 확정하며 실시간 변화를 두 번 더하지 않습니다. 이 등급은 게임용 학습 추정값이며 공인 어휘력 점수나 실제 학년 점수가 아닙니다.</p></div>`;
 }
