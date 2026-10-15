@@ -56,3 +56,16 @@ await archived.run('cloudLoad()');
 assert.equal(recoveredCalls,1);assert.equal(flushedMarker,'keep');assert.equal(archived.run('child().recoveredGradeMarker'),'ready');
 assert.equal(archived.run('child().unsentDraftMarker'),'keep');
 console.log('Load-boundary archived recovery: flush unsynced draft first, read committed recovery, keep learner state.');
+
+// Loading an old capped checkpoint settles before controls disable resuming.
+const oldCap=fixture();await oldCap.run('buildSession()');
+oldCap.run("globalThis.actualSettlement=settleReachedStudyDays;settleReachedStudyDays=()=>false;pauseLearningClock();session.activeMs=1800000;session.studyFallbackDay=today();session.studyDays={[today()]:{activeMs:1800000}};initRealtimeLevel(child(),session);child().difficulty=3.5;child().leagueLevel=3;checkpointSession();session=null;localSave();settleReachedStudyDays=actualSettlement");
+await oldCap.run('cloudSave()');
+await oldCap.run('cloudLoad()');
+assert.equal(oldCap.run('child().leagueLevel'),3.5);
+assert.equal(oldCap.run('child().sessions.length'),1);
+assert.equal(oldCap.run('child().learningDays'),1);
+assert.equal(oldCap.cloud.get('family').users.guest.sessions.length,1,'load repair is durably flushed');
+await oldCap.run('cloudLoad()');
+assert.equal(oldCap.run('child().sessions.length'),1);
+console.log('Load-boundary cap settlement: disabled resume does not block repair; cloud flush and repeated load are idempotent.');

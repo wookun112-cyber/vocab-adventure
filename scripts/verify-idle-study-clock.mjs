@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {patchStuckPreparation} from './patch-stuck-preparation.mjs';
 import * as studyHistory from '../lib/study-history.js';
 import {AUTHORED_OWNER,AUTHORED_REVISION,authoredQuestionValid} from '../lib/authored-policy.js';
 import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
@@ -64,7 +65,7 @@ assert.equal(delayedLegacy.activeMs,30000);assert.equal(delayedLegacy.studyIdle.
 const row=authoredCurriculum(AUTHORED_OWNER).find(w=>w.word==='의견');
 const w={w:row.word,d:row.definition,band:2,cat:row.domain,source:'fixed'};
 const topups=buildStudyTopups({difficulty:2,words:{}},AUTHORED_OWNER,[w.w],'idle');
-const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
+const source=patchStuckPreparation(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8')).replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 function fixture({elapsed=0,type='subjective_use',saved=null}={}){
  let now=start,nextTimer=0;
  const timers=new Map(),nodes=new Map(),alerts=[],requests=[];
@@ -219,3 +220,53 @@ settled.run('settleTimeLimitedSession();stopAtDailyLimit()');
 assert.equal(settled.run('child().sessions.length'),1);
 assert.equal(settled.run('studyHistory.dailyStudyTime(child(),session,Date.now())'),1800000);
 console.log('Time-limit settlement: ranking/day statistics, unfinished-word preservation, idempotence and no double time.');
+
+// Close at the boundary before the timer callback: the durable checkpoint itself
+// settles, without needing another interaction or resume.
+const closeAtCap=fixture({elapsed:1799000});
+closeAtCap.run('initRealtimeLevel(child(),session);child().difficulty=3.5;child().leagueLevel=3');
+closeAtCap.node('answer').value='닫기 직전 작성 중';
+closeAtCap.advance(1000,false);
+closeAtCap.run('pauseLearningClock();checkpointSession()');
+assert.equal(closeAtCap.run('child().leagueLevel'),3.5);
+assert.equal(closeAtCap.run('child().sessions.length'),1);
+assert.equal(closeAtCap.run('child().activeLesson.pendingAnswer'),'닫기 직전 작성 중');
+// Upgrade/restart of an old un-settled checkpoint is repaired before cap guard.
+const missed=JSON.parse(closeAtCap.run('JSON.stringify(state)'));
+missed.users.ayoung.sessions=[];missed.users.ayoung.levelAdjustmentHistory=[];
+missed.users.ayoung.learningDays=0;missed.users.ayoung.lastStudyDate=null;missed.users.ayoung.leagueLevel=3;
+const recoveredCap=fixture({saved:structuredClone(missed)});
+await recoveredCap.run('resumeLesson(child().activeLesson)');
+assert.equal(recoveredCap.run('session'),null);
+assert.equal(recoveredCap.run('child().leagueLevel'),3.5);
+assert.equal(recoveredCap.run('child().learningDays'),1);
+assert.equal(recoveredCap.run('child().sessions.length'),1);
+recoveredCap.run('settleReachedStudyDays(child().activeLesson)');
+assert.equal(recoveredCap.run('child().sessions.length'),1);
+assert.equal(recoveredCap.run('studyHistory.dailyStudyTime(child(),child().activeLesson,Date.now())'),1800000);
+const nextDayCap=fixture({saved:structuredClone(missed)});nextDayCap.advance(86400000);
+assert.equal(nextDayCap.run('settleReachedStudyDays(child().activeLesson)'),true);
+assert.equal(nextDayCap.run('child().sessions[0].date'),'2026-10-12');
+assert.equal(nextDayCap.run('child().lastStudyDate'),'2026-10-12');
+assert.equal(nextDayCap.run('studyHistory.dailyStudyTime(child(),child().activeLesson,Date.now())'),0);
+assert.equal(nextDayCap.run('child().activeLesson.pendingAnswer'),'닫기 직전 작성 중');
+// Real foreground delivery, not just the archive helper, uses submission dates.
+const delayed=fixture();
+delayed.run("applyGradedAnswer(session.queue[0],{score:1,contextSuccess:true,feedback:'확인'},{id:'old-job',answer:'나의 의견을 말했다.',hintUsed:false,submittedAt:Date.now()-86400000,submittedDay:dateAfter(today(),-1)})");
+assert.equal(delayed.run('session.results[0].studyDate'),'2026-10-11');
+assert.equal(delayed.run('session.results[0].evidence.date'),'2026-10-11');
+assert.equal(delayed.run('child().words.의견.usageConfirmedAt'),'2026-10-11');
+assert.equal(delayed.run('child().words.의견.nextReviewAt'),'2026-10-12');
+assert.equal(delayed.run('session.results[0].levelEligible'),false);
+assert.equal(delayed.run('child().studyHistory.entries[session.lessonId].days["2026-10-11"].good'),1);
+for(const score of [0,1]){
+ const newer=fixture();
+ newer.run("Object.assign(wordState('의견'),{lastExposureAt:today(),lastFeedbackDate:today(),usageConfirmedAt:today(),usageConfirmedStamp:Date.now(),nextReviewAt:dateAfter(today(),14),recallStage:4,streak:5})");
+ newer.run(`applyGradedAnswer(session.queue[0],{score:${score},contextSuccess:${score===1},feedback:'확인'},{id:'old-job',answer:'나의 의견을 말했다.',hintUsed:false,submittedAt:Date.now()-86400000,submittedDay:dateAfter(today(),-1)})`);
+ assert.equal(newer.run('child().words.의견.nextReviewAt'),'2026-10-26');
+ assert.equal(newer.run('child().words.의견.streak'),5);
+ assert.equal(newer.run('child().words.의견.lastExposureAt'),'2026-10-12');
+ assert.equal(newer.run('child().words.의견.usageConfirmedAt'),'2026-10-12');
+ assert.equal(newer.run('child().words.의견.lastFeedbackDate'),'2026-10-12');
+}
+console.log('Close/reopen/next-day cap recovery and delayed foreground grading dates verified; drafts and later progress preserved.');

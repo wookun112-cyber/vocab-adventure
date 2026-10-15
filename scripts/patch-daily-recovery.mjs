@@ -92,6 +92,7 @@ async function switchSavedLearning(saved,restoreId=null){
  profileButtons.forEach(([b])=>{b.disabled=true});
  try{
   if(session?.profile===profile){pauseLearningClock();checkpointSession();localSave();const prior=session;session=null;prior.preparation?.cancel()}
+  settleReachedStudyDays(saved);
   syncUnfinishedUsage(child(),saved);
   const savedOkay=await cloudSave();
   if(!savedOkay||!canSaveLearning()||account!==authUser?.id||epoch!==authEpoch)throw Error('먼저 기존 답안을 서버에 저장해야 해요. 기기 기록은 유지됩니다. 저장 상태를 확인한 뒤 다시 눌러 주세요.');

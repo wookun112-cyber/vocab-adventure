@@ -40,3 +40,16 @@ cached=null;assert.equal((await call()).value.waiting,1);assert.equal(commits,1,
 cached=grade;conflict=true;assert.equal((await call()).value.conflicts,1);
 other=true;assert.equal((await call()).code,403);
 console.log('Archived recovery: cached-only delivery, original date/time, current draft and later progress preserved, idempotent applied job, owner isolation, CAS conflict and no paid calls.');
+
+// A closed request has a job, but the catch/placeholder has not run yet.
+const beforePlaceholder=structuredClone(snapshot);beforePlaceholder.lesson.results=[];
+const recoveredEarly=reconcileArchivedGrade(beforePlaceholder,grade,stamp+86400000);
+assert.equal(recoveredEarly.record.gradingJobId,job.id);
+assert.equal(recoveredEarly.learner.studyHistory.entries.old.days['2026-10-14'].good,1);
+assert.deepEqual(beforePlaceholder.lesson.results,[]);
+for(const bad of [
+ {...beforePlaceholder,job:{...job,index:1}},
+ {...beforePlaceholder,job:{...job,word:'다른 단어'}},
+ {...snapshot,lesson:{...lesson,results:[{...r.record,gradingPending:false}]}}
+])assert.equal(reconcileArchivedGrade(bad,grade),null,'never insert out of order, mismatched, or already graded jobs');
+console.log('Pre-placeholder recovery: cached answer appended only at its original cursor; gaps, mismatches and duplicates rejected.');
