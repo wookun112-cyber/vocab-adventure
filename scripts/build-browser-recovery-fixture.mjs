@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import {patchStuckPreparation} from './patch-stuck-preparation.mjs';
+const effective=patchStuckPreparation(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8'));
+const a=effective.indexOf('let cloudSaveError=null;'),b=effective.indexOf('let resumePreviousRequested=',a);
+if(a<0||b<0)throw Error('Production cloud save boundary changed');
+const local=effective.split('\n').find(line=>line.startsWith('function localSave(){'));
+if(!local)throw Error('Production local save boundary changed');
+const r0=effective.indexOf('function gradeReceiptKey('),r1=effective.indexOf('\nfunction applyGradedAnswer',r0);
+if(r0<0||r1<0)throw Error('Production receipt boundary changed');
+fs.mkdirSync(new URL('../test-results/',import.meta.url),{recursive:true});
+fs.writeFileSync(new URL('../test-results/browser-cloud.js',import.meta.url),effective.slice(a,b)+'\n'+local+'\n'+effective.slice(r0,r1));

@@ -1,11 +1,11 @@
 export function patchChoiceFeedback(source){
  const replace=(a,b)=>{if(source.split(a).length!==2)throw Error('Choice feedback anchor mismatch: '+a.slice(0,80));source=source.replace(a,b)};
  const runtime=String.raw`
-const choiceFeedbackWords=new Set(['근거','기준','의견','객관적','예측하다','추측','가늠하다','가루','도시화','재진술','함축']);
+// Every registered MC source can recover reasons; no per-word allowlist.
 const choiceFeedbackRequests=new Map();
 async function recoverStoredChoiceFeedback(q,selected,active,index,record){
- if(!q.authored||!choiceFeedbackWords.has(q.w.w)||selected.reason)return;
- const account=active.account,key=account+'|'+q.signature;
+ if(!q.opts?.length||selected.reason)return;
+ const account=active.account,key=account+'|'+q.signature+'|'+q.q+'|'+q.ctx;
  let pending=choiceFeedbackRequests.get(key);
  if(!pending){
   pending=(async()=>{

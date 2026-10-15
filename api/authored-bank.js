@@ -1,3 +1,4 @@
+import {enrichBankWideReasons} from '../lib/server/bank-wide-feedback.js';
 import {enrichChoiceReasons} from '../lib/server/choice-feedback.js';
 import {levelNineArchive} from '../lib/server/level-nine-bank-data.js';
 import {recallQuestion} from '../lib/sentence-use-template.js';
@@ -9,7 +10,6 @@ import {levelFourArchive} from '../lib/server/level-four-bank-data.js';
 import {AUTHORED_REVISION,AUTHORED_LEGACY_REVISION,AUTHORED_OWNER} from '../lib/authored-policy.js';
 import {QUESTION_POLICY,calibratedWord,inTargetBand,isCoverageWord,sentenceWritingTask,isRetiredVocabulary} from '../lib/learning-model.js';
 import {passageKeys} from '../lib/prepared-plan.js';
-// Inflate and index exactly once per worker instance, never per question.
 const originalRows=JSON.parse(gunzipSync(Buffer.from(archive,'base64')).toString('utf8'));
 const supplementalRows=JSON.parse(gunzipSync(Buffer.from(essentialArchive,'base64')).toString('utf8'));
 const supplementalWords=new Set(supplementalRows.map(r=>r.word));
@@ -21,13 +21,13 @@ const previousRows=[...originalRows.filter(r=>!supplementalWords.has(r.word)&&!l
 const levelNineRows=JSON.parse(gunzipSync(Buffer.from(levelNineArchive,'base64')).toString('utf8'));
 const rows=[...previousRows.filter(r=>!levelFiveSixWords.has(r.word)),...levelFiveSixRows,...levelNineRows];
 export const choiceFeedbackStats=Object.freeze(enrichChoiceReasons(rows));
+const feedbackRows=[...originalRows,...supplementalRows,...levelFourRows,...levelFiveSixRows,...levelNineRows];
+export const bankWideFeedbackStats=Object.freeze(enrichBankWideReasons(feedbackRows));
 const recoveredExample=rows.find(w=>w.word==='회복');
 if(recoveredExample&&!recoveredExample.example)recoveredExample.example='비에 젖었던 운동장이 마르자 원래 모습을 회복했어요.';
 const byWord=new Map(rows.map(row=>[row.word,row]));
 export const authoredStats=Object.freeze({revision:AUTHORED_REVISION,words:byWord.size,questions:rows.reduce((n,w)=>n+w.questions.length,0),supplementalWords:supplementalRows.length,supplementalQuestions:supplementalRows.reduce((n,w)=>n+w.questions.length,0),independentReviewComplete:false});
 export function authoredCurriculum(account){return account===AUTHORED_OWNER?rows.filter(w=>!isRetiredVocabulary(w)).map(({questions,...w})=>({...w,definition:w.definition})):[]}
-// These existing accepted alternatives preserve answer credit, but they are
-// distinct lexemes rather than an inflection of the requested target.
 const recallAlternatives={
  '묻다':['질문','물어보'],'기르다':['키'],'도와주다':['도왔','도왔다','도와요'],
  '기억나다':['생각'],'늘어나다':['늘었'],'발견하다':['찾아내','찾아냈'],'피다':['피어나'],
@@ -47,8 +47,6 @@ function rawFromSlot(row,q,item){
  const options=structuredClone(q.options||[]);
  if(options.length){const at=options.findIndex(o=>o.correct),[correct]=options.splice(at,1);options.splice(item.answerSlot||0,0,correct)}
  const effective=calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,example:row.example||'',source:'fixed'});
- // A repeated definition is an instructional clue, not a repeated practice sentence.
- // Keep the blank example in context so passage history compares the examples.
  const recall=q.type==='subjective_recall';
  const parts=recall?String(q.context||'').split('\n'):[];
  const clue=recall?(q.meaningClue||q.definition||q.prompt):'';
@@ -68,8 +66,6 @@ export function authoredQuestion(item,account,extra=[]){
  const w=calibratedWord({w:row.word,band:row.band});
  if(isRetiredVocabulary(w))return null;
  if(!item.review&&!inTargetBand(w,item.readerLevel)&&!item.firstLearning)return null;
- // Lower unfinished vocabulary has an explicit coverage allocation. Ordinary
- // new words retain their level guard; retired vocabulary never gets an exception.
  if(item.firstLearning&&!inTargetBand(w,item.readerLevel)&&!isCoverageWord({...w,coveragePolicy:item.coveragePolicy},item.readerLevel))return null;
  const used=new Set([...(item.usedPassageKeys||[]),...(item.previousContexts||[]).flatMap(h=>passageKeys(h.context,h.options||[])),...extra.filter(q=>q.authored?.word===row.word).flatMap(q=>passageKeys(q.context,(q.options||[]).map(o=>o.text)))]);
  const usedSignatures=new Set([...(item.usedQuestionSignatures||[]),...(item.previousContexts||[]).map(h=>h.signature),...extra.map(q=>q.signature)].filter(Boolean));
@@ -79,9 +75,6 @@ export function authoredQuestion(item,account,extra=[]){
  let hash=0;for(const ch of String(item.id)+'|'+(item.usedPassageKeys||[]).length)hash=(hash*31+ch.charCodeAt(0))>>>0;
  for(let i=0;i<available.length;i++){
   const q=rawFromSlot(row,available[(hash+i)%available.length],item);
-  // Very short blank sentences do not have a passage fingerprint. Keep their
-  // authored slot and full context in the duplicate check as well. Generic
-  // own-sentence instructions may repeat; the learner supplies the sentence.
   if(q.type!=='subjective_use'&&(usedSignatures.has(q.signature)||usedContexts.has(normalizeContext(q.context))))continue;
   if(!passageKeys(q.context,q.options.map(o=>o.text)).some(k=>used.has(k)))return q;
  }
@@ -91,8 +84,6 @@ export function resolveAuthoredQuestion(item,account,extra=[]){
  const original=authoredQuestion(item,account,extra);
  if(original)return original;
  const recall=recallQuestion(item);if(recall)return recall;
- // Only newly appended practice tasks may change type. Base lessons and
- // interrupted questions keep the task that the learner was already given.
  if(!item.allowBankTypeFallback||!item.review||item.firstLearning||item.needsCard||item.type==='subjective_use')return null;
  for(const type of ['subjective_recall','mc_context','mc_usage','subjective_use'].filter(t=>t!==item.type)){
   const fresh=authoredQuestion({...item,type},account,extra);
@@ -107,10 +98,8 @@ export function authoredAvailability(learner,account,reserved=[]){
  for(const row of rows){
   const st=learner.words?.[row.word]||{},studied=!!(st.seen||st.introducedAt);
   const item={id:'availability',word:row.word,readerLevel:learner.difficulty,review:studied,firstLearning:!studied,usedPassageKeys:st.usedPassageKeys||[],previousContexts:st.problemHistory||[]};
-  if(studied){
-   // All daily review roles must have a fresh task, including the first recall check.
-   if(['mc_usage','subjective_recall','subjective_use'].every(type=>authoredQuestion({...item,type},account,held)))review.add(row.word);
-  }else if(authoredQuestion({...item,type:'mc_usage'},account,held))fresh.add(row.word);
+  if(studied){if(['mc_usage','subjective_recall','subjective_use'].every(type=>authoredQuestion({...item,type},account,held)))review.add(row.word)}
+  else if(authoredQuestion({...item,type:'mc_usage'},account,held))fresh.add(row.word);
  }
  return {review,fresh};
 }
@@ -122,7 +111,7 @@ export function authoredEntry(plan,learner,account,reserved=[]){
 }
 export function savedChoiceFeedback(q,account){
  if(account!==AUTHORED_OWNER||q?.authored?.owner!==account)return null;
- const row=byWord.get(q.w?.w),slot=row?.questions.find(item=>item.slot===q.authored.slot);
+ const row=feedbackRows.find(row=>row.word===q.w?.w&&(row.revision||AUTHORED_LEGACY_REVISION)===q.authored.revision),slot=row?.questions.find(item=>item.slot===q.authored.slot);
  if(!row||!slot||!slot.type.startsWith('mc_')||q.authored.revision!==(row.revision||AUTHORED_LEGACY_REVISION))return null;
  const raw=rawFromSlot(row,slot,{id:'explanation',answerSlot:0});
  const key=options=>JSON.stringify(options.map(o=>[o.text,!!o.correct]).sort((a,b)=>a[0].localeCompare(b[0])));
@@ -130,6 +119,3 @@ export function savedChoiceFeedback(q,account){
  return raw.options.filter(o=>!o.correct&&o.reason).map(o=>({text:o.text,reason:o.reason}));
 }
 export default function handler(req,res){return res.status(404).json({error:'Not found'})}
-
-
-
