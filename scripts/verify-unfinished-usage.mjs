@@ -55,4 +55,6 @@ const many={difficulty:7.4,words:{},unfinishedUsage:{}};
 for(let i=0;i<12;i++)many.unfinishedUsage['항목'+i]={word:{...basis,w:'항목'+i},day:'2026-10-14',assignedAt:at('2026-10-14')+i};
 assert.equal(selectDailyTargets([],many,'2026-10-15').reviewWords.length,10);
 assert.equal(Object.keys(many.unfinishedUsage).length,12,'overflow stays pending instead of being discarded');
+many.difficulty=3;const overflow=selectDailyTargets(Object.values(many.unfinishedUsage).map(x=>x.word),many,'2026-10-15');
+assert.equal(overflow.newWords.length,0,'unattempted overflow is not relabeled as fresh vocabulary');
 console.log('Unfinished usage verified: wrong/unanswered carryover, level changes, strict completion, old-checkpoint protection, 10-review backlog, reserve invalidation, 1/3/7/14/30/60-day reviews and failure reset.');
