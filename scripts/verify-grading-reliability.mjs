@@ -116,3 +116,50 @@ boundary.ctx.fetch=async()=>({ok:true,status:200,json:async()=>({score:1,context
 await boundary.run('processGradingQueue(session,true)');
 assert.equal(boundary.run('session.gradingQueue[0].status'),'applied');assert.equal(boundary.run('session.waitingForGradeResults'),false);
 console.log('All-other-work-finished boundary verified: no false completion or wait-time credit, successful retry displays feedback and resumes.');
+
+// Normal pending responses stay on the fast result-only path, without exponential backoff.
+const poll=fixture();await poll.run('buildSession()');await flush();
+poll.run(`session.queue[current]={...session.queue[current],type:'subjective_use',open:true,showTarget:true,opts:[]};session.preparation.plans[current].type='subjective_use';session.preparation.ready.set(current,session.queue[current]);renderQuestion();`);
+poll.node('answer').value='나는 친구의 의견을 들었다.';
+const requests=[];let response={code:'grading_pending'},responseStatus=202;
+poll.ctx.fetch=async(url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,status:responseStatus,json:async()=>response}};
+await poll.run('gradeCurrent(false)');
+assert.equal(requests[0].pollOnly,false);
+for(let i=0;i<5;i++)await poll.run('processGradingQueue(session,true)');
+assert.equal(requests.filter(r=>!r.pollOnly).length,1,'pending polling must not submit another generation request');
+assert.equal(poll.run('session.gradingQueue[0].attempts'),0);
+assert.ok(poll.run('session.gradingQueue[0].nextRetryAt-Date.now()')<=2000);
+assert.ok(poll.run('session.gradingQueue[0].nextRetryAt-Date.now()')>1500);
+response={score:1,contextSuccess:true,feedback:'맞아요'};responseStatus=200;
+await poll.run('processGradingQueue(session,true)');assert.equal(poll.run('session.gradingQueue[0].status'),'ready');
+// Only an explicit server retryable response permits a fresh request.
+const retry=fixture();await retry.run('buildSession()');await flush();
+retry.run(`session.queue[current]={...session.queue[current],type:'subjective_use',open:true,opts:[]};session.preparation.plans[current].type='subjective_use';session.preparation.ready.set(current,session.queue[current]);renderQuestion();`);
+retry.node('answer').value='나는 친구의 의견을 들었다.';retry.ctx.fetch=async()=>{throw Error('offline')};await retry.run('gradeCurrent(false)');
+const kinds=[];retry.ctx.fetch=async(url,options)=>{const body=JSON.parse(options.body);kinds.push(body.pollOnly);return {ok:true,status:body.pollOnly?202:200,json:async()=>body.pollOnly?{code:'grading_retryable'}:{score:1,contextSuccess:true,feedback:'맞아요'}}};
+await retry.run('processGradingQueue(session,true)');assert.deepEqual(kinds,[true,false]);
+// Recovery errors keep the answer saved, never turn it into a wrong answer.
+poll.run("session.gradingQueue[0].status='pending'");
+response={code:'grading_result_recovery_required'};responseStatus=202;
+const paidBefore=requests.filter(r=>!r.pollOnly).length;
+await poll.run('processGradingQueue(session,true)');
+assert.equal(requests.filter(r=>!r.pollOnly).length,paidBefore);
+assert.equal(poll.run('session.gradingQueue[0].status'),'pending');
+poll.run("session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session)");
+assert.match(poll.node('feedback').textContent,/남은 채점 1개/);
+assert.match(poll.node('feedback').textContent,/복구/);
+console.log('Fast queue PASS: pending checks every 2s without failure escalation, only server retryable allows submission, recovery preserves answer and accurate pending count.');
+
+const legacyPoll=fixture();await legacyPoll.run('buildSession()');await flush();
+legacyPoll.run("session.gradingQueue=[{id:'legacy',status:'pending',index:0,errorCode:'grading_pending',nextRetryAt:Date.now()+120000,answer:'보관된 답'}];session.results=[{gradingPending:true,gradingJobId:'legacy',excludedFromVocabulary:true}]");
+await legacyPoll.run('processGradingQueue(session)');
+assert.ok(legacyPoll.run('session.gradingQueue[0].nextRetryAt-Date.now()')<=2000,'old normal-pending delays migrate on resume');
+legacyPoll.run("session.gradingQueue[0].pollPolicy=null;session.gradingQueue[0].errorCode='ai_credit_exhausted';session.gradingQueue[0].nextRetryAt=Date.now()+300000");
+await legacyPoll.run('processGradingQueue(session)');
+assert.ok(legacyPoll.run('session.gradingQueue[0].nextRetryAt-Date.now()')>290000,'quota waits must not become rapid paid retries');
+const exact=fixture();await exact.run('buildSession()');await flush();
+exact.run("session.queue[current]={...session.queue[current],type:'subjective_recall',open:true,opts:[],acceptedAnswers:['생각']};renderQuestion()");
+exact.node('answer').value='생각';exact.ctx.fetch=async()=>{throw Error('Validated exact answer must not request AI')};
+await exact.run('gradeCurrent(false)');assert.equal(exact.run('session.results[0].credit'),1);
+assert.equal(exact.run('session.results[0].targetRecall'),false,'approved synonym is not independent target recall');
+console.log('Legacy wait migration, quota backoff preservation and exact validated synonym fast path PASS.');

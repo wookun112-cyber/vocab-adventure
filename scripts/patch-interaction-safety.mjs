@@ -6,11 +6,7 @@ export function patchInteractionSafety(source){
 const createSafeUpdate=${createSafeUpdate.toString()};
 const createScopedVoice=${createScopedVoice.toString()};
 const POLICY_COPY=${JSON.stringify(POLICY_COPY)};
-function gradingRetryDelay(code,attempts=0){
- if(code==='grading_daily_limit')return Math.max(60000,Date.parse(today()+'T00:00:00+09:00')+86400000-Date.now());
- if(['ai_credit_exhausted','grading_account_not_allowed'].includes(code))return 300000;
- return Math.min(120000,15000*2**Math.min(3,attempts));
-}
+
 function feedbackExplanationHtml(value){
  const text=String(value||''),at=text.indexOf('지문 근거:');
  if(at<0||text.length<170)return '<p>'+escapeHtml(text)+'</p>';
@@ -63,8 +59,6 @@ const safeUpdater=createSafeUpdate({
  replace("async function applyAuth(sessionObj){","async function applyAuth(sessionObj){\n stopVoice();");
  replace("<h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>","<h3>해설</h3>'+feedbackExplanationHtml(feedback||q.feedbackCorrect||q.w.d)+'</section>");
  replace("const text=$('feedback').querySelector?.('.feedback-explanation p');if(text)text.textContent=record.feedback","const text=$('feedback').querySelector?.('.feedback-explanation');if(text)text.innerHTML='<h3>해설</h3>'+feedbackExplanationHtml(record.feedback)");
- replace("(e.code==='ai_credit_exhausted'?300000:15000)","gradingRetryDelay(e.code)");
- replace("(e.code==='ai_credit_exhausted'?300000:Math.min(120000,15000*2**Math.min(3,job.attempts)))","gradingRetryDelay(e.code,job.attempts)");
  replace("$('feedback').textContent=e.code==='grading_result_recovery_required'?","$('feedback').textContent=['grading_daily_limit','grading_rate_limit','grading_assignment_pending','grading_account_not_allowed'].includes(e.code)?String(e.message):e.code==='grading_result_recovery_required'?");
  replace("    reloading=true;\n    location.reload();","    reloading=true;\n    safeUpdater.available();");
  // One policy definition supplies settings, ranking and parent report copy.
