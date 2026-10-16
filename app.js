@@ -1615,7 +1615,7 @@ async function gradeCurrent(dontKnow){
  const answer=$('answer').value.trim();
  if(!answer)return alert('답을 쓰거나 “모르겠어”를 눌러주세요.');
  const expected=normalizeTyped(q.w.w),typed=normalizeTyped(answer);
- const listed=(q.acceptedAnswers||[]).find(x=>typeof x==='object'&&normalizeTyped(x.text)===typed);
+ const listed=(q.acceptedAnswers||[]).map(x=>typeof x==='string'?{text:x,credit:1,targetRecall:normalizeTyped(x)===expected}:x).find(x=>x&&normalizeTyped(x.text)===typed&&[0,.5,1].includes(Number(x.credit)));
  if(q.type!=='subjective_use'&&(typed===expected||typed===normalizeTyped(q.answerForm||'')||listed)){
    const credit=listed?Number(listed.credit):1;
    if(typed!==expected&&typed!==normalizeTyped(q.answerForm||'')&&listed){applyResult(q,credit===1?'○':'△',q.feedbackCorrect||'문맥에 맞는 표현이에요.',answer,{credit,contextSuccess:credit>=1,targetRecall:listed.targetRecall===true,independent:credit>=1&&!hintUsed,hintUsed,revealed:false});return}
@@ -1633,13 +1633,13 @@ async function gradeCurrent(dontKnow){
  $('submit').disabled=true;$('submit').textContent='답안 확인 중…';
  pauseLearningClock();active.waitingForGrading=true;
  try{
-  const graded=await requestGrade(job,8000);
+  const graded=await requestGrade(job,12000);
   if(session!==active||state.selected!==active.profile)return;
   active.gradingQueue=active.gradingQueue.filter(j=>j.id!==job.id);
   applyGradedAnswer(q,graded,job);
  }catch(e){
   if(session!==active||state.selected!==active.profile)return;
-  job.attempts++;job.nextRetryAt=Date.now()+(e.code==='ai_credit_exhausted'?300000:15000);job.errorCode=e.code||'temporary';
+  deferGradingJob(job,e);
   active.results.push({word:q.w.w,type:q.type,result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:job.id,answeredAt:job.submittedAt,studyDate:job.submittedDay});
   $('feedback').className='feedback';$('feedback').textContent=e.code==='ai_credit_exhausted'?'답안을 저장했어요. 관리자에게 채점 잔액 확인이 필요해요. 다른 문제는 계속 풀 수 있고, 충전 후 자동으로 다시 확인해요.':'답안을 저장했어요. 다른 문제를 풀면 자동으로 다시 채점해요. 앱을 껐다 켜도 이어서 확인할 수 있어요.';
   $('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
@@ -1649,10 +1649,10 @@ async function gradeCurrent(dontKnow){
   if(session===active){if(!document.hidden)resumeLearningClock();$('submit').disabled=false;$('submit').textContent='채점하기'}
  }
 }
-async function requestGrade(job,timeout=25000){
+async function requestGrade(job,timeout=25000,pollOnly=false){
  const {data}=await withDeadline(sb.auth.getSession(),5000,'로그인 확인 지연');
  const token=data.session?.access_token;if(!token)throw new Error('로그인이 필요합니다.');
- const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(timeout),body:JSON.stringify({...job.payload,requestId:job.id})});
+ const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(timeout),body:JSON.stringify({...job.payload,requestId:job.id,pollOnly})});
  const value=await r.json();
  if(!r.ok||r.status===202||![0,.5,1].includes(value.score))throw Object.assign(new Error(value.error||'채점 대기'),{code:value.code||'grading_pending'});
  return value;
@@ -1671,17 +1671,51 @@ function appendReadyGrades(active){
  }
  active.preparation.notify();
 }
+function deferGradingJob(job,error){
+ const code=typeof error?.code==='string'?error.code:'temporary';
+ job.errorCode=code;
+ if(['grading_pending','grading_retryable'].includes(code)){job.pollFailures=0;job.nextRetryAt=Date.now()+2000;return}
+ if(code==='grading_result_recovery_required'){job.nextRetryAt=Date.now()+15000;return}
+ job.attempts=(job.attempts||0)+1;
+ job.pollFailures=(job.pollFailures||0)+1;
+ const delay=code==='grading_daily_limit'?Math.max(60000,Date.parse(today()+'T00:00:00+09:00')+86400000-Date.now()):
+  ['ai_credit_exhausted','grading_account_not_allowed'].includes(code)?300000:
+  code==='grading_rate_limit'?15000:Math.min(15000,2000*2**Math.min(3,job.pollFailures-1));
+ job.nextRetryAt=Date.now()+delay;
+}
+function renderGradingProgress(active=session){
+ if(!active||session!==active||!active.waitingForGradeResults||!$('learn').classList.contains('active'))return;
+ const jobs=(active.gradingQueue||[]).filter(j=>j.status!=='applied'),pending=jobs.filter(j=>j.status==='pending');
+ const blocked=pending.some(j=>['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(j.errorCode));
+ $('feedback').className='feedback';
+ $('feedback').textContent='남은 채점 '+jobs.length+'개 · '+(blocked?'일부 답안은 채점 연결 또는 결과 복구 확인이 필요해요. 답안은 저장되어 있어요.':
+  pending.some(j=>['temporary','grading_temporarily_unavailable'].includes(j.errorCode))?'연결을 다시 확인하고 있어요. 답안은 저장되어 있어요.':'완성된 결과를 자동으로 확인하고 있어요.')+' 정답 확인 전에는 완료로 처리하지 않으며, 기다리는 시간은 학습시간에 넣지 않아요.';
+}
 async function processGradingQueue(active,force=false){
  if(!active||active.completed||active.gradingBusy||active.waitingForGrading||session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
- const job=(active.gradingQueue||[]).find(j=>j.status==='pending'&&(force||j.nextRetryAt<=Date.now())&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
- if(!job)return;
- active.gradingBusy=true;
+ for(const pending of active.gradingQueue||[])if(pending.status==='pending'&&pending.pollPolicy!=='status-poll-12.16.35'){
+  pending.pollPolicy='status-poll-12.16.35';
+  if(!['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(pending.errorCode))pending.nextRetryAt=Math.min(Number(pending.nextRetryAt)||0,Date.now()+2000);
+ }
+ const job=(active.gradingQueue||[]).filter(j=>j.status==='pending'&&(force||j.nextRetryAt<=Date.now())&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id))
+  .sort((a,b)=>(a.lastPolledAt||0)-(b.lastPolledAt||0))[0];
+ if(!job){renderGradingProgress(active);return}
+ active.gradingBusy=true;job.lastPolledAt=Date.now();
  try{
-  const graded=await requestGrade(job);
-  if(session!==active||state.selected!==active.profile)return;
-  job.grade=graded;job.status='ready';const atBoundary=current>=active.target;appendReadyGrades(active);if(atBoundary&&current<active.queue.length&&$('learn').classList.contains('active'))renderQuestion();
- }catch(e){job.attempts++;job.errorCode=e.code||'temporary';job.nextRetryAt=Date.now()+(e.code==='ai_credit_exhausted'?300000:Math.min(120000,15000*2**Math.min(3,job.attempts)));}
- finally{active.gradingBusy=false;if(session===active){checkpointSession();localSave();cloudSave();}}
+  let graded;
+  try{graded=await requestGrade(job,8000,true)}catch(error){
+   // Only the server may certify that a request never started (or failed
+   // definitively). A timeout/pending result never starts another paid request.
+   if(error.code!=='grading_retryable')throw error;
+   if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
+   graded=await requestGrade(job,12000);
+  }
+  if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
+  job.grade=graded;job.status='ready';job.pollFailures=0;
+  const atBoundary=current>=active.target;appendReadyGrades(active);
+  if(atBoundary&&current<active.queue.length&&$('learn').classList.contains('active'))renderQuestion();
+ }catch(e){deferGradingJob(job,e)}
+ finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){renderGradingProgress(active);checkpointSession();localSave();cloudSave();}}
 }
 
 function fallbackOpen(q,answer){
@@ -1922,7 +1956,7 @@ function finishSession(){
   if(current<session.target&&current<session.queue.length){renderQuestion();return}
   session.waitingForGradeResults=true;pauseLearningClock();checkpointSession();localSave();cloudSave();
   $('feedback').className='feedback';$('feedback').textContent='남은 답안의 채점을 기다리고 있어요. 정답으로 확정되기 전에는 완료로 처리하지 않아요. 잠시 쉬었다 이어서 학습할 수 있어요.';
-  $('submit').classList.add('hidden');$('hint').classList.add('hidden');$('next').classList.add('hidden');$('finishEarly').classList.remove('hidden');processGradingQueue(session);return;
+  $('submit').classList.add('hidden');$('hint').classList.add('hidden');$('next').classList.add('hidden');$('finishEarly').classList.remove('hidden');renderGradingProgress(session);processGradingQueue(session);return;
  }
  if(session.completionPolicy===DAILY_POLICY&&!sessionUsageComplete(session)){checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return}
  if(!minimumStudyReached(session,dailyPracticeTime())){
@@ -2274,5 +2308,5 @@ setInterval(()=>{if(!document.hidden&&session&&!session.completed&&['learn','int
 
 
 
-setInterval(()=>{if(!document.hidden)processGradingQueue(session)},15000);
+setInterval(()=>{if(!document.hidden)processGradingQueue(session)},2000);
 window.addEventListener('online',()=>processGradingQueue(session,true));
