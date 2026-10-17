@@ -2093,13 +2093,18 @@ function renderAll(){
  // Study-history entries keep the banner reliable after old session rows rotate.
 function todayCompletionSummary(learner,day=today()){
  const finished=new Map();
+ // An old history importer may treat any row in sessions as completed.
+ // Explicit time-limit/paused/in-progress rows must veto that inference.
+ const notCompleted=new Set((learner?.sessions||[])
+  .filter(row=>row?.status&&row.status!=='completed')
+  .map(row=>String(row.lessonId||'')));
  for(const row of learner?.sessions||[]){
   if(row?.date!==day||!['daily','review'].includes(row.mode)||row.status&&row.status!=='completed')continue;
   const id=String(row.lessonId||'');
   if(id&&!id.includes(':time-limit:'))finished.set(id,row.mode);
  }
  for(const [id,row] of Object.entries(studyHistory.historyFor(learner).entries||{})){
-  if(!['daily','review'].includes(row.mode)||row.status!=='completed'||row.completedDay!==day||id.includes(':time-limit:'))continue;
+  if(!['daily','review'].includes(row.mode)||row.status!=='completed'||row.completedDay!==day||id.includes(':time-limit:')||notCompleted.has(id))continue;
   finished.set(id,row.mode);
  }
  const modes=[...finished.values()];
