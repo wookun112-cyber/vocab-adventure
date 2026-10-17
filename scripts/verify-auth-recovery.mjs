@@ -110,8 +110,25 @@ for(const [error,expected] of [
  const third=f.fetches[2];third.options.signal.addEventListener('abort',()=>third.reject(Object.assign(new Error('Cancelled'),{name:'AbortError'})),{once:true});
  f.ctx.externalController.abort();await assert.rejects(cancelled,{name:'AbortError'});assert.equal(f.timers.size,0);
 }
-// A failed server write during login must not be reported as a successful
-// cloud sync. The account's latest local state survives the failed attempt.
+// A 503 from a temporarily restarting Supabase PostgREST is retried without
+// requesting another password or changing any previously saved progress.
+{
+ const f=fixture(),remote=JSON.parse(f.run('JSON.stringify(initial())'));
+ remote.users.ayoung.words['근거'].seen=9;
+ const pending=f.run("applyAuth({user:{id:'family',email:'family@example.test'}})");
+ await tick();
+ f.reads[0].resolve({data:null,error:{status:503,code:'PGRST002',message:'schema cache temporarily unavailable'}});
+ await new Promise(resolve=>setTimeout(resolve,700));
+ assert.equal(f.reads.length,2);
+ f.reads[1].resolve({data:{state:remote},error:null});
+ await pending;
+ assert.equal(f.run('canSaveLearning()'),true);
+ assert.equal(f.node('authGate').classList.contains('hidden'),true);
+ assert.equal(f.run("child().words['근거'].seen"),9);
+ assert.equal(f.signIns.length,0);
+}
+// A failed cloud write after a successful account read must still open the
+// family's learning records, with an explicit warning and local copy intact.
 {
  const f=fixture();
  f.writeResponses.push({error:{message:'canceling statement due to statement timeout',code:'57014'}});
@@ -119,15 +136,14 @@ for(const [error,expected] of [
  await tick();
  f.reads[0].resolve({data:null,error:null});
  await pending;
- assert.equal(f.run('loadedAccount'),null,'a failed initial state flush cannot unlock cloud learning');
- assert.equal(f.node('authGate').classList.contains('hidden'),false);
- assert.equal(f.node('retryRecords').classList.contains('hidden'),false);
- assert.equal(f.writes.length,1);
- assert.ok(f.local.has('vocab-account-family'),'local history remains on the device');
- const retry=f.run('retryRecords()');await tick();
- f.reads[1].resolve({data:null,error:null});await retry;
- assert.equal(f.run('canSaveLearning()'),true,'retry recovers without changing credentials');
+ assert.equal(f.run('canSaveLearning()'),true,'record read unlocks the viewer even when its first write fails');
  assert.equal(f.node('authGate').classList.contains('hidden'),true);
+ assert.match(f.node('cloudPill').textContent,/저장 지연/);
+ assert.equal(f.run('cloudLoadSaveDelayed'),true);
+ assert.ok(f.local.has('vocab-account-family'),'local history remains on the device');
+ await f.run('cloudSave()');
+ assert.equal(f.run('cloudLoadSaveDelayed'),false);
+ assert.match(f.node('cloudPill').textContent,/클라우드 저장됨/);
 }
 // A hung Supabase getSession during pending-grade recovery must not keep the
 // family on the 'checking records' overlay indefinitely. Grade recovery can
