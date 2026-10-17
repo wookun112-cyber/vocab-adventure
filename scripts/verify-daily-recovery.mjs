@@ -119,7 +119,7 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
  assert.equal(JSON.stringify(archivedOriginal.results),JSON.stringify(oldSaved.results),'archived original answers unchanged');
  assert.equal(real.run('canSaveLearning()'),true);
  assert.equal(real.run('state.selected'),'guest');
- assert.equal(real.run('session.activeMs'),0);
+ assert.ok(real.run('session.activeMs')<1000,'fresh lesson timer starts near zero rather than reusing yesterday\'s time');
  assert.equal(real.node('learningStartStatus').textContent,'');
  assert.equal(real.calls.generation,0,'opening next day does not perform paid AI question generation');
 }
