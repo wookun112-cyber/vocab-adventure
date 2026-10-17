@@ -88,26 +88,36 @@ async function switchSavedLearning(saved,restoreId=null){
  if(daySwitchBusy)throw Error('학습 전환을 확인 중이에요.');
  const profile=state.selected,account=authUser?.id,epoch=authEpoch;
  daySwitchBusy=true;let transitionSent=false;
+ setStudyStartStatus(restoreId?'보관한 이전 학습을 여는 중입니다.':'이전 학습의 답안과 진도를 보관할 준비 중입니다.');
  const profileButtons=Array.from(document.querySelectorAll('[data-profile]')).map(b=>[b,b.disabled]);
  profileButtons.forEach(([b])=>{b.disabled=true});
  try{
   if(session?.profile===profile){pauseLearningClock();checkpointSession();localSave();const prior=session;session=null;prior.preparation?.cancel()}
   settleReachedStudyDays(saved);
   syncUnfinishedUsage(child(),saved);
+  setStudyStartStatus('현재 기기 답안을 먼저 안전하게 저장하고 있습니다.');
   const savedOkay=await cloudSave();
   if(!savedOkay||!canSaveLearning()||account!==authUser?.id||epoch!==authEpoch)throw Error('먼저 기존 답안을 서버에 저장해야 해요. 기기 기록은 유지됩니다. 저장 상태를 확인한 뒤 다시 눌러 주세요.');
   transitionSent=true;
+  setStudyStartStatus(restoreId?'선택한 미완료 학습을 불러오고 있습니다.':'이전 학습을 서버에 보관하고 오늘 학습을 준비하고 있습니다.');
   const request=sb.rpc('switch_learning_day',{p_profile:profile,p_expected_id:saved?.id||null,p_day:today(),p_restore_id:restoreId});
   const {data,error}=await withDeadline(typeof request.abortSignal==='function'?request.abortSignal(AbortSignal.timeout(15000)):request,17000,'학습 전환 확인이 지연됐어요. 다시 누르면 기존 기록을 확인합니다.');
   if(error||data?.conflict||(!data?.archived&&!data?.restored))throw Error('서버의 학습 상태가 바뀌었거나 전환에 실패했어요. 기존 학습은 삭제하지 않았습니다. 기록 다시 불러오기를 확인해 주세요.');
   if(account!==authUser?.id||profile!==state.selected||epoch!==authEpoch)return false;
   const key=preparationKey('daily',profile,account),unused=preparations.get(key);unused?.cancel();preparations.delete(key);
   clearTimeout(preparationRetryTimer);preparationRetryTimer=null;
-  const loaded=await cloudLoad(account,epoch);
+  setStudyStartStatus('보관된 기록을 확인하고 새 학습을 연결하고 있어요.');
+  // Archived grades may take 18s+ to reconcile. They are preserved in
+  // paused_lessons and can be recovered at a later login. Do not hold today's
+  // first lesson behind historical grading work.
+  const loaded=await cloudLoad(account,epoch,{skipArchivedGradeRecovery:true});
   if(!loaded||!canSaveLearning())throw Error('보관은 완료됐지만 새 기록 확인이 필요해요. 기록 다시 불러오기를 눌러 주세요.');
-  state.selected=profile;localSave();renderAll();return true;
+  state.selected=profile;localSave();renderAll();setStudyStartStatus(restoreId?'이전 학습을 불러왔습니다.':'이전 학습 보관 완료 · 오늘의 새 문제를 준비하고 있어요.');return true;
  }catch(error){
-  if(transitionSent&&account===authUser?.id){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('기기의 학습 기록은 보관되어 있습니다. 학습 전환 결과를 확인하려면 기록 다시 불러오기를 눌러 주세요.',true);syncAuthControls()}
+  // A timeout after posting the archive request is NOT a reason to log out.
+  // The RPC is idempotent; retrying reads the server-owned archive/active state.
+  // Keep the existing local checkpoint so a second click never loses answers.
+  setStudyStartStatus(transitionSent?'전환 결과 확인이 지연됐습니다. 기존 기록을 보존했어요. 잠시 뒤 다시 눌러 서버 상태를 확인해 주세요.':String(error?.message||error),true);
   throw error;
  }finally{daySwitchBusy=false;profileButtons.forEach(([b,disabled])=>{b.disabled=disabled})}
 }
@@ -128,7 +138,13 @@ export function patchDailyRecovery(source){
  if(begin<0||end<0)throw Error('Save function boundary unavailable');
  source=source.slice(0,begin)+'// daily-recovery-12.16.26\n'+reliableSaveSource+dayChoiceSource+source.slice(end);
  replace('function preservesLearning(previous,next){',"function preservesLearning(previous,next){\n if(Number(next.daySwitchSequence||0)<Number(previous.daySwitchSequence||0))return false;");
- replace('   if(paused){await resumeLesson(paused);return}',"   if(paused){\n    if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){if(!(await switchSavedLearning(paused)))return}\n    else{await resumeLesson(paused);return}\n   }");
+ replace('   if(paused){await resumeLesson(paused);return}',"   if(paused){\n    if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
+     if(!(await switchSavedLearning(paused)))return;
+     // Switching the archived lesson may reveal that the official lesson was
+     // already completed today. In that case use optional review, not the
+     // consumed once-per-day server packet.
+     if(!savedLesson(profile)&&child().lastDate===today())mode='review';
+    }\n    else{await resumeLesson(paused);return}\n   }");
  const renderBegin=source.indexOf('function renderResumeButton(){'),renderEnd=source.indexOf('\nfunction storeLearnerCheckpoint',renderBegin);
  if(renderBegin<0||renderEnd<0)throw Error('Resume button boundary unavailable');
  const fn=source.slice(renderBegin,renderEnd),brace=fn.lastIndexOf('}');
