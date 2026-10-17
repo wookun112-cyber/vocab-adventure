@@ -501,7 +501,7 @@ let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,sel
 let wordbookView='levels',vocabularyFilter={band:0,query:'',status:'all',page:0};
 let vocabularyIndex={account:null,rows:[],loaded:false,loading:false,error:'',task:null};
 let reportHistoryFilter={from:'',to:'',mode:'study'},reportHistoryPage=0;
-let loadedAccount=null,authEpoch=0,authLoadTask=null,authSubmitPending=false,cloudBaseline=null;
+let loadedAccount=null,authEpoch=0,authLoadTask=null,authSubmitPending=false,cloudBaseline=null,cloudLoadSaveDelayed=false;
 const canSaveLearning=()=>!!authUser&&loadedAccount===authUser.id;
 
 function child(){return state.users[state.selected]}
@@ -514,7 +514,14 @@ function wordState(w){
 function localSave(){if(canSaveLearning())localStorage.setItem('vocab-account-'+authUser.id,JSON.stringify({account:authUser.id,state}))}
 async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  if(!account)return false;
- const {data,error}=await withDeadline(sb.from('app_state').select('state').eq('user_id',account).maybeSingle(),15000,'기록 불러오기가 지연됐어요.');
+ let response;
+ for(let attempt=0;attempt<3;attempt++){
+  response=await withDeadline(sb.from('app_state').select('state').eq('user_id',account).maybeSingle(),12000,'기록 불러오기가 지연됐어요.');
+  if(account!==authUser?.id||epoch!==authEpoch)return false;
+  if(Number(response.error?.status)!==503||attempt===2)break;
+  await new Promise(resolve=>setTimeout(resolve,600*(attempt+1)));
+ }
+ const {data,error}=response;
  if(account!==authUser?.id||epoch!==authEpoch)return false;
  if(error) throw error;
  cloudBaseline=data?.state?JSON.parse(JSON.stringify(data.state)):null;
@@ -524,11 +531,19 @@ async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  let settledRecovery=false;
  if(!session)for(const c of Object.values(state.users))settledRecovery=settleReachedStudyDays(c.activeLesson)||settledRecovery;
  localSave();
- const flushed=(!data?.state||recovered||settledRecovery)?await withDeadline(cloudSave(),20000,'학습 기록 동기화가 지연됐어요. 다시 시도해 주세요.'):true;
- if(flushed===false)throw new Error('기기에 보관된 학습 기록을 클라우드에 저장하지 못했어요. 다시 불러오기를 눌러 주세요.');
+ let flushed=true;
+ if(!data?.state||recovered||settledRecovery){
+  try{flushed=await withDeadline(cloudSave(),20000,'학습 기록 동기화가 지연됐어요. 다시 시도해 주세요.');}
+  catch{flushed=false}
+ }
+ // Reading the account succeeded; a temporary write failure must not lock the
+ // learner behind the login gate. Keep the unsynced device checkpoint and
+ // postpone remote grade reconciliation until the cloud catches up.
+ if(flushed===false&&!canSaveLearning())throw new Error('서로 다른 기기의 학습 기록 충돌을 먼저 해결해야 합니다.');
+ cloudLoadSaveDelayed=flushed===false;
  // Reconcile only at a load boundary, after flushing device-only work. Never
  // replace a learner while a live question or draft is being edited.
- if(flushed!==false&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
+ if(!cloudLoadSaveDelayed&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
   try{
    const {data:auth}=await withDeadline(sb.auth.getSession(),10000,'이전 답안 복구를 위한 로그인 확인이 지연됐어요.');
    if(auth.session?.access_token){
@@ -623,6 +638,7 @@ async function cloudSave(silent=true){
     cloudBaseline=snapshot;
    }while(cloudSavePending&&authUser?.id===account&&epoch===authEpoch);
   }finally{saving=false;cloudSaveTask=null}
+  if(!saveFailed&&authUser?.id===account&&canSaveLearning())cloudLoadSaveDelayed=false;
   return !saveFailed;
  })();
  return cloudSaveTask;
@@ -2181,7 +2197,7 @@ async function applyAuth(sessionObj){
   if(authLoadTask)return authLoadTask;
  }
  const previousAccount=authUser?.id;
- const epoch=++authEpoch;loadedAccount=null;cloudBaseline=null;authUser=nextUser;
+ const epoch=++authEpoch;loadedAccount=null;cloudBaseline=null;cloudLoadSaveDelayed=false;authUser=nextUser;
  $('authGate').classList.remove('hidden');
  if(previousAccount!==nextUser?.id){
   vocabularyIndex={account:nextUser?.id||null,rows:[],loaded:false,loading:false,error:'',task:null};
@@ -2203,7 +2219,7 @@ async function applyAuth(sessionObj){
    if(!loaded||epoch!==authEpoch||!canSaveLearning())return;
    $('authGate').classList.add('hidden');setMsg('');
    if($('wordbook').classList.contains('active')&&wordbookView==='levels')loadVocabularyIndex();
-   $('cloudPill').textContent='클라우드 연결';$('cloudPill').classList.add('on');
+   $('cloudPill').textContent=cloudLoadSaveDelayed?'저장 지연 · 기기 기록 유지':'클라우드 연결';$('cloudPill').classList.toggle('on',!cloudLoadSaveDelayed);
    setTimeout(async()=>{
     if(epoch!==authEpoch||!canSaveLearning())return;
     try{
