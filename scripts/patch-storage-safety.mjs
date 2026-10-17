@@ -33,7 +33,13 @@ function renderDeviceWarning(){
 }
 `;
  replace("function localSave(){if(canSaveLearning())localStorage.setItem('vocab-account-'+authUser.id,JSON.stringify({account:authUser.id,state}))}",runtime+"\nfunction localSave(){if(!canSaveLearning())return false;void deviceStore.set('vocab-account-'+authUser.id,{account:authUser.id,state});return true;}");
- replace(" if(!account)return false;\n const {data,error}=await withDeadline(sb.from('app_state')"," if(!account)return false;\n await hydrateDeviceRecords(account);\n if(account!==authUser?.id||epoch!==authEpoch)return false;\n const {data,error}=await withDeadline(sb.from('app_state')");
+ if(source.includes(" if(!account)return false;\n let response;")){
+  // The frontend retries a transient 503 before giving up. Hydrate the
+  // account's IndexedDB checkpoints before any of those remote attempts.
+  replace(" if(!account)return false;\n let response;"," if(!account)return false;\n await hydrateDeviceRecords(account);\n if(account!==authUser?.id||epoch!==authEpoch)return false;\n let response;");
+ }else{
+  replace(" if(!account)return false;\n const {data,error}=await withDeadline(sb.from('app_state')"," if(!account)return false;\n await hydrateDeviceRecords(account);\n if(account!==authUser?.id||epoch!==authEpoch)return false;\n const {data,error}=await withDeadline(sb.from('app_state')");
+ }
  replace(" try{localStorage.setItem(learnerCheckpointKey(profile),JSON.stringify({account:authUser.id,profile,savedAt:c.lessonCheckpointAt,learner:c,catalog:state.catalog}))}catch{}",
  " void deviceStore.set(learnerCheckpointKey(profile),{account:authUser.id,profile,savedAt:c.lessonCheckpointAt,learner:c,catalog:state.catalog});");
  replace("  let saved;try{saved=JSON.parse(localStorage.getItem(learnerCheckpointKey(profile))||'null')}catch{continue}","  const saved=deviceLearnerCheckpoint(profile);");
