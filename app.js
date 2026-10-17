@@ -2034,7 +2034,7 @@ function finishSession(){
   $('qWord').classList.remove('hidden');
   $('qText').textContent='이전에 제출한 답은 그대로 보관되어 있습니다. 아래에서 오래 걸린 답안을 미평가로 보관한 뒤 남은 단어를 계속 학습할 수 있어요.';
   $('qContext').textContent='';$('qContext').classList.add('hidden');
-  $('options').replaceChildren();
+  $('options').innerHTML='';
   for(const id of ['answer','voiceRow','submit','hint','dontKnow','hintBox','next'])$(id).classList.add('hidden');
   $('feedback').className='feedback';$('feedback').textContent='채점 결과를 확인하고 있어요. 기록은 보존되며 미확정 답안은 정오답·난이도에 반영하지 않습니다.';
   $('finishEarly').classList.remove('hidden');
