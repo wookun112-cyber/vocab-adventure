@@ -1419,7 +1419,10 @@ async function buildSession(mode='daily'){
  const requestedMode=mode,prior=savedLesson();
  // The server's daily packet is consumed once. After the primary lesson is
  // completed, the same main button starts a fresh review-only local session.
- if(mode==='daily'&&(prior?.mode==='review'||!prior&&child().lastDate===today()))mode='review';
+ // A previous-day review must be archived before a fresh day can start.
+ // Restrict automatic review routing to already-finished days or a review
+ // that belongs to today, never to a saved unfinished earlier-day lesson.
+ if(mode==='daily'&&(!prior&&child().lastDate===today()||prior?.mode==='review'&&prior.studyFallbackDay===today()))mode='review';
  if(dailyLimitBlocked(mode))return;
  preparingSession=true;
  setStudyStartStatus('학습을 시작할 준비를 하고 있어요.');
