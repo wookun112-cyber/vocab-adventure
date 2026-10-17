@@ -524,12 +524,13 @@ async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  let settledRecovery=false;
  if(!session)for(const c of Object.values(state.users))settledRecovery=settleReachedStudyDays(c.activeLesson)||settledRecovery;
  localSave();
- const flushed=(!data?.state||recovered||settledRecovery)?await cloudSave():true;
+ const flushed=(!data?.state||recovered||settledRecovery)?await withDeadline(cloudSave(),20000,'학습 기록 동기화가 지연됐어요. 다시 시도해 주세요.'):true;
+ if(flushed===false)throw new Error('기기에 보관된 학습 기록을 클라우드에 저장하지 못했어요. 다시 불러오기를 눌러 주세요.');
  // Reconcile only at a load boundary, after flushing device-only work. Never
  // replace a learner while a live question or draft is being edited.
  if(flushed!==false&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
   try{
-   const {data:auth}=await sb.auth.getSession();
+   const {data:auth}=await withDeadline(sb.auth.getSession(),10000,'이전 답안 복구를 위한 로그인 확인이 지연됐어요.');
    if(auth.session?.access_token){
     await fetch('/api/recover-grades',{method:'POST',headers:{Authorization:'Bearer '+auth.session.access_token},signal:AbortSignal.timeout(18000)});
     const fresh=await withDeadline(sb.from('app_state').select('state').eq('user_id',account).maybeSingle(),10000,'이전 답안 확인 지연');
@@ -599,6 +600,7 @@ async function cloudSave(silent=true){
  const epoch=authEpoch;
  cloudSaveTask=(async()=>{
   saving=true;
+  let saveFailed=false;
   try{
    do{
     if(!canSaveLearning()||authUser.id!==account||epoch!==authEpoch)break;
@@ -617,10 +619,11 @@ async function cloudSave(silent=true){
     $('cloudPill').textContent=conflict?'기존 기록 보호됨 · 새로고침 필요':error?'저장 오류':'클라우드 저장됨';$('cloudPill').classList.toggle('on',!error);
     if(conflict){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('다른 기기의 최신 기록을 보호했어요. 아래의 “기록 다시 불러오기”를 눌러 주세요.',true);syncAuthControls()}
     if(error&&!silent)alert('클라우드 저장에 실패했어요. 인터넷 연결을 확인해 주세요.');
-    if(error)break;
+    if(error){saveFailed=true;break}
     cloudBaseline=snapshot;
    }while(cloudSavePending&&authUser?.id===account&&epoch===authEpoch);
   }finally{saving=false;cloudSaveTask=null}
+  return !saveFailed;
  })();
  return cloudSaveTask;
 }
@@ -2194,7 +2197,7 @@ async function applyAuth(sessionObj){
  setMsg('저장된 학습 기록을 확인하고 있어요…');
  const task=(async()=>{
   try{
-   if(cloudSaveTask)await cloudSaveTask;
+   if(cloudSaveTask)await withDeadline(cloudSaveTask,10000,'진행 중인 학습 기록 저장이 지연됐어요. 다시 시도해 주세요.');
    if(epoch!==authEpoch)return;
    const loaded=await cloudLoad(account,epoch);
    if(!loaded||epoch!==authEpoch||!canSaveLearning())return;
@@ -2267,7 +2270,7 @@ const authTimer=setTimeout(()=>{
     $('cloudPill').classList.remove('on');
   }
 },8000);
-sb.auth.getSession()
+withDeadline(sb.auth.getSession(),12000,'자동 로그인 확인이 지연됐어요.')
   .then(({data,error})=>{
     authSettled=true; clearTimeout(authTimer);
     if(error){

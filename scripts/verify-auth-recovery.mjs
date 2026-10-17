@@ -9,7 +9,7 @@ import * as authoredPolicy from '../lib/authored-policy.js';
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(){
- const nodes=new Map(),local=new Map(),signIns=[],reads=[],writes=[],fetches=[],timers=new Map();
+ const nodes=new Map(),local=new Map(),signIns=[],reads=[],writes=[],writeResponses=[],fetches=[],timers=new Map();
  const node=id=>{
   if(!nodes.has(id)){
    const classes=new Set();
@@ -24,7 +24,7 @@ function fixture(){
   alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},
   createClient:(_url,_key,config)=>({
    auth:{signInWithPassword:credentials=>new Promise((resolve,reject)=>signIns.push({credentials,resolve,reject})),signUp(){throw Error('Unexpected account creation')},resend(){throw Error('Unexpected email')}},
-   from:()=>({select:()=>({eq:(_key,account)=>({maybeSingle:()=>new Promise(resolve=>reads.push({account,resolve}))})}),upsert:async row=>{writes.push(row);return {error:null}}}),
+   from:()=>({select:()=>({eq:(_key,account)=>({maybeSingle:()=>new Promise(resolve=>reads.push({account,resolve}))})}),upsert:async row=>{writes.push(row);return writeResponses.shift()||{error:null}}}),
    config
   })
  });
@@ -34,7 +34,7 @@ function fixture(){
  run(source);
  run('ensureCatalog=async()=>{};warmDailyQuestions=()=>{};curriculumStatus=async()=>null');
  node('email').value=' family@example.test ';node('password').value=' test-password ';
- return {ctx,run,node,local,signIns,reads,writes,fetches,timers};
+ return {ctx,run,node,local,signIns,reads,writes,writeResponses,fetches,timers};
 }
 
 for(const error of [{status:504,code:'invalid_credentials'},{status:503},{code:'request_timeout'}]){
@@ -110,6 +110,58 @@ for(const [error,expected] of [
  const third=f.fetches[2];third.options.signal.addEventListener('abort',()=>third.reject(Object.assign(new Error('Cancelled'),{name:'AbortError'})),{once:true});
  f.ctx.externalController.abort();await assert.rejects(cancelled,{name:'AbortError'});assert.equal(f.timers.size,0);
 }
+// A failed server write during login must not be reported as a successful
+// cloud sync. The account's latest local state survives the failed attempt.
+{
+ const f=fixture();
+ f.writeResponses.push({error:{message:'canceling statement due to statement timeout',code:'57014'}});
+ const pending=f.run("applyAuth({user:{id:'family',email:'family@example.test'}})");
+ await tick();
+ f.reads[0].resolve({data:null,error:null});
+ await pending;
+ assert.equal(f.run('loadedAccount'),null,'a failed initial state flush cannot unlock cloud learning');
+ assert.equal(f.node('authGate').classList.contains('hidden'),false);
+ assert.equal(f.node('retryRecords').classList.contains('hidden'),false);
+ assert.equal(f.writes.length,1);
+ assert.ok(f.local.has('vocab-account-family'),'local history remains on the device');
+ const retry=f.run('retryRecords()');await tick();
+ f.reads[1].resolve({data:null,error:null});await retry;
+ assert.equal(f.run('canSaveLearning()'),true,'retry recovers without changing credentials');
+ assert.equal(f.node('authGate').classList.contains('hidden'),true);
+}
+// A hung Supabase getSession during pending-grade recovery must not keep the
+// family on the 'checking records' overlay indefinitely. Grade recovery can
+// retry later without altering the already-loaded learning records.
+{
+ const f=fixture(),remote=JSON.parse(f.run('JSON.stringify(initial())'));
+ remote.users.ayoung.pausedLessonIndex=[{pendingGrades:1}];
+ f.ctx.remote=remote;
+ f.run('sb.auth.getSession=()=>new Promise(()=>{})');
+ const nativeTimeout=f.ctx.setTimeout;
+ f.ctx.setTimeout=(fn,ms)=>nativeTimeout(fn,ms===10000?1:ms);
+ const pending=f.run("applyAuth({user:{id:'family',email:'family@example.test'}})");
+ await tick();
+ assert.equal(f.reads.length,1);
+ f.reads[0].resolve({data:{state:remote},error:null});
+ await pending;
+ assert.equal(f.run('canSaveLearning()'),true);
+ assert.equal(f.node('authGate').classList.contains('hidden'),true);
+ assert.equal(f.run('child().pausedLessonIndex.length'),1,'unrecovered grade metadata is preserved');
+}
+// A previous background cloud save may stall independently of login. Bound
+// the wait and enable an explicit record retry without creating another login.
+{
+ const f=fixture();
+ f.run("authUser={id:'family',email:'family@example.test'};cloudSaveTask=new Promise(()=>{});");
+ const nativeTimeout=f.ctx.setTimeout;
+ f.ctx.setTimeout=(fn,ms)=>nativeTimeout(fn,ms===10000?1:ms);
+ await f.run("applyAuth({user:{id:'family',email:'family@example.test'}})");
+ assert.match(f.node('authMsg').textContent,/학습 기록을 불러오지 못/);
+ assert.equal(f.run('loadedAccount'),null);
+ assert.equal(f.node('retryRecords').disabled,false);
+ assert.equal(f.reads.length,0,'blocked previous save cannot start a competing record read');
+}
+assert.match(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8'),/withDeadline\(sb\.auth\.getSession\(\),12000/,'initial session hydration has a deadline');
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
 assert.match(html,/id="retryRecords"/);assert.match(html,/autocomplete="current-password"/);
 console.log('Auth recovery verified: server/credential/network errors distinguished, duplicate login prevented, credentials retained, transport timeout aborted, record retries reuse login and protect saved progress.');
