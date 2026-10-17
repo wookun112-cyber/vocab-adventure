@@ -451,7 +451,7 @@ function equipEvolution(stage){
  c.characterEvolution={...owned,equippedStage:next};storeLearnerCheckpoint(state.selected);localSave();cloudSave().catch(()=>{});renderExploration();
  if($('characterStatus'))$('characterStatus').textContent='진화 '+next+'단계 '+EVOLUTION_FORMS[next-1].name+' 적용 완료';
 }
-function refreshDailyLeague(){if(renderedLeagueDate!==leagueDate())renderExploration()}
+function refreshDailyLeague(){if(renderedLeagueDate!==leagueDate()){renderExploration();renderTodayCompletion();if(['ayoung','inseong'].includes(reportProfile)&&$('report')?.classList.contains('active'))renderTodayCompletion(state.users[reportProfile],'reportTodayCompletion')}}
 const leagueRefreshDelay=(now=Date.now())=>Math.max(1000,(leagueDay(new Date(now))+1)*LEAGUE_DAY_MS-9*3600000-now+50);
 function scheduleDailyLeague(){setTimeout(()=>{refreshDailyLeague();scheduleDailyLeague()},leagueRefreshDelay())}
 function selectCharacter(id){
@@ -2076,7 +2076,7 @@ function finishSession(){
  c.preparationRevision=(c.preparationRevision||0)+1;
  storeLearnerCheckpoint(session.profile);localSave();
  cloudSave().then(()=>warmDailyQuestions()); renderAll(); show(state.selected==='guest'?'home':'report');
- alert(session.mode==='level'?'시작 수준 확인 완료 · 출제 난이도 '+c.difficulty.toFixed(1):'문장 사용 확인 완료! '+total+'번의 활동을 기록했어요.'+(skipped?' 전문 지식·설명형 문항 '+skipped+'개는 어휘 평가에서 제외했어요.':'')+(earnedStars?' ✦ 별조각 '+earnedStars+'개 획득! 캐릭터 꾸미기에서 사용해요.':'')+'\n'+levelAdjustmentLabel(c)+' 배운 단어는 다른 날 다시 확인해요.');
+ alert(session.mode==='level'?'시작 수준 확인 완료 · 출제 난이도 '+c.difficulty.toFixed(1):'오늘 학습을 완료 하였습니다\n'+(session.mode==='review'?'추가 복습 완료':'기본 학습 완료')+' · '+total+'번의 활동을 기록했어요.'+(skipped?' 전문 지식·설명형 문항 '+skipped+'개는 어휘 평가에서 제외했어요.':'')+(earnedStars?' ✦ 별조각 '+earnedStars+'개 획득! 캐릭터 꾸미기에서 사용해요.':'')+'\n'+levelAdjustmentLabel(c)+' 배운 단어는 다른 날 다시 확인해요.');
 }
 function renderAll(){
  renderResumeButton();
@@ -2088,8 +2088,42 @@ function renderAll(){
  $('statScore').textContent=(c.sessions.find(row=>row.mode!=='review')||c.sessions[0])?.score??'-'; $('statWords').textContent=Object.entries(c.words).filter(([w,x])=>isLearningTarget(w)&&x.seen>0).length; $('statMaster').textContent=summarizeEvidence(c).mastered; $('statDay').textContent=Math.max(1,c.learningDays);
  renderStudySummary();renderWordbook();renderReport();renderExploration();
 }
+// Only finished daily/review sessions count as today's completion. A timed-out,
+ // paused or grading-pending lesson must never trigger the success message.
+ // Study-history entries keep the banner reliable after old session rows rotate.
+function todayCompletionSummary(learner,day=today()){
+ const finished=new Map();
+ // An old history importer may treat any row in sessions as completed.
+ // Explicit time-limit/paused/in-progress rows must veto that inference.
+ const notCompleted=new Set((learner?.sessions||[])
+  .filter(row=>row?.status&&row.status!=='completed')
+  .map(row=>String(row.lessonId||'')));
+ for(const row of learner?.sessions||[]){
+  if(row?.date!==day||!['daily','review'].includes(row.mode)||row.status&&row.status!=='completed')continue;
+  const id=String(row.lessonId||'');
+  if(id&&!id.includes(':time-limit:'))finished.set(id,row.mode);
+ }
+ for(const [id,row] of Object.entries(studyHistory.historyFor(learner).entries||{})){
+  if(!['daily','review'].includes(row.mode)||row.status!=='completed'||row.completedDay!==day||id.includes(':time-limit:')||notCompleted.has(id))continue;
+  finished.set(id,row.mode);
+ }
+ const modes=[...finished.values()];
+ return {daily:modes.filter(mode=>mode==='daily').length,review:modes.filter(mode=>mode==='review').length};
+}
+function renderTodayCompletion(learner=child(),prefix='todayCompletion'){
+ const box=$(prefix);if(!box)return;
+ const {daily,review}=todayCompletionSummary(learner),done=daily+review>0;
+ box.classList.toggle('hidden',!done);
+ if(!done){$(prefix+'Detail').textContent='';return}
+ $(prefix+'Title').textContent='오늘 학습을 완료 하였습니다';
+ const parts=[];
+ if(daily)parts.push('기본 학습 '+daily+'회 완료');
+ if(review)parts.push('추가 복습 '+review+'회 완료');
+ $(prefix+'Detail').textContent=parts.join(' · ')+' · 원하면 오늘 다시 학습할 수 있어요.';
+}
 function renderStudySummary(){
  const c=child(),budget=studyBudget(c),saved=savedLesson(),summary=summarizeEvidence(c);
+ renderTodayCompletion(c);
  if($('dailyTitle'))$('dailyTitle').textContent=budget.newCount?'새 단어 '+budget.newCount+'개 + 복습 최대 '+budget.reviewCount+'개':'오늘은 배운 단어를 단단하게';
  if($('dailyDescription'))$('dailyDescription').textContent='기본 새 단어 5개 + 복습 최대 10개 · 하루 25~30분 · 30분에 자동 종료';
  if($('dailyBudget'))$('dailyBudget').textContent=(c.lastDate===today()&&!saved?'오늘 기본 학습 완료 · 아래 버튼으로 오늘도 추가 복습을 시작할 수 있어요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개 · 복습 시점이 된 단어부터 확인 · 부족하면 가능한 분량부터 학습';
@@ -2207,6 +2241,7 @@ function renderStudyHistory(profile){
 function renderReport(){
  const reportId=['ayoung','inseong'].includes(reportProfile)?reportProfile:(['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung');reportProfile=reportId;
  const c=state.users[reportId],stats=summarizeEvidence(c),budget=studyBudget(c),studied=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&((c.words[w.w]?.seen||0)>0||c.words[w.w]?.introducedAt));
+ renderTodayCompletion(c,'reportTodayCompletion');
  const weak=studied.filter(w=>!masteryConfirmed(c.words[w.w])).sort((a,b)=>(c.words[b.w].wrong||0)-(c.words[a.w].wrong||0)).slice(0,5);
  $('reportTitle').textContent=c.name+' 부모 리포트';document.querySelectorAll('[data-report-profile]').forEach(b=>b.classList.toggle('active',b.dataset.reportProfile===reportId));
  const metric=(label,x,description)=>`<div class="evidence-card"><span>${label}</span><strong>${x.percent==null?'기록 대기':x.percent+'%'}</strong><small>${x.attempts?x.success+'/'+x.attempts+'회 · ':''}${description}</small></div>`;
@@ -2219,7 +2254,7 @@ function renderReport(){
  <div class="card"><h3>학습 중 난이도 조정</h3><p>${escapeHtml(levelAdjustmentLabel(c)||'다음 학습을 마치면 이 회차의 등급 변화를 보여 드려요.')}</p><p class="muted">답안마다 이해 수준을 확인하고, 서로 다른 어휘 3개를 평가할 때마다 다음 출제 난이도를 조정해요. 현재 수준을 수월하게 이해하면 0.2~0.3, 다음 단계 어휘를 직접 떠올리거나 사용한 근거가 있으면 최대 0.5씩 올립니다. 적절한 수준에 가까워지면 0.1씩 조정해요. 객관식만 맞히거나 해설을 보고 반복한 정답은 승급 근거로 충분하지 않아요. 서로 다른 어휘 3개에서 뜻 이해의 어려움이 확인되면 0.2~0.3씩 낮추고, 문장 구성의 어려움은 그 단어의 연습을 보강합니다. 현재 문제와 이미 공부한 목표 단어는 유지하고, 아직 배우지 않은 다음 어휘부터 새 수준을 적용해요. 순위 등급은 학습을 마칠 때 확정하며 실시간 변화를 두 번 더하지 않습니다. 이 등급은 게임용 학습 추정값이며 공인 어휘력 점수나 실제 학년 점수가 아닙니다.</p></div>`;
 }
 
-function show(id){if(!['learn','intro'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home')renderResumeButton();if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
+function show(id){if(!['learn','intro'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home'){renderResumeButton();renderTodayCompletion()}if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport()}window.scrollTo({top:0,behavior:'smooth'})}
 function authErrorMessage(error){
  const code=error?.code,status=Number(error?.status)||0;
  if(status>=500||status===408||code==='request_timeout')return '로그인 서버 연결이 지연됐어요. 잠시 뒤 다시 시도해 주세요.';
