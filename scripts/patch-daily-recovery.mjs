@@ -139,7 +139,12 @@ export function patchDailyRecovery(source){
  source=source.slice(0,begin)+'// daily-recovery-12.16.26\n'+reliableSaveSource+dayChoiceSource+source.slice(end);
  replace('function preservesLearning(previous,next){',"function preservesLearning(previous,next){\n if(Number(next.daySwitchSequence||0)<Number(previous.daySwitchSequence||0))return false;");
  replace('   if(paused){await resumeLesson(paused);return}',`   if(paused){
-    if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
+    if(mode==='review'&&cappedCurrentDailyLesson(paused)){
+     // The daily time limit is not a block on extra practice. Preserve the
+     // unsolved original lesson in the server archive before opening review.
+     setStudyStartStatus('기본 학습 30분 기록을 보관한 뒤 추가 복습을 시작합니다.');
+     if(!(await switchSavedLearning(paused)))return;
+    }else if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
      if(!(await switchSavedLearning(paused)))return;
      // Preserve the daily one-packet limit, using extra review only after
      // an already-completed primary lesson for the current calendar day.

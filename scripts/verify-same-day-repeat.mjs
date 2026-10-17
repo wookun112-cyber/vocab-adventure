@@ -86,7 +86,7 @@ assert.equal(run("dailyLimitBlocked('daily')"),true,'official daily 30m limit re
 assert.equal(run("dailyLimitBlocked('review')"),false,'extra review remains available after 30m');
 assert.equal(run('minimumStudyReached({mode:"review",completionPolicy:DAILY_POLICY},0)'),true);
 run('renderResumeButton()');
-assert.match(node('startDaily').textContent,/오늘 다시 학습하기/);
+assert.match(node('startDaily').textContent,/추가 복습 시작/,'completed 30-minute day visibly allows more study');
 assert.equal(node('startDaily').disabled,false);
 
 await run("buildSession('daily')");
