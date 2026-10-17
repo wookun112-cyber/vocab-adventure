@@ -529,7 +529,7 @@ async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  // replace a learner while a live question or draft is being edited.
  if(flushed!==false&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
   try{
-   const {data:auth}=await sb.auth.getSession();
+   const {data:auth}=await withDeadline(sb.auth.getSession(),10000,'이전 답안 복구를 위한 로그인 확인이 지연됐어요.');
    if(auth.session?.access_token){
     await fetch('/api/recover-grades',{method:'POST',headers:{Authorization:'Bearer '+auth.session.access_token},signal:AbortSignal.timeout(18000)});
     const fresh=await withDeadline(sb.from('app_state').select('state').eq('user_id',account).maybeSingle(),10000,'이전 답안 확인 지연');
@@ -2194,7 +2194,7 @@ async function applyAuth(sessionObj){
  setMsg('저장된 학습 기록을 확인하고 있어요…');
  const task=(async()=>{
   try{
-   if(cloudSaveTask)await cloudSaveTask;
+   if(cloudSaveTask)await withDeadline(cloudSaveTask,10000,'진행 중인 학습 기록 저장이 지연됐어요. 다시 시도해 주세요.');
    if(epoch!==authEpoch)return;
    const loaded=await cloudLoad(account,epoch);
    if(!loaded||epoch!==authEpoch||!canSaveLearning())return;
@@ -2267,7 +2267,7 @@ const authTimer=setTimeout(()=>{
     $('cloudPill').classList.remove('on');
   }
 },8000);
-sb.auth.getSession()
+withDeadline(sb.auth.getSession(),12000,'자동 로그인 확인이 지연됐어요.')
   .then(({data,error})=>{
     authSettled=true; clearTimeout(authTimer);
     if(error){
