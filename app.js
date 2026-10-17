@@ -656,6 +656,13 @@ function setStudyStartStatus(message='',error=false){
  el.classList.toggle('hidden',!message);
  el.classList.toggle('error',!!error);
 }
+function officialDailyCapReached(learner=child(),active=savedLesson()){
+ return studyHistory.dailyStudyTime(learner,active,Date.now(),'daily')>=studyHistory.DAILY_STUDY_MAX_MS;
+}
+function cappedCurrentDailyLesson(saved=savedLesson()){
+ const studyDay=saved&&(typeof lessonStudyDay==='function'?lessonStudyDay(saved):saved.studyFallbackDay);
+ return !!saved&&saved.mode==='daily'&&studyDay===today()&&officialDailyCapReached(child(),saved);
+}
 function renderResumeButton(){
  if(preparingSession)return;
  const saved=savedLesson();
@@ -664,7 +671,12 @@ function renderResumeButton(){
  const blocked=preparationBlock&&preparationBlock.account===authUser?.id&&preparationBlock.profile===state.selected||p?.jobs?.some(j=>j.error?.code==='ai_credit_exhausted');
  const pendingGrades=(saved?.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)).length;
  $('startDaily').textContent=saved&&pendingGrades&&saved.nextIndex>=saved.target?'채점 대기 '+pendingGrades+'개 · 이어서 확인':saved?(saved.nextIndex>=saved.target?(minimumStudyReached(saved,saved.activeMs)?'학습 완료 확인':'이어서 학습 · 25분까지 새 단어 추가'):'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):blocked?'문제 생성 서비스 확인 필요':p&&!p.cancelled&&p.ready.size<p.baseCount?'문제 준비 중 · '+p.ready.size+'/'+p.baseCount+'개':p?.budget?.reviewShortfall?'학습 시작 · '+p.baseCount+'개 (복습 '+p.budget.availableReviews+'개) 준비':done?'오늘 다시 학습하기':'오늘의 학습 시작';
- if(!done&&saved?.mode!=='review'&&studyHistory.dailyStudyTime(child(),saved,Date.now(),'daily')>=studyHistory.DAILY_STUDY_MAX_MS){$('startDaily').textContent='오늘 기본 학습 30분 완료 · 내일 계속';$('startDaily').disabled=true}
+ // The 30-minute cap closes PRIMARY study, never voluntary extra review.
+ // A saved capped primary checkpoint is archived atomically on click.
+ if(officialDailyCapReached()&&(!saved||cappedCurrentDailyLesson(saved))){
+  $('startDaily').textContent=saved?'기본 학습 30분 완료 · 추가 복습 시작':'오늘 추가 복습 시작';
+  $('startDaily').disabled=false;
+ }
 }
 function storeLearnerCheckpoint(profile){
  if(!canSaveLearning())return;
@@ -1422,7 +1434,11 @@ async function buildSession(mode='daily'){
  // A previous-day review must be archived before a fresh day can start.
  // Restrict automatic review routing to already-finished days or a review
  // that belongs to today, never to a saved unfinished earlier-day lesson.
- if(mode==='daily'&&(!prior&&child().lastDate===today()||prior?.mode==='review'&&prior.studyFallbackDay===today()))mode='review';
+ if(mode==='daily'&&(
+  !prior&&(child().lastDate===today()||officialDailyCapReached(child(),null))||
+  prior?.mode==='review'&&prior.studyFallbackDay===today()||
+  cappedCurrentDailyLesson(prior)
+ ))mode='review';
  if(dailyLimitBlocked(mode))return;
  preparingSession=true;
  setStudyStartStatus('학습을 시작할 준비를 하고 있어요.');
@@ -2138,7 +2154,7 @@ function renderStudySummary(){
  renderTodayCompletion(c);
  if($('dailyTitle'))$('dailyTitle').textContent=budget.newCount?'새 단어 '+budget.newCount+'개 + 복습 최대 '+budget.reviewCount+'개':'오늘은 배운 단어를 단단하게';
  if($('dailyDescription'))$('dailyDescription').textContent='기본 새 단어 5개 + 복습 최대 10개 · 하루 25~30분 · 30분에 자동 종료';
- if($('dailyBudget'))$('dailyBudget').textContent=(c.lastDate===today()&&!saved?'오늘 기본 학습 완료 · 아래 버튼으로 오늘도 추가 복습을 시작할 수 있어요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개 · 복습 시점이 된 단어부터 확인 · 부족하면 가능한 분량부터 학습';
+ if($('dailyBudget'))$('dailyBudget').textContent=(officialDailyCapReached(c,saved)?'기본 학습 30분을 채웠습니다. 미완료 답안은 보관하고 추가 복습은 계속할 수 있어요. ':c.lastDate===today()&&!saved?'오늘 기본 학습 완료 · 아래 버튼으로 오늘도 추가 복습을 시작할 수 있어요. ':'')+'복습 예정 '+budget.due+'개 · 오늘 남은 새 단어 '+budget.newCount+'개 · 복습 시점이 된 단어부터 확인 · 부족하면 가능한 분량부터 학습';
  if($('learningEvidenceHome'))$('learningEvidenceHome').textContent='장기 확인 '+summary.mastered+'개 · '+(summary.retention7.attempts?'7일 이상 회상 '+summary.retention7.percent+'%':'7일 뒤 기억을 확인할 기록을 모으고 있어요.');
  if(saved?.mode==='review'&&saved.nextIndex<saved.target)$('startDaily').textContent='추가 복습 이어서 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제';
  if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';
