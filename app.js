@@ -1490,7 +1490,7 @@ function renderQuestion(savedHint=0){
  $('options').innerHTML='';
  $('answer').classList.toggle('hidden',!q.open); $('voiceRow').classList.toggle('hidden',!q.open); $('submit').classList.toggle('hidden',!q.open);
  $('answer').placeholder=q.type==='subjective_use'?'이 단어를 넣어 나만의 문장을 써 보세요.':'설명에 해당하는 단어를 써 보세요.';
- $('hint').classList.remove('hidden'); $('hint').disabled=false; $('hint').textContent='힌트';
+ $('hint').classList.remove('hidden');$('dontKnow').classList.remove('hidden'); $('hint').disabled=false; $('hint').textContent='힌트';
  if(q.opts?.length)q.opts.forEach((o,i)=>{
    const b=document.createElement('button');b.className='option';b.textContent=o.t;
    b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};
@@ -1717,7 +1717,7 @@ function renderGradingProgress(active=session){
  const blocked=pending.some(j=>['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(j.errorCode));
  const stale=pending.filter(j=>Date.now()-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
  const hold=$('holdPendingGrades');
- if(hold){hold.classList.toggle('hidden',stale.length===0);hold.textContent='오래 걸린 채점 '+stale.length+'개 · 확인 필요로 보관하고 계속';hold.disabled=!!active.gradeHoldInProgress}
+ if(hold){hold.classList.toggle('hidden',stale.length===0);hold.textContent=active.gradeHoldInProgress?'기존 답안 보관 및 다음 문제 준비 중…':'채점 지연 '+stale.length+'개 · 미평가 보관하고 남은 학습 계속';hold.disabled=!!active.gradeHoldInProgress}
  $('feedback').className='feedback';
  $('feedback').textContent='남은 채점 '+jobs.length+'개 · '+(blocked?'일부 답안은 채점 연결 또는 결과 복구 확인이 필요해요. 답안은 저장되어 있어요.':
   pending.some(j=>['temporary','grading_temporarily_unavailable'].includes(j.errorCode))?'연결을 다시 확인하고 있어요. 답안은 저장되어 있어요.':'완성된 결과를 자동으로 확인하고 있어요.')+' 정답 확인 전에는 완료로 처리하지 않으며, 기다리는 시간은 학습시간에 넣지 않아요.';
@@ -1728,10 +1728,12 @@ function renderGradingProgress(active=session){
 async function holdStaleGradingQueue(){
  const active=session;
  if(!active||active.completed||!active.waitingForGradeResults||active.gradeHoldInProgress)return;
- if(active.gradingBusy){active.gradeHoldRequested=true;$('holdPendingGrades').textContent='채점 상태 확인 후 보관하는 중…';return}
+ if(active.gradingBusy){active.gradeHoldRequested=true;$('holdPendingGrades').disabled=true;$('holdPendingGrades').textContent='채점 상태 확인 후 이어서 진행 중…';return}
  const jobs=(active.gradingQueue||[]).filter(j=>j.status==='pending'&&Date.now()-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
  if(!jobs.length){renderGradingProgress(active);return}
  active.gradeHoldInProgress=true;
+ $('holdPendingGrades').disabled=true;
+ $('holdPendingGrades').textContent='기존 답안 보관 및 다음 문제 준비 중…';
  try{
   const held=state.users[active.profile].ungradedSubmissions||[];
   const existing=new Set(held.map(j=>j.id));
@@ -2024,8 +2026,19 @@ function finishSession(){
   appendReadyGrades(session);
   if(current<session.target&&current<session.queue.length){renderQuestion();return}
   session.waitingForGradeResults=true;pauseLearningClock();checkpointSession();localSave();cloudSave();
-  $('feedback').className='feedback';$('feedback').textContent='남은 답안의 채점을 기다리고 있어요. 정답으로 확정되기 전에는 완료로 처리하지 않아요. 잠시 쉬었다 이어서 학습할 수 있어요.';
-  $('submit').classList.add('hidden');$('hint').classList.add('hidden');$('next').classList.add('hidden');$('finishEarly').classList.remove('hidden');renderGradingProgress(session);processGradingQueue(session);return;
+  // A resumed final-cursor lesson must never display an old, already
+  // answered card as if it were "1번째 문제". Show a dedicated waiting state.
+  $('counter').textContent='채점 결과 확인';
+  $('qTag').textContent='기록 보관';
+  $('qWord').textContent='채점 결과를 찾지 못한 답안이 있어요';
+  $('qWord').classList.remove('hidden');
+  $('qText').textContent='이전에 제출한 답은 그대로 보관되어 있습니다. 아래에서 오래 걸린 답안을 미평가로 보관한 뒤 남은 단어를 계속 학습할 수 있어요.';
+  $('qContext').textContent='';$('qContext').classList.add('hidden');
+  $('options').replaceChildren();
+  for(const id of ['answer','voiceRow','submit','hint','dontKnow','hintBox','next'])$(id).classList.add('hidden');
+  $('feedback').className='feedback';$('feedback').textContent='채점 결과를 확인하고 있어요. 기록은 보존되며 미확정 답안은 정오답·난이도에 반영하지 않습니다.';
+  $('finishEarly').classList.remove('hidden');
+  renderGradingProgress(session);processGradingQueue(session);return;
  }
  if(session.completionPolicy===DAILY_POLICY&&!sessionUsageComplete(session)){checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return}
  if(!minimumStudyReached(session,dailyPracticeTime())){
