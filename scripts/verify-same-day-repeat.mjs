@@ -67,6 +67,20 @@ run(`
  }))};
 `);
 const day=run('today()');
+run('renderTodayCompletion();renderTodayCompletion(child(),"reportTodayCompletion")');
+assert.equal(node('todayCompletion').classList.contains('hidden'),false,'completed primary study is clearly shown');
+assert.equal(node('todayCompletionTitle').textContent,'오늘 학습을 완료 하였습니다');
+assert.match(node('todayCompletionDetail').textContent,/기본 학습 1회 완료/);
+assert.equal(node('reportTodayCompletion').classList.contains('hidden'),false);
+assert.equal(run('todayCompletionSummary(child()).daily'),1);
+assert.equal(run('todayCompletionSummary(child()).review'),0);
+assert.equal(run('todayCompletionSummary(child(),dayOffset(1)).daily'),0,'completion must not carry into tomorrow');
+const notFinished=run(`todayCompletionSummary({sessions:[
+ {lessonId:'blocked:time-limit:'+today(),date:today(),mode:'daily',status:'time_limit'},
+ {lessonId:'pending',date:today(),mode:'review',status:'in_progress'}
+],studyHistory:{version:1,entries:{inprogress:{id:'inprogress',mode:'review',status:'in_progress',completedDay:today()}}}},today())`);
+assert.equal(notFinished.daily+notFinished.review,0,'time cap, pending and incomplete do not show completion');
+
 assert.equal(run("studyHistory.dailyStudyTime(child(),null,Date.now(),'daily')"),30*60*1000);
 assert.equal(run("dailyLimitBlocked('daily')"),true,'official daily 30m limit remains');
 assert.equal(run("dailyLimitBlocked('review')"),false,'extra review remains available after 30m');
@@ -98,6 +112,15 @@ run(`
 assert.equal(run('sessionUsageComplete(session)'),true);
 run('finishSession()');
 assert.equal(run('session.completed'),true,'review can finish without imposing another 25-minute minimum');
+assert.match(alerts.at(-1),/오늘 학습을 완료 하였습니다/,'completed review announces the requested exact phrase');
+assert.match(alerts.at(-1),/추가 복습 완료/);
+assert.equal(node('todayCompletionTitle').textContent,'오늘 학습을 완료 하였습니다');
+assert.match(node('todayCompletionDetail').textContent,/기본 학습 1회 완료/);
+assert.match(node('todayCompletionDetail').textContent,/추가 복습 1회 완료/);
+assert.equal(node('reportTodayCompletion').classList.contains('hidden'),false,'completion is visible on report immediately after finishing');
+assert.equal(node('reportTodayCompletionTitle').textContent,'오늘 학습을 완료 하였습니다');
+assert.equal(run('todayCompletionSummary(child()).review'),1);
+
 assert.equal(run('child().lastDate'),day,'official completion date is preserved');
 assert.equal(run('child().learningDays'),8,'same-day extra practice does not create a new study day');
 assert.equal(run('child().sessions[0].mode'),'review','voluntary study is separately recorded');
@@ -107,6 +130,14 @@ assert.equal(run("studyHistory.dailyStudyTime(child(),null,Date.now(),'daily')")
 assert.ok(run("studyHistory.dailyStudyTime(child(),null,Date.now())")>=34*60*1000,'extra practice time is still shown in full history');
 assert.equal(run("exploration(child()).days[today()]?.bonus||false"),false,'extra practice cannot award the official completion bonus');
 assert.equal(run("child().activeLesson"),null);
+run("state.selected='inseong';renderTodayCompletion();renderTodayCompletion(child(),'reportTodayCompletion')");
+assert.equal(node('todayCompletion').classList.contains('hidden'),true,'another child must not inherit completion');
+assert.equal(node('reportTodayCompletion').classList.contains('hidden'),true);
+run("state.selected='ayoung';renderTodayCompletion();renderTodayCompletion(child(),'reportTodayCompletion')");
+assert.equal(node('todayCompletion').classList.contains('hidden'),false,'completion survives profile switching');
+const persisted=run('todayCompletionSummary(JSON.parse(JSON.stringify(child())))');
+assert.equal(persisted.review,1,'completion is reconstructed from saved learner records');
+
 assert.equal(generated.length,0);
 
 await run("buildSession('daily')");
