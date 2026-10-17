@@ -655,7 +655,7 @@ function renderResumeButton(){
  const done=!saved&&child().lastDate===today(),p=preparations.get(preparationKey('daily'));
  $('startDaily').disabled=false;
  const blocked=preparationBlock&&preparationBlock.account===authUser?.id&&preparationBlock.profile===state.selected||p?.jobs?.some(j=>j.error?.code==='ai_credit_exhausted');
- const pendingGrades=(saved?.gradingQueue||[]).filter(j=>j.status!=='applied').length;
+ const pendingGrades=(saved?.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)).length;
  $('startDaily').textContent=saved&&pendingGrades&&saved.nextIndex>=saved.target?'채점 대기 '+pendingGrades+'개 · 이어서 확인':saved?(saved.nextIndex>=saved.target?(minimumStudyReached(saved,saved.activeMs)?'학습 완료 확인':'이어서 학습 · 25분까지 새 단어 추가'):'이어서 학습 · '+((saved.results||[]).filter(isVocabularyResult).length+1)+'번째 문제'):blocked?'문제 생성 서비스 확인 필요':p&&!p.cancelled&&p.ready.size<p.baseCount?'문제 준비 중 · '+p.ready.size+'/'+p.baseCount+'개':p?.budget?.reviewShortfall?'학습 시작 · '+p.baseCount+'개 (복습 '+p.budget.availableReviews+'개) 준비':done?'계속 학습하기':'오늘의 학습 시작';
  if(studyHistory.dailyStudyTime(child(),saved,Date.now())>=studyHistory.DAILY_STUDY_MAX_MS){$('startDaily').textContent='오늘 30분 학습 완료 · 내일 다시 시작';$('startDaily').disabled=true}
 }
