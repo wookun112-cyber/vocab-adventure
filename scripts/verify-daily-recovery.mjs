@@ -17,6 +17,8 @@ let harness=fs.readFileSync(fixtureUrl,'utf8').split('\nconst f=fixture();')[0]
 const a=harness.indexOf('const source='),b=harness.indexOf('\n',a);
 assert.ok(a>=0&&b>a);
 harness=harness.slice(0,a)+`const source=effectiveSource.replace(/^import[^\\n]+\\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];`+harness.slice(b);
+// Expose the real local review preparation before the fixture replaces it with a server stub.
+harness=harness.replace('run("getPreparation=async()=>','run("globalThis.localGetPreparation=getPreparation;getPreparation=async()=>');
 const fixture=new Function('effectiveSource','fs','vm','URL','fixtureUrl','studyHistory','DELIVERY_POLICY','localPracticeQuestion','sentenceUseQuestionValid','authoredPolicy','DAILY_POLICY','MINIMUM_STUDY_POLICY',harness+';return fixture;')(
  effectiveSource,fs,vm,URL,fixtureUrl,studyHistory,DELIVERY_POLICY,localPracticeQuestion,sentenceUseQuestionValid,authoredPolicy,DAILY_POLICY,MINIMUM_STUDY_POLICY
 );
@@ -60,21 +62,42 @@ console.log('Production recovery verified: no-op save, retry, Seoul day boundary
 
 // Exercise the actual new-day archive → cloud reconciliation → first-question
 // path. Previous tests stubbed switchSavedLearning(), hiding this regression.
-async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=false,lostAcknowledgement=false}={}){
+async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=false,lostAcknowledgement=false,cappedToday=false}={}){
  const real=fixture();await real.run('buildSession()');
  const setup=[
   'session.mode='+JSON.stringify(previousMode)+';',
-  'session.activeMs=125000;',
-  'session.studyFallbackDay=dateAfter(today(),-1);',
-  'session.studyStartedAt=Date.now()-86400000;',
+  'session.activeMs='+(cappedToday?'1800000':'125000')+';',
+  'session.studyFallbackDay='+(cappedToday?'today()':'dateAfter(today(),-1)')+';',
+  'session.studyStartedAt=Date.now()-'+(cappedToday?'3600000':'86400000')+';',
+  ...(cappedToday?["session.studyDays={[today()]:{activeMs:1800000,timeKnown:true}};session.studyTimeInitialized=true;","session.gradingQueue=[{id:'incomplete-grade',status:'pending',word:session.queue[0].w.w,answer:'남겨 둔 답안',submittedAt:Date.now()-180000}];"]:[]),
   "session.results=[{word:session.queue[0].w.w,type:session.queue[0].type,result:'○',credit:1,contextSuccess:true,answeredAt:session.studyStartedAt,studyDate:session.studyFallbackDay}];",
   'current=1;checkpointSession();session.preparation.cancel();session=null;',
   'child().lastDate='+(alreadyCompletedToday?'today()':'dateAfter(today(),-1)')+';',
+  ...(cappedToday?["for(const w of SEED_WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&inTargetBand(w,child().difficulty)).slice(0,14)){const st=wordState(w.w);st.seen=1;st.introducedAt=dateAfter(today(),-2);st.nextReviewAt=dateAfter(today(),3)}"]:[]),
   "child().pausedLessonIndex=[{id:'older-archived-grade',day:dateAfter(today(),-2),answered:3,pendingGrades:2}];"
  ];
  real.run(setup.join('\n'));
  assert.equal(await real.run('cloudSave()'),true,'save original before switching');
  const oldSaved=JSON.parse(real.run('JSON.stringify(savedLesson())'));
+ const consumedBefore=real.calls.consumes;
+ if(cappedToday){
+  real.run('renderResumeButton()');
+  assert.equal(real.node('startDaily').disabled,false,'30-minute cap must never disable optional review');
+  assert.match(real.node('startDaily').textContent,/추가 복습 시작/);
+  assert.equal(real.run('officialDailyCapReached()'),true);
+  assert.equal(real.run('cappedCurrentDailyLesson()'),true);
+  real.run("getPreparation=localGetPreparation;ensureCatalog=async()=>{};");
+  real.run(`globalThis.mockQuestionCalls=0;
+   fetchValidatedQuestions=async plans=>plans.map(p=>{
+    const number=++mockQuestionCalls;
+    return {w:p.w,type:p.type,stage:p.stage,taskDemand:p.taskDemand,needsCard:p.needsCard,
+     label:'검수된 복습',q:'검수된 문맥에서 답을 생각해 보세요.',ctx:'모의 검수 복습 '+number+' 이전과 다른 상황에서 단어를 확인합니다.',
+     open:p.type.startsWith('subjective_'),showTarget:p.type==='subjective_use',
+     opts:[],acceptedAnswers:[p.w.w],hints:[],feedbackCorrect:'확인',
+     signature:'review-packet-'+number,
+     validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}};
+   });`);
+ }
  const rpc=real.run('sb'),originalRpc=rpc.rpc.bind(rpc);
  let archiveCalls=0,archivedOriginal=null,firstSent=false;
  rpc.rpc=async(name,args)=>{
@@ -83,6 +106,11 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
   const remote=structuredClone(real.cloud.get('family')),learner=remote.users.guest;
   const previous=learner.activeLesson;
   if(previous&&previous.id===args.p_expected_id){
+   if(cappedToday){
+    assert.equal(previous.studyFallbackDay,real.run('today()'));
+    assert.equal(previous.mode,'daily');
+    assert.ok(previous.activeMs>=1800000,'server may archive same-day only after the official cap');
+   }
    archivedOriginal=structuredClone(previous);
    learner.pausedLessonIndex=[...(learner.pausedLessonIndex||[]),{id:previous.id,day:previous.studyFallbackDay,answered:previous.results.length,pendingGrades:0}];
    learner.activeLesson=null;
@@ -112,19 +140,22 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
  assert.equal(real.run('session.results.length'),0,'new study begins without prior answers');
  assert.equal(real.run('current'),0);
  assert.equal(real.node('counter').textContent,'1번째 문제');
- assert.equal(real.run('session.mode'),alreadyCompletedToday?'review':'daily');
+ assert.equal(real.run('session.mode'),cappedToday||alreadyCompletedToday?'review':'daily');
  assert.equal(real.run('state.users.guest.daySwitchSequence'),1);
- assert.equal(real.run('savedLesson().id'),'fresh-day-validated-packet');
+ if(!cappedToday)assert.equal(real.run('savedLesson().id'),'fresh-day-validated-packet');
+ else{assert.ok(real.run('savedLesson().id').startsWith('lesson-'),'extra review starts independently, not consuming server daily packet');assert.equal(real.calls.consumes,consumedBefore)}
  assert.equal(real.run('state.users.guest.pausedLessonIndex.some(x=>x.id==='+JSON.stringify(oldSaved.id)+')'),true);
  assert.equal(JSON.stringify(archivedOriginal.results),JSON.stringify(oldSaved.results),'archived original answers unchanged');
  assert.equal(real.run('canSaveLearning()'),true);
  assert.equal(real.run('state.selected'),'guest');
  assert.ok(real.run('session.activeMs')<1000,'fresh lesson timer starts near zero rather than reusing yesterday\'s time');
  assert.equal(real.node('learningStartStatus').textContent,'');
- assert.equal(real.calls.generation,0,'opening next day does not perform paid AI question generation');
+ assert.equal(real.calls.generation,0,'opening next day / optional review does not perform paid AI question generation');
+ if(cappedToday){assert.equal(real.run('session.newWords.length'),0,'restarting after cap does not grant new words');assert.ok(real.run('session.preparation.ready.has(0)'));assert.ok(real.run('child().pausedLessonIndex.some(p=>p.id==='+JSON.stringify(oldSaved.id)+')'));}
 }
 await verifyRealDaySwitch({previousMode:'daily'});
 await verifyRealDaySwitch({previousMode:'review'});
 await verifyRealDaySwitch({previousMode:'review',alreadyCompletedToday:true});
 await verifyRealDaySwitch({previousMode:'daily',lostAcknowledgement:true});
+await verifyRealDaySwitch({cappedToday:true});
 console.log('Real day switch PASS: archive original answers, refresh server state, open new question, previous review, completed-day review and safe retry.');
