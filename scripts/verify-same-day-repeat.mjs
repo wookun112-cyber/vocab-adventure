@@ -92,7 +92,8 @@ assert.equal(run('child().sessions[0].score'),82);
 run(`
  session.results=session.preparation.plans.map(p=>({word:p.w.w,type:'subjective_use',result:'○',credit:1,
   contextSuccess:true,hintUsed:false,revealed:false,answeredAt:Date.now(),studyDate:today()}));
- current=session.results.length;session.activeMs=4*60*1000;
+ current=session.results.length;session.activeMs=4*60*1000;session.clockStarted=null;
+ session.studyDays={[today()]:{activeMs:4*60*1000,timeKnown:true}};session.studyTimeInitialized=true;
 `);
 assert.equal(run('sessionUsageComplete(session)'),true);
 run('finishSession()');
