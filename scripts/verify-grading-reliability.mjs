@@ -177,6 +177,36 @@ await stale.run('cloudSave()');
 assert.equal(stale.cloud.get('family').users.guest.ungradedSubmissions.length,1,'original ungraded submission is durable in cloud');
 console.log('Stale grading hold PASS: 90s wait exposed, original answer retained, no false grade/learning, cloud persistence and no extra model request.');
 
+// Regression from the October 17 family screenshot: the lesson reached its
+// final answer index, but one already-started AI grade never got a saved result.
+// Restarting from Home must show the waiting screen and the manual hold control,
+// not silently return to Home with only "채점 대기 1개 · 이어서 확인".
+{
+ const resumeGate=fixture();await resumeGate.run('buildSession()');await flush();
+ resumeGate.run(`
+  globalThis.navigation=[];
+  show=id=>{navigation.push(id);$('learn').classList.toggle('active',id==='learn');$('home').classList.toggle('active',id==='home');};
+  const heldId='stalled-grade-home-resume',old=Date.now()-180000;
+  session.results=Array.from({length:session.target},(_,i)=>({word:session.preparation.plans[i].w.w,type:session.preparation.plans[i].type,result:'제외',credit:null,excludedFromVocabulary:true}));
+  for(let i=1;i<session.baseWords.length;i++)session.results[i-1]={word:session.baseWords[i].w,type:'subjective_use',result:'○',credit:1,contextSuccess:true,hintUsed:false,revealed:false};
+  session.results[session.target-1]={word:session.baseWords[0].w,type:'subjective_use',result:'채점 대기',credit:null,gradingPending:true,gradingJobId:heldId,excludedFromVocabulary:true,answeredAt:old};
+  session.gradingQueue=[{id:heldId,index:session.target-1,word:session.baseWords[0].w,answer:'소중한 의견을 존중했다.',submittedAt:old,status:'pending',pollPolicy:'status-poll-12.16.35',errorCode:'grading_result_recovery_required',nextRetryAt:Date.now()+300000}];
+  current=session.target;
+  checkpointSession();localSave();
+  show('home');session=null;
+ `);
+ const savedBefore=resumeGate.run('JSON.stringify(child().activeLesson.results)');
+ await resumeGate.run("buildSession('daily')");
+ assert.ok(resumeGate.run("navigation.includes('learn')"),'resume must open learner screen before final wait');
+ assert.equal(resumeGate.node('learn').classList.contains('active'),true,'final grade wait must be visible');
+ assert.equal(resumeGate.run('session.waitingForGradeResults'),true);
+ assert.equal(resumeGate.node('holdPendingGrades').classList.contains('hidden'),false,'stalled-grade hold action must appear');
+ assert.match(resumeGate.node('holdPendingGrades').textContent,/1개/);
+ assert.equal(resumeGate.run('JSON.stringify(child().activeLesson.results)'),savedBefore,'pending answer remains untouched when entering wait screen');
+ assert.equal(resumeGate.run('session.gradingQueue[0].status'),'pending');
+ console.log('Final-cursor resume PASS: home button opens visible grade-recovery screen without altering original answers or recharging.');
+}
+
 const legacyPoll=fixture();await legacyPoll.run('buildSession()');await flush();
 legacyPoll.run("session.gradingQueue=[{id:'legacy',status:'pending',index:0,errorCode:'grading_pending',nextRetryAt:Date.now()+120000,answer:'보관된 답'}];session.results=[{gradingPending:true,gradingJobId:'legacy',excludedFromVocabulary:true}]");
 await legacyPoll.run('processGradingQueue(session)');
