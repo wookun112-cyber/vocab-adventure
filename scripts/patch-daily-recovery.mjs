@@ -138,13 +138,14 @@ export function patchDailyRecovery(source){
  if(begin<0||end<0)throw Error('Save function boundary unavailable');
  source=source.slice(0,begin)+'// daily-recovery-12.16.26\n'+reliableSaveSource+dayChoiceSource+source.slice(end);
  replace('function preservesLearning(previous,next){',"function preservesLearning(previous,next){\n if(Number(next.daySwitchSequence||0)<Number(previous.daySwitchSequence||0))return false;");
- replace('   if(paused){await resumeLesson(paused);return}',"   if(paused){\n    if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
+ replace('   if(paused){await resumeLesson(paused);return}',`   if(paused){
+    if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
      if(!(await switchSavedLearning(paused)))return;
-     // Switching the archived lesson may reveal that the official lesson was
-     // already completed today. In that case use optional review, not the
-     // consumed once-per-day server packet.
+     // Preserve the daily one-packet limit, using extra review only after
+     // an already-completed primary lesson for the current calendar day.
      if(!savedLesson(profile)&&child().lastDate===today())mode='review';
-    }\n    else{await resumeLesson(paused);return}\n   }");
+    }else{await resumeLesson(paused);return}
+   }`);
  const renderBegin=source.indexOf('function renderResumeButton(){'),renderEnd=source.indexOf('\nfunction storeLearnerCheckpoint',renderBegin);
  if(renderBegin<0||renderEnd<0)throw Error('Resume button boundary unavailable');
  const fn=source.slice(renderBegin,renderEnd),brace=fn.lastIndexOf('}');
