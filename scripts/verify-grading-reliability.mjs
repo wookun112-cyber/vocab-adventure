@@ -155,7 +155,7 @@ console.log('Fast queue PASS: pending checks every 2s without failure escalation
 // second bill. Other words remain available and the original stays auditable.
 const stale=fixture();await stale.run('buildSession()');await flush();
 stale.run(`session.queue.splice(1);session.preparation.plans.splice(1);session.target=1;session.preparation.baseCount=1;session.baseWords=[session.queue[0].w];
- session.completionPolicy=DAILY_POLICY;session.introDone=true;
+ session.completionPolicy=DAILY_POLICY;session.introDone=true;session.preparation.deliveryPolicy=DELIVERY_POLICY;
  const word=session.queue[0].w.w,submittedAt=Date.now()-180000;
  session.gradingQueue=[{id:'lost-grade-1',index:0,word,answer:'나는 의견을 나누었다.',payload:{taskType:'sentence_use',answer:'나는 의견을 나누었다.'},submittedAt,status:'pending',errorCode:'grading_result_recovery_required',nextRetryAt:Date.now()+15000}];
  session.results=[{word,type:'subjective_use',result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:'lost-grade-1',answeredAt:submittedAt}];
@@ -173,6 +173,12 @@ assert.equal(stale.run('child().ungradedSubmissions.length'),1);
 assert.equal(stale.run('child().ungradedSubmissions[0].answer'),'나는 의견을 나누었다.');
 assert.equal(stale.run('wordState(session.queue[0].w.w).seen'),0);
 assert.equal(gradeRequests.length,0,'holding a missing grade never resubmits paid grading');
+assert.ok(stale.run('session.target>1'),'missing target gets a genuine next practice');
+assert.equal(stale.run('session.preparation.ready.has(current)'),true,'next practice comes from local verified templates');
+assert.equal(stale.run('session.queue[current].type'),'subjective_use');
+assert.equal(stale.run('session.waitingForGradeResults'),false);
+assert.equal(stale.node('answer').classList.contains('hidden'),false,'next question accepts a sentence');
+assert.equal(stale.node('dontKnow').classList.contains('hidden'),false,'normal question controls are restored');
 await stale.run('cloudSave()');
 assert.equal(stale.cloud.get('family').users.guest.ungradedSubmissions.length,1,'original ungraded submission is durable in cloud');
 console.log('Stale grading hold PASS: 90s wait exposed, original answer retained, no false grade/learning, cloud persistence and no extra model request.');
@@ -200,6 +206,9 @@ console.log('Stale grading hold PASS: 90s wait exposed, original answer retained
  assert.ok(resumeGate.run("navigation.includes('learn')"),'resume must open learner screen before final wait');
  assert.equal(resumeGate.node('learn').classList.contains('active'),true,'final grade wait must be visible');
  assert.equal(resumeGate.run('session.waitingForGradeResults'),true);
+ assert.equal(resumeGate.node('counter').textContent,'채점 결과 확인','old first-question header must not leak into waiting screen');
+ assert.match(resumeGate.node('qWord').textContent,/채점 결과/);
+ assert.equal(resumeGate.node('dontKnow').classList.contains('hidden'),true,'unknown-answer control must be hidden while waiting');
  assert.equal(resumeGate.node('holdPendingGrades').classList.contains('hidden'),false,'stalled-grade hold action must appear');
  assert.match(resumeGate.node('holdPendingGrades').textContent,/1개/);
  assert.equal(resumeGate.run('JSON.stringify(child().activeLesson.results)'),savedBefore,'pending answer remains untouched when entering wait screen');
