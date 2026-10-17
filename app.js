@@ -512,7 +512,7 @@ function wordState(w){
  return c.words[w];
 }
 function localSave(){if(canSaveLearning())localStorage.setItem('vocab-account-'+authUser.id,JSON.stringify({account:authUser.id,state}))}
-async function cloudLoad(account=authUser?.id,epoch=authEpoch){
+async function cloudLoad(account=authUser?.id,epoch=authEpoch,options={}){
  if(!account)return false;
  let response;
  for(let attempt=0;attempt<3;attempt++){
@@ -543,7 +543,7 @@ async function cloudLoad(account=authUser?.id,epoch=authEpoch){
  cloudLoadSaveDelayed=flushed===false;
  // Reconcile only at a load boundary, after flushing device-only work. Never
  // replace a learner while a live question or draft is being edited.
- if(!cloudLoadSaveDelayed&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
+ if(!options.skipArchivedGradeRecovery&&!cloudLoadSaveDelayed&&!session&&Object.values(state.users).some(c=>(c.pausedLessonIndex||[]).some(row=>row.pendingGrades>0))){
   try{
    const {data:auth}=await withDeadline(sb.auth.getSession(),10000,'이전 답안 복구를 위한 로그인 확인이 지연됐어요.');
    if(auth.session?.access_token){
@@ -648,6 +648,13 @@ function savedLesson(profile=state.selected){
  const saved=state.users[profile]?.activeLesson;
  if(!saved||!authUser)return null;
  return saved.account===authUser?.id&&saved.profile===profile?saved:null;
+}
+function setStudyStartStatus(message='',error=false){
+ const el=$('learningStartStatus');
+ if(!el)return;
+ el.textContent=String(message||'');
+ el.classList.toggle('hidden',!message);
+ el.classList.toggle('error',!!error);
 }
 function renderResumeButton(){
  if(preparingSession)return;
@@ -1408,13 +1415,17 @@ function renderIntro(){
 function nextIntro(){if(!session)return;session.introCursor++;checkpointSession();localSave();cloudSave();renderIntro()}
 
 async function buildSession(mode='daily'){
- if(preparingSession)return;
+ if(preparingSession){setStudyStartStatus('이전 요청을 처리하고 있습니다. 잠시만 기다려 주세요.');return}
  const requestedMode=mode,prior=savedLesson();
  // The server's daily packet is consumed once. After the primary lesson is
  // completed, the same main button starts a fresh review-only local session.
- if(mode==='daily'&&(prior?.mode==='review'||!prior&&child().lastDate===today()))mode='review';
+ // A previous-day review must be archived before a fresh day can start.
+ // Restrict automatic review routing to already-finished days or a review
+ // that belongs to today, never to a saved unfinished earlier-day lesson.
+ if(mode==='daily'&&(!prior&&child().lastDate===today()||prior?.mode==='review'&&prior.studyFallbackDay===today()))mode='review';
  if(dailyLimitBlocked(mode))return;
  preparingSession=true;
+ setStudyStartStatus('학습을 시작할 준비를 하고 있어요.');
  const profile=state.selected,account=authUser?.id,button=requestedMode==='level'?'levelTest':requestedMode==='review'?'startReview':'startDaily',oldText=$(button).textContent;
  for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=true;
  $(button).textContent='준비된 문제를 불러오는 중…';$('cloudPill').textContent='문제 준비 중';
@@ -1422,6 +1433,7 @@ async function buildSession(mode='daily'){
    const paused=savedLesson(profile);
    if(paused){await resumeLesson(paused);return}
    // The background queue keeps preparing after this bounded UI wait ends.
+   setStudyStartStatus('검수된 오늘 학습 문제를 불러오는 중입니다.');
    const p=await withDeadline((async()=>{
      const prepared=await getPreparation(mode,true);
      if(prepared.serverId||mode==='daily'){
@@ -1444,9 +1456,9 @@ async function buildSession(mode='daily'){
    session.studyTopups=p.studyTopups||null;session.timeAddedWords=[];
    session.adaptivePool=p.adaptivePool||null;initRealtimeLevel(child(),session);
    current=0;introIndex=0;hintLevel=0;$('next').disabled=false;
-   show('learn');renderQuestion();prefetchQuestions();
+   show('learn');renderQuestion();prefetchQuestions();setStudyStartStatus('');
  }catch(e){
-   if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')preparationBlock={account,profile};if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));show('home')}
+   if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')preparationBlock={account,profile};if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));setStudyStartStatus(e.preparationPending?'오늘 학습 문제를 준비 중입니다. 잠시 뒤 다시 눌러 주세요.':String(e?.message||e),!e.preparationPending);show('home')}
  }finally{
    preparingSession=false;
    $(button).textContent=oldText;
