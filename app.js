@@ -794,7 +794,13 @@ let needsRecovery=saved.mode==='daily'&&Array.from({length:saved.baseCount||save
  session.studyTopups=saved.studyTopups||remote?.payload?.studyTopups||null;session.timeAddedWords=saved.timeAddedWords||[];
  session.adaptation=saved.adaptation||null;session.adaptivePool=saved.adaptivePool||remote?.payload?.adaptivePool||null;
  initRealtimeLevel(child(),session);
- if(current>=session.target){ensureUsageContinuation(session);if(current>=session.target){finishSession();return}}
+ if(current>=session.target){ensureUsageContinuation(session);if(current>=session.target){
+   // A resumed lesson at its final cursor must enter the learning screen
+   // *before* presenting the pending-grade boundary. Otherwise the progress
+   // renderer sees a hidden learning screen and suppresses the recovery button.
+   // Keep every original answer and grade request intact.
+   show('learn');finishSession();return;
+  }}
  prepareExtensions(session);
  await withDeadline(needsRecovery?Promise.all(Array.from({length:p.baseCount},(_,i)=>p.waitFor(i,true))):p.waitFor(current,true),QUESTION_WAIT_MS,'이어서 풀 문제를 서버에서 준비 중이에요. 채점 기록은 유지됩니다. 잠시 뒤 다시 눌러 주세요.');
  if(state.selected!==profile||authUser?.id!==account||session.preparation!==p)return;
