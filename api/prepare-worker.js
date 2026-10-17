@@ -156,6 +156,16 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  }
  return payload;
 }
+// A failed save cannot report its own failure through the same rejecting save.
+// This lease-scoped transition preserves any previously validated packet.
+export async function runPreparation(job,key,call=rpc,work=prepare){
+ try{return await work(job,key,undefined,call)}
+ catch(error){
+  try{await call('fail_preparation',{p_id:job.id,p_key:key,p_lease:job.lease})}
+  catch{console.error(JSON.stringify({event:'preparation_failure_state_unavailable'}))}
+  throw error;
+ }
+}
 export default async function handler(req,res){
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
  const id=req.body?.id,key=req.headers['x-preparation-key'];
@@ -163,7 +173,7 @@ export default async function handler(req,res){
  try{
   const job=await rpc('claim_preparation',{p_id:id,p_key:key});
   if(!job)return res.status(202).json({accepted:false});
-  waitUntil(prepare(job,key).catch(error=>{console.error(JSON.stringify({event:'preparation_retry',reason:String(error?.message||error).slice(0,200)}))}));
+  waitUntil(runPreparation(job,key).catch(error=>{console.error(JSON.stringify({event:'preparation_retry',reason:String(error?.message||error).slice(0,200)}))}));
   return res.status(202).json({accepted:true});
  }catch{return res.status(503).json({error:'Preparation unavailable'})}
 }

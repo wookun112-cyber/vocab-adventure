@@ -1213,6 +1213,7 @@ async function getPreparation(mode='daily',retry=false){
        remote=await serverLesson(profile);
      }
      if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
+     if(remote?.status==='failed')throw Object.assign(new Error('문제 묶음을 저장하지 못했어요. 기존 학습 기록은 보관되어 있습니다. 시작 버튼으로 다시 시도해 주세요.'),{code:'preparation_failed'});
      if(remote?.payload?.coveragePolicy===COVERAGE_POLICY&&remote?.payload?.reviewPolicy===REVIEW_POLICY&&remote?.payload?.snapshot===snapshot&&remote.payload.engine===PREPARATION_ENGINE&&remote.payload.selectionPolicy===SELECTION_POLICY&&remote.payload.questionPolicy===QUESTION_POLICY&&remote.payload.completionPolicy===DAILY_POLICY&&remote.payload.plans?.length>0&&remote.payload.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band)&&(p.review||isCoveragePlan(p)||inTargetBand(p.w,child().difficulty)))&&remote.status!=='failed'){
        const data=remote.payload;
        for(const plan of data.plans)if(plan.w?.source==='fixed')FIXED_CACHE.set(plan.w.w,plan.w);
@@ -1256,6 +1257,7 @@ function warmDailyQuestions(){
  getPreparation('daily').catch(error=>{
   if(account!==authUser?.id||profile!==state.selected)return;
   if(error.noReviewCandidates){$('cloudPill').textContent='현재 수준의 복습 후보가 아직 없어요';renderResumeButton();return}
+  if(error.code==='preparation_failed'){clearTimeout(preparationRetryTimer);preparationRetryTimer=null;$('cloudPill').textContent='문제 준비 오류 · 시작 버튼으로 재시도';renderResumeButton();return}
   if(error.code==='ai_credit_exhausted'){preparationBlock={account,profile};$('cloudPill').textContent='API 잔액 확인 필요';renderResumeButton();return}
   $('cloudPill').textContent=error.preparationPending?'학습 문제 미리 준비 중':'시작 버튼으로 문제 준비 재시도';
   if(error.preparationPending){clearTimeout(preparationRetryTimer);preparationRetryTimer=setTimeout(()=>{if(account===authUser?.id&&profile===state.selected)warmDailyQuestions()},10000)}
