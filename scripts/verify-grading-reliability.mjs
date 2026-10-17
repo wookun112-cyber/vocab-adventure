@@ -154,12 +154,12 @@ console.log('Fast queue PASS: pending checks every 2s without failure escalation
 // learner can explicitly archive its original answer without a grade or a
 // second bill. Other words remain available and the original stays auditable.
 const stale=fixture();await stale.run('buildSession()');await flush();
-stale.run(`session.queue.splice(1);session.preparation.plans.splice(1);session.target=1;session.preparation.baseCount=1;session.baseWords=[session.queue[0].w];
+stale.run(`session.preparation.baseCount=1;session.baseWords=[session.queue[0].w];
  session.completionPolicy=DAILY_POLICY;session.introDone=true;session.preparation.deliveryPolicy=DELIVERY_POLICY;
  const word=session.queue[0].w.w,submittedAt=Date.now()-180000;
- session.gradingQueue=[{id:'lost-grade-1',index:0,word,answer:'나는 의견을 나누었다.',payload:{taskType:'sentence_use',answer:'나는 의견을 나누었다.'},submittedAt,status:'pending',errorCode:'grading_result_recovery_required',nextRetryAt:Date.now()+15000}];
- session.results=[{word,type:'subjective_use',result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:'lost-grade-1',answeredAt:submittedAt}];
- current=1;session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session);`);
+ session.gradingQueue=[{id:'lost-grade-1',index:session.target-1,word,answer:'나는 의견을 나누었다.',payload:{taskType:'sentence_use',answer:'나는 의견을 나누었다.'},submittedAt,status:'pending',errorCode:'grading_result_recovery_required',nextRetryAt:Date.now()+15000}];
+ session.results=Array.from({length:session.target},(_,i)=>i===session.target-1?{word,type:'subjective_use',result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:'lost-grade-1',answeredAt:submittedAt}:{word:session.queue[i].w.w,type:session.queue[i].type,result:'제외',credit:null,excludedFromVocabulary:true});
+ current=session.target;session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session);`);
 assert.equal(stale.node('holdPendingGrades').classList.contains('hidden'),false);
 assert.match(stale.node('holdPendingGrades').textContent,/1개/);
 const gradeRequests=[];
