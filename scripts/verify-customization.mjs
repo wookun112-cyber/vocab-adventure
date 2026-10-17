@@ -8,9 +8,21 @@ import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
 const clone=x=>JSON.parse(JSON.stringify(x));
 const local=new Map(),cloud=new Map();
+function applyMockLearningPatch(account,operations){
+ const state=clone(cloud.get(account));
+ for(const op of operations){
+  let parent=state;
+  for(const step of op.path.slice(0,-1))parent=parent[step];
+  const key=op.path.at(-1);
+  if(op.remove){if(Array.isArray(parent))parent.splice(Number(key),1);else delete parent[key]}
+  else parent[key]=clone(op.value);
+ }
+ cloud.set(account,state);
+ return {data:{saved:true},error:null};
+}
 function fixture(account='family'){
  const nodes=new Map();const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',value:'',style:{},classList:{toggle(){},add(){},remove(){}}});return nodes.get(id)};
- const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
+ const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,Date,Math,Map,Set,Promise,setTimeout,clearTimeout,alert(){},window:{scrollTo(){}},document:{getElementById:node,querySelectorAll:()=>[]},localStorage:{getItem:k=>local.get(k),setItem:(k,v)=>local.set(k,v)},createClient:()=>({rpc:async(name,args)=>{assert.equal(name,'save_learning_patch');return applyMockLearningPatch(account,args.p_operations)},from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:cloud.has(account)?{state:clone(cloud.get(account))}:null,error:null})})}),upsert:async row=>{cloud.set(row.user_id,clone(row.state));return {error:null}}})})});
  const run=code=>vm.runInContext(code,ctx);run(fs.readFileSync(new URL('../lib/learning-model.js',import.meta.url),'utf8').replace(/export /g,''));run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);run(`authUser={id:${JSON.stringify(account)}};loadedAccount=authUser.id;warmDailyQuestions=()=>{};`);return {run,node};
 }
 
