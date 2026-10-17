@@ -150,6 +150,33 @@ assert.match(poll.node('feedback').textContent,/남은 채점 1개/);
 assert.match(poll.node('feedback').textContent,/복구/);
 console.log('Fast queue PASS: pending checks every 2s without failure escalation, only server retryable allows submission, recovery preserves answer and accurate pending count.');
 
+// If a provider-started submission has no recoverable cache result, the
+// learner can explicitly archive its original answer without a grade or a
+// second bill. Other words remain available and the original stays auditable.
+const stale=fixture();await stale.run('buildSession()');await flush();
+stale.run(`session.queue.splice(1);session.preparation.plans.splice(1);session.target=1;session.preparation.baseCount=1;session.baseWords=[session.queue[0].w];
+ session.completionPolicy=DAILY_POLICY;session.introDone=true;
+ const word=session.queue[0].w.w,submittedAt=Date.now()-180000;
+ session.gradingQueue=[{id:'lost-grade-1',index:0,word,answer:'나는 의견을 나누었다.',payload:{taskType:'sentence_use',answer:'나는 의견을 나누었다.'},submittedAt,status:'pending',errorCode:'grading_result_recovery_required',nextRetryAt:Date.now()+15000}];
+ session.results=[{word,type:'subjective_use',result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:'lost-grade-1',answeredAt:submittedAt}];
+ current=1;session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session);`);
+assert.equal(stale.node('holdPendingGrades').classList.contains('hidden'),false);
+assert.match(stale.node('holdPendingGrades').textContent,/1개/);
+const gradeRequests=[];
+stale.ctx.fetch=async(url,opts)=>{if(url==='/api/grade')gradeRequests.push(opts);throw Error('Mock offline: no provider request allowed');};
+await stale.run('holdStaleGradingQueue()');
+assert.equal(stale.run('session.gradingQueue[0].status'),'needs_review');
+assert.equal(stale.run('session.results[0].result'),'확인 필요');
+assert.equal(stale.run('session.results[0].credit'),null);
+assert.equal(stale.run('session.results[0].gradingPending'),false);
+assert.equal(stale.run('child().ungradedSubmissions.length'),1);
+assert.equal(stale.run('child().ungradedSubmissions[0].answer'),'나는 의견을 나누었다.');
+assert.equal(stale.run('wordState(session.queue[0].w.w).seen'),0);
+assert.equal(gradeRequests.length,0,'holding a missing grade never resubmits paid grading');
+await stale.run('cloudSave()');
+assert.equal(stale.cloud.get('family').users.guest.ungradedSubmissions.length,1,'original ungraded submission is durable in cloud');
+console.log('Stale grading hold PASS: 90s wait exposed, original answer retained, no false grade/learning, cloud persistence and no extra model request.');
+
 const legacyPoll=fixture();await legacyPoll.run('buildSession()');await flush();
 legacyPoll.run("session.gradingQueue=[{id:'legacy',status:'pending',index:0,errorCode:'grading_pending',nextRetryAt:Date.now()+120000,answer:'보관된 답'}];session.results=[{gradingPending:true,gradingJobId:'legacy',excludedFromVocabulary:true}]");
 await legacyPoll.run('processGradingQueue(session)');
