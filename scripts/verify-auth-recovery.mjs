@@ -110,6 +110,39 @@ for(const [error,expected] of [
  const third=f.fetches[2];third.options.signal.addEventListener('abort',()=>third.reject(Object.assign(new Error('Cancelled'),{name:'AbortError'})),{once:true});
  f.ctx.externalController.abort();await assert.rejects(cancelled,{name:'AbortError'});assert.equal(f.timers.size,0);
 }
+// A hung Supabase getSession during pending-grade recovery must not keep the
+// family on the 'checking records' overlay indefinitely. Grade recovery can
+// retry later without altering the already-loaded learning records.
+{
+ const f=fixture(),remote=JSON.parse(f.run('JSON.stringify(initial())'));
+ remote.users.ayoung.pausedLessonIndex=[{pendingGrades:1}];
+ f.ctx.remote=remote;
+ f.run('sb.auth.getSession=()=>new Promise(()=>{})');
+ const nativeTimeout=f.ctx.setTimeout;
+ f.ctx.setTimeout=(fn,ms)=>nativeTimeout(fn,ms===10000?1:ms);
+ const pending=f.run("applyAuth({user:{id:'family',email:'family@example.test'}})");
+ await tick();
+ assert.equal(f.reads.length,1);
+ f.reads[0].resolve({data:{state:remote},error:null});
+ await pending;
+ assert.equal(f.run('canSaveLearning()'),true);
+ assert.equal(f.node('authGate').classList.contains('hidden'),true);
+ assert.equal(f.run('child().pausedLessonIndex.length'),1,'unrecovered grade metadata is preserved');
+}
+// A previous background cloud save may stall independently of login. Bound
+// the wait and enable an explicit record retry without creating another login.
+{
+ const f=fixture();
+ f.run("authUser={id:'family',email:'family@example.test'};cloudSaveTask=new Promise(()=>{});");
+ const nativeTimeout=f.ctx.setTimeout;
+ f.ctx.setTimeout=(fn,ms)=>nativeTimeout(fn,ms===10000?1:ms);
+ await f.run("applyAuth({user:{id:'family',email:'family@example.test'}})");
+ assert.match(f.node('authMsg').textContent,/학습 기록을 불러오지 못/);
+ assert.equal(f.run('loadedAccount'),null);
+ assert.equal(f.node('retryRecords').disabled,false);
+ assert.equal(f.reads.length,0,'blocked previous save cannot start a competing record read');
+}
+assert.match(fs.readFileSync(new URL('../app.js',import.meta.url),'utf8'),/withDeadline\(sb\.auth\.getSession\(\),12000/,'initial session hydration has a deadline');
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
 assert.match(html,/id="retryRecords"/);assert.match(html,/autocomplete="current-password"/);
 console.log('Auth recovery verified: server/credential/network errors distinguished, duplicate login prevented, credentials retained, transport timeout aborted, record retries reuse login and protect saved progress.');
