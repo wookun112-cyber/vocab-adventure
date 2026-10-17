@@ -56,3 +56,75 @@ await assert.rejects(failure.run('switchSavedLearning(savedLesson())'),/저장/)
 assert.equal(failure.run('savedLesson().id'),id);assert.equal(failure.run('daySwitchBusy'),false);
 assert.equal(failure.calls.generation,0,'failed transition never generates replacement content');
 console.log('Production recovery verified: no-op save, retry, Seoul day boundary, stale-device guard, new-day archive, explicit resume, unsaved-work protection; no paid calls.');
+
+
+// Exercise the actual new-day archive → cloud reconciliation → first-question
+// path. Previous tests stubbed switchSavedLearning(), hiding this regression.
+async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=false,lostAcknowledgement=false}={}){
+ const real=fixture();await real.run('buildSession()');
+ const setup=[
+  'session.mode='+JSON.stringify(previousMode)+';',
+  'session.activeMs=125000;',
+  'session.studyFallbackDay=dateAfter(today(),-1);',
+  'session.studyStartedAt=Date.now()-86400000;',
+  "session.results=[{word:session.queue[0].w.w,type:session.queue[0].type,result:'○',credit:1,contextSuccess:true,answeredAt:session.studyStartedAt,studyDate:session.studyFallbackDay}];",
+  'current=1;checkpointSession();session.preparation.cancel();session=null;',
+  'child().lastDate='+(alreadyCompletedToday?'today()':'dateAfter(today(),-1)')+';',
+  "child().pausedLessonIndex=[{id:'older-archived-grade',day:dateAfter(today(),-2),answered:3,pendingGrades:2}];"
+ ];
+ real.run(setup.join('\n'));
+ assert.equal(await real.run('cloudSave()'),true,'save original before switching');
+ const oldSaved=JSON.parse(real.run('JSON.stringify(savedLesson())'));
+ const rpc=real.run('sb'),originalRpc=rpc.rpc.bind(rpc);
+ let archiveCalls=0,archivedOriginal=null,firstSent=false;
+ rpc.rpc=async(name,args)=>{
+  if(name!=='switch_learning_day')return originalRpc(name,args);
+  archiveCalls++;
+  const remote=structuredClone(real.cloud.get('family')),learner=remote.users.guest;
+  const previous=learner.activeLesson;
+  if(previous&&previous.id===args.p_expected_id){
+   archivedOriginal=structuredClone(previous);
+   learner.pausedLessonIndex=[...(learner.pausedLessonIndex||[]),{id:previous.id,day:previous.studyFallbackDay,answered:previous.results.length,pendingGrades:0}];
+   learner.activeLesson=null;
+   learner.daySwitchSequence=(learner.daySwitchSequence||0)+1;
+   learner.preparationRevision=(learner.preparationRevision||0)+1;
+   remote.updatedAt=Date.now();
+   real.cloud.set('family',remote);
+   if(lostAcknowledgement&&!firstSent){firstSent=true;return {data:null,error:{message:'network acknowledgement lost'}}}
+   return {data:{changed:true,archived:true},error:null};
+  }
+  if(!previous)return {data:{changed:false,archived:true},error:null};
+  return {data:{conflict:true,reason:'active_lesson_changed'},error:null};
+ };
+ real.run([
+  'const originalMakeRemoteLesson=makeRemoteLesson;',
+  "makeRemoteLesson=()=>{const row=originalMakeRemoteLesson();row.id='fresh-day-validated-packet';return row}"
+ ].join('\n'));
+ if(lostAcknowledgement){
+  await real.run("buildSession('daily')");
+  assert.equal(real.run('canSaveLearning()'),true,'lost RPC reply never forces sign-out');
+  assert.equal(real.run('savedLesson().id'),oldSaved.id);
+  assert.match(real.node('learningStartStatus').textContent,/확인|보관|기록/);
+  assert.equal(real.run('preparingSession'),false);
+ }
+ await real.run("buildSession('daily')");
+ assert.equal(archiveCalls,lostAcknowledgement?2:1,'real archiving runs once or safely retries');
+ assert.equal(real.run('session.results.length'),0,'new study begins without prior answers');
+ assert.equal(real.run('current'),0);
+ assert.equal(real.node('counter').textContent,'1번째 문제');
+ assert.equal(real.run('session.mode'),alreadyCompletedToday?'review':'daily');
+ assert.equal(real.run('state.users.guest.daySwitchSequence'),1);
+ assert.equal(real.run('savedLesson().id'),'fresh-day-validated-packet');
+ assert.equal(real.run('state.users.guest.pausedLessonIndex.some(x=>x.id==='+JSON.stringify(oldSaved.id)+')'),true);
+ assert.equal(JSON.stringify(archivedOriginal.results),JSON.stringify(oldSaved.results),'archived original answers unchanged');
+ assert.equal(real.run('canSaveLearning()'),true);
+ assert.equal(real.run('state.selected'),'guest');
+ assert.equal(real.run('session.activeMs'),0);
+ assert.equal(real.node('learningStartStatus').textContent,'');
+ assert.equal(real.calls.generation,0,'opening next day does not perform paid AI question generation');
+}
+await verifyRealDaySwitch({previousMode:'daily'});
+await verifyRealDaySwitch({previousMode:'review'});
+await verifyRealDaySwitch({previousMode:'review',alreadyCompletedToday:true});
+await verifyRealDaySwitch({previousMode:'daily',lostAcknowledgement:true});
+console.log('Real day switch PASS: archive original answers, refresh server state, open new question, previous review, completed-day review and safe retry.');
