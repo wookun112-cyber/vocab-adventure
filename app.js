@@ -4,7 +4,7 @@ import {DELIVERY_POLICY,localPracticeQuestion} from './lib/local-delivery.js';
 import * as studyHistory from './lib/study-history.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
+import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -2249,10 +2249,13 @@ function finishSession(){
    const weighted=r.reduce((sum,x)=>sum+((x.credit??resultCredit(x.result))*(x.band||3)),0);
    const creditTotal=Math.max(.5,r.reduce((sum,x)=>sum+(x.credit??resultCredit(x.result)),0));
    const evidence=weighted/creditTotal;
-   c.difficulty=clamp((session.ability*0.65+evidence*0.35),1,9);
+   c.difficulty=clamp((session.ability*0.65+evidence*0.35),MIN_VOCABULARY_BAND,9);
    c.confidence=clamp(total/30,0,1);
    c.levelTestCompleted=true;
    c.leagueLevel=c.difficulty;
+   // Starting-level diagnostic establishes a new long-term baseline.
+   c.baselineDifficulty=c.difficulty;
+   c.stableBaselineAnchor={day:today(),start:c.difficulty,gradeMarker:c.gradeBackfill?.id||null,policy:STABLE_BASELINE_POLICY};
    c.lastLevelAdjustment={policy:SESSION_LEVEL_POLICY,lessonId:session.lessonId,date:today(),samples:total,total,score:null,from:previousGrade,to:c.difficulty,change:Math.round((c.difficulty-previousGrade)*10)/10,reason:'시작 수준 확인 결과를 적용했어요.'};
  }
  const completionBonus=rewardCompletion();
