@@ -16,51 +16,51 @@ const at=s=>Date.parse(s),start=at('2026-10-12T20:10:00+09:00');
 // Accounting remains correct even if the browser's timer runs very late.
 let a={lessonId:'bounded',activeMs:0,clockStarted:start};
 studyHistory.beginStudyWindow(a,'question:0',start);
-assert.equal(studyHistory.activeStudyTime(a,start+29000),29000);
-assert.equal(studyHistory.activeStudyTime(a,start+180000),30000);
+assert.equal(studyHistory.activeStudyTime(a,start+9000),9000);
+assert.equal(studyHistory.activeStudyTime(a,start+180000),10000);
 studyHistory.captureStudyClock(a,start+180000);
-assert.equal(a.activeMs,30000);assert.equal(a.clockStarted,null);assert.equal(a.studyIdle.remainingMs,0);
+assert.equal(a.activeMs,10000);assert.equal(a.clockStarted,null);assert.equal(a.studyIdle.remainingMs,0);
 studyHistory.beginStudyWindow(a,'question:0',start+3600000);
 assert.equal(a.studyIdle.remainingMs,0,'same question never replenishes an expired allowance');
 studyHistory.beginStudyWindow(a,'feedback:0',start+3600000,true);a.clockStarted=start+3600000;
-studyHistory.captureStudyClock(a,start+3610000);assert.equal(a.activeMs,40000);
+studyHistory.captureStudyClock(a,start+3610000);assert.equal(a.activeMs,20000);
 
 // The allowance is accumulated foreground study, including accurate midnight split.
-const midnight=at('2026-10-11T23:59:45+09:00');
+const midnight=at('2026-10-11T23:59:55+09:00');
 a={lessonId:'midnight',activeMs:0,clockStarted:midnight};studyHistory.beginStudyWindow(a,'question:0',midnight);
-const l={sessions:[]};studyHistory.recordStudySession(l,a,midnight+300000);
-assert.equal(l.studyHistory.entries.midnight.days['2026-10-11'].activeMs,15000);
-assert.equal(l.studyHistory.entries.midnight.days['2026-10-12'].activeMs,15000);
+const l={sessions:[]};studyHistory.recordStudySession(l,a,midnight+100000);
+assert.equal(l.studyHistory.entries.midnight.days['2026-10-11'].activeMs,5000);
+assert.equal(l.studyHistory.entries.midnight.days['2026-10-12'].activeMs,5000);
 a={activeMs:0,clockStarted:start};studyHistory.beginStudyWindow(a,'question:0',start);
 studyHistory.captureStudyClock(a,start+20000);a.clockStarted=null;
 const reopened=structuredClone(a);reopened.clockStarted=start+3600000;
 studyHistory.beginStudyWindow(reopened,'question:0',start+3600000);
-studyHistory.captureStudyClock(reopened,start+3700000);assert.equal(reopened.activeMs,30000,'closing does not replenish the unused 10 seconds');
+studyHistory.captureStudyClock(reopened,start+3700000);assert.equal(reopened.activeMs,10000,'closing does not replenish the unused 10 seconds');
 
 // Upgrading the old 60-second window preserves time already recorded and
 // only shortens the remaining allowance for the same unanswered question.
 const legacyPolicy='answer-submit-idle-60s-12.16.16';
-for(const spent of [0,10000,20000,30000,40000,60000]){
+for(const spent of [0,10000,20000,10000,20000,60000]){
  const legacy={activeMs:spent,clockStarted:null,studyIdle:{policy:legacyPolicy,key:'question:0',remainingMs:60000-spent}};
- const remaining=Math.max(0,30000-spent);
+ const remaining=Math.max(0,10000-spent);
  assert.equal(studyHistory.studyWindowRemaining(legacy,start),remaining);
  studyHistory.beginStudyWindow(legacy,'question:0',start);
  assert.equal(legacy.studyIdle.policy,studyHistory.STUDY_IDLE_POLICY);
  assert.equal(legacy.studyIdle.remainingMs,remaining);assert.equal(legacy.activeMs,spent);
  legacy.clockStarted=start;studyHistory.captureStudyClock(legacy,start+180000);
- assert.equal(legacy.activeMs,Math.max(30000,spent),'recorded time is retained without extra idle time');
+ assert.equal(legacy.activeMs,Math.max(10000,spent),'recorded time is retained without extra idle time');
  assert.equal(legacy.studyIdle.remainingMs,0);assert.equal(legacy.clockStarted,null);
  studyHistory.beginStudyWindow(legacy,'question:0',start+180000);
  assert.equal(legacy.studyIdle.remainingMs,0);
  studyHistory.beginStudyWindow(legacy,'question:0',start+180000,true);
- assert.equal(legacy.studyIdle.remainingMs,30000,'valid submission renews the new 30-second allowance');
+ assert.equal(legacy.studyIdle.remainingMs,10000,'valid submission renews the new 30-second allowance');
  studyHistory.beginStudyWindow(legacy,'question:1',start+180000);
- assert.equal(legacy.studyIdle.remainingMs,30000);
+ assert.equal(legacy.studyIdle.remainingMs,10000);
 }
 const delayedLegacy={activeMs:10000,clockStarted:start,studyIdle:{policy:legacyPolicy,key:'question:0',remainingMs:50000}};
-assert.equal(studyHistory.activeStudyTime(delayedLegacy,start+180000),30000);
+assert.equal(studyHistory.activeStudyTime(delayedLegacy,start+180000),10000);
 studyHistory.captureStudyClock(delayedLegacy,start+180000);
-assert.equal(delayedLegacy.activeMs,30000);assert.equal(delayedLegacy.studyIdle.remainingMs,0);
+assert.equal(delayedLegacy.activeMs,10000);assert.equal(delayedLegacy.studyIdle.remainingMs,0);
 
 const row=authoredCurriculum(AUTHORED_OWNER).find(w=>w.word==='의견');
 const w={w:row.word,d:row.definition,band:2,cat:row.domain,source:'fixed'};
@@ -96,80 +96,82 @@ function fixture({elapsed=0,type='subjective_use',saved=null}={}){
 const writing=fixture();
 for(let i=0;i<9;i++){writing.advance(10000);writing.run('markStudyActivity({isTrusted:true})')}
 assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),90000);
-writing.advance(60000);assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),120000);
+writing.advance(60000);assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),100000);
 writing.run('markStudyActivity({isTrusted:false})');writing.advance(20000);
-assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),120000);
-// Actual question timer pauses at exactly 30s and saves the draft without scoring.
+assert.equal(writing.run('studyHistory.activeStudyTime(session,Date.now())'),100000);
+// Actual question timer pauses at exactly 10s and saves the draft without scoring.
 let f=fixture();f.node('answer').value='입력하던 의견 문장';
 const words=f.run('JSON.stringify(child().words)');
-f.advance(29000);assert.equal(f.run('activeTime()'),29000);
-f.advance(1000);assert.equal(f.run('activeTime()'),30000);assert.equal(f.run('session.clockStarted'),null);
+f.advance(9000);assert.equal(f.run('activeTime()'),9000);
+f.advance(1000);assert.equal(f.run('activeTime()'),10000);assert.equal(f.run('session.clockStarted'),null);
 assert.match(f.node('studyTime').textContent,/일시정지/);
 assert.equal(f.run('child().activeLesson.pendingAnswer'),'입력하던 의견 문장');
 assert.equal(f.run('JSON.stringify(child().words)'),words);assert.equal(f.run('session.results.length'),0);
 f.advance(180000);f.node('answer').value='더 길게 입력한 의견 문장';f.run('checkpointSession()');
-assert.equal(f.run('activeTime()'),30000);assert.equal(f.run('child().activeLesson.activeMs'),30000);
-assert.equal(f.run('child().studyHistory.entries["idle-fixture"].days["2026-10-12"].activeMs'),30000);
+assert.equal(f.run('activeTime()'),10000);assert.equal(f.run('child().activeLesson.activeMs'),10000);
+assert.equal(f.run('child().studyHistory.entries["idle-fixture"].days["2026-10-12"].activeMs'),10000);
 // Hint/repaint, screen return, and empty submissions cannot manufacture time.
-f.run('showHint();renderQuestion(hintLevel)');assert.equal(f.run('activeTime()'),30000);assert.equal(f.run('session.clockStarted'),null);
-f.run('show("home")');f.advance(600000);f.run('show("learn");renderQuestion(hintLevel)');f.advance(30000);
-assert.equal(f.run('activeTime()'),30000);
+f.run('showHint();renderQuestion(hintLevel)');assert.equal(f.run('activeTime()'),10000);assert.equal(f.run('session.clockStarted'),null);
+f.run('show("home")');f.advance(600000);f.run('show("learn");renderQuestion(hintLevel)');f.advance(10000);
+assert.equal(f.run('activeTime()'),10000);
 f.node('answer').value='';await f.run('gradeCurrent(false)');assert.equal(f.run('session.clockStarted'),null);assert.equal(f.run('session.results.length'),0);
 f.node('answer').value='더 길게 입력한 의견 문장';f.run('checkpointSession()');
 
 // Closing a timed-out unanswered task retains zero allowance and the input.
 const saved=JSON.parse(f.run('JSON.stringify(state)'));
 f=fixture({saved});f.advance(3600000);await f.run('resumeLesson(child().activeLesson)');
-assert.equal(f.run('activeTime()'),30000);assert.equal(f.run('session.clockStarted'),null);
+assert.equal(f.run('activeTime()'),10000);assert.equal(f.run('session.clockStarted'),null);
 assert.equal(f.node('answer').value,'더 길게 입력한 의견 문장');assert.equal(f.run('current'),0);
 
 // A draft saved by the previous version resumes with its reduced allowance.
 const beforeUpgrade=fixture();beforeUpgrade.node('answer').value='이어 쓰던 의견 문장';
 beforeUpgrade.advance(20000);beforeUpgrade.run('checkpointSession()');
 const legacySaved=JSON.parse(beforeUpgrade.run('JSON.stringify(state)'));
+legacySaved.users.ayoung.activeLesson.activeMs=20000;
+legacySaved.users.ayoung.activeLesson.studyDays['2026-10-12'].activeMs=20000;
 legacySaved.users.ayoung.activeLesson.studyIdle.policy=legacyPolicy;
-legacySaved.users.ayoung.activeLesson.studyIdle.remainingMs=40000;
+legacySaved.users.ayoung.activeLesson.studyIdle.remainingMs=20000;
 const upgraded=fixture({saved:legacySaved});upgraded.advance(3600000);
 await upgraded.run('resumeLesson(child().activeLesson)');
 assert.equal(upgraded.run('activeTime()'),20000);
-assert.equal(upgraded.run('session.studyIdle.remainingMs'),10000);
+assert.equal(upgraded.run('session.studyIdle.remainingMs'),0);
 assert.equal(upgraded.node('answer').value,'이어 쓰던 의견 문장');
-upgraded.advance(10000);assert.equal(upgraded.run('activeTime()'),30000);
+upgraded.advance(10000);assert.equal(upgraded.run('activeTime()'),20000);
 assert.equal(upgraded.run('session.clockStarted'),null);
-assert.equal(upgraded.run('child().studyHistory.entries["idle-fixture"].days["2026-10-12"].activeMs'),30000);
+assert.equal(upgraded.run('child().studyHistory.entries["idle-fixture"].days["2026-10-12"].activeMs'),20000);
 
 // A genuine submission resumes even after the idle stop; AI wait stays excluded.
 f.run('hintLevel=0');f.node('answer').value='친구와 의견을 나누어 여행 계획을 정했다.';
-f.setFetch(url=>{assert.equal(url,'/api/grade');f.advance(120000);return {ok:true,json:async()=>({score:1,contextSuccess:true,feedback:'정확하게 사용했어요.'})}});
-await f.run('gradeCurrent(false)');assert.equal(f.run('session.results.length'),1);assert.equal(f.run('activeTime()'),30000);
+f.setFetch(url=>{assert.equal(url,'/api/grade');f.advance(100000);return {ok:true,json:async()=>({score:1,contextSuccess:true,feedback:'정확하게 사용했어요.'})}});
+await f.run('gradeCurrent(false)');assert.equal(f.run('session.results.length'),1);assert.equal(f.run('activeTime()'),10000);
 assert.ok(f.run('Number.isFinite(session.clockStarted)'));assert.doesNotMatch(f.node('studyTime').textContent,/일시정지/);
-f.advance(10000);assert.equal(f.run('activeTime()'),40000);
-f.advance(120000);assert.equal(f.run('activeTime()'),60000,'feedback screen idling is bounded too');
+f.advance(10000);assert.equal(f.run('activeTime()'),20000);
+f.advance(100000);assert.equal(f.run('activeTime()'),20000,'feedback screen idling is bounded too');
 
 // Fast objective answers preserve their real duration and restart measurement.
-const mc=fixture({type:'mc_usage'});mc.advance(25000);mc.run('selectedOption=session.queue[current].opts.findIndex(o=>o.ok)');await mc.run('gradeCurrent(false)');
-assert.equal(mc.run('activeTime()'),25000);assert.equal(mc.run('session.results.length'),1);
-mc.advance(5000);assert.equal(mc.run('activeTime()'),30000);assert.equal(mc.requests.length,0);
+const mc=fixture({type:'mc_usage'});mc.advance(2500);mc.run('selectedOption=session.queue[current].opts.findIndex(o=>o.ok)');await mc.run('gradeCurrent(false)');
+assert.equal(mc.run('activeTime()'),2500);assert.equal(mc.run('session.results.length'),1);
+mc.advance(5000);assert.equal(mc.run('activeTime()'),7500);assert.equal(mc.requests.length,0);
 
 // Even time passing during serialization cannot give restart extra allowance.
 const coherent=fixture();coherent.advance(20000);
 coherent.run('const originalNow=Date.now;let nowReads=0;Date.now=()=>originalNow()+ ++nowReads;checkpointSession()');
 const cp=JSON.parse(coherent.run('JSON.stringify(child().activeLesson)'));
 assert.equal(cp.activeMs,Object.values(cp.studyDays).reduce((n,d)=>n+d.activeMs,0));
-assert.equal(cp.activeMs,30000-cp.studyIdle.remainingMs);
+assert.equal(cp.activeMs,10000-cp.studyIdle.remainingMs);
 
 // Delayed timer delivery never inflates the minimum-25m completion test.
-const short=fixture({elapsed:23*60000});short.advance(300000,false);
-assert.equal(short.run('activeTime()'),23.5*60000);assert.equal(short.run('minimumStudyReached(session,activeTime())'),false);
+const short=fixture({elapsed:23*60000});short.advance(100000,false);
+assert.equal(short.run('activeTime()'),23*60000+10000);assert.equal(short.run('minimumStudyReached(session,activeTime())'),false);
 short.run("applyResult(session.queue[current],'○','정확한 문장입니다.','',{credit:1,contextSuccess:true,hintUsed:false,revealed:false})");await short.run('nextQuestion()');
 assert.equal(short.run('child().sessions.length'),0);assert.equal(short.run('session.timeAddedWords.length'),1);
-assert.equal(short.run('activeTime()'),23.5*60000,'no idle padding is carried into the added word');
+assert.equal(short.run('activeTime()'),23*60000+10000,'no idle padding is carried into the added word');
 
 // Cross-profile callbacks and old completed history remain isolated.
 const other=fixture();other.run('session=null;state.selected="inseong"');other.advance(180000);assert.equal(other.run('child().sessions.length'),0);assert.equal(other.run('child().activeLesson'),undefined);
 const old={difficulty:2,sessions:[{date:'2026-10-11',activeMinutes:15,total:10,good:8,wrong:2}]};
 assert.equal(studyHistory.dailyStudyRows(old)[0].activeMs,15*60000);
-console.log('Idle study clock verified: 29s/30s boundary, legacy 60-second draft migration, delayed timer cap, automatic pause and draft save, typing/hints/repaint/reopen cannot renew time, restart retains allowance, valid typed/objective submissions resume, grading/background waits excluded, midnight split, minimum-25m continuation, profile/history isolation.');
+console.log('Idle study clock verified: 9s/10s boundary, legacy 60-second draft migration, delayed timer cap, automatic pause and draft save, real activity renews prospectively; hints/repaint/reopen do not pad time, restart retains allowance, valid typed/objective submissions resume, grading/background waits excluded, midnight split, minimum-25m continuation, profile/history isolation.');
 
 // Daily cap is enforced by the real UI timer, saves the current draft, and
 // neither scores an unanswered item nor declares mastery/completion.
@@ -189,11 +191,11 @@ const cappedSaved=JSON.parse(capped.run('JSON.stringify(state)'));
 const reopenedCap=fixture({saved:cappedSaved});
 await reopenedCap.run('resumeLesson(child().activeLesson)');
 assert.equal(reopenedCap.run('session'),null,'reopening cannot bypass daily limit');
-capped.advance(86400000);
+capped.advance(86200000);
 assert.equal(capped.run("dailyLimitBlocked('daily')"),false,'next learning day has a new allowance');
 capped.run('state.selected="inseong"');
 assert.equal(capped.run("dailyLimitBlocked('daily')"),false,'other profile keeps its own allowance');
-const lateCap=fixture({elapsed:29*60000+50000});lateCap.advance(300000,false);
+const lateCap=fixture({elapsed:29*60000+50000});lateCap.advance(100000,false);
 assert.equal(lateCap.run('activeTime()'),30*60000,'late browser timers cannot overshoot');
 lateCap.run('markStudyActivity({isTrusted:true})');assert.equal(lateCap.run('session.timeLimitStopped'),true);
 console.log('Daily 25–30 minute cap verified: exact boundary, delayed timer, draft persistence, no false mastery, restart lock, next day and profile isolation.');
@@ -244,7 +246,7 @@ assert.equal(recoveredCap.run('child().sessions.length'),1);
 recoveredCap.run('settleReachedStudyDays(child().activeLesson)');
 assert.equal(recoveredCap.run('child().sessions.length'),1);
 assert.equal(recoveredCap.run('studyHistory.dailyStudyTime(child(),child().activeLesson,Date.now())'),1800000);
-const nextDayCap=fixture({saved:structuredClone(missed)});nextDayCap.advance(86400000);
+const nextDayCap=fixture({saved:structuredClone(missed)});nextDayCap.advance(86200000);
 assert.equal(nextDayCap.run('settleReachedStudyDays(child().activeLesson)'),true);
 assert.equal(nextDayCap.run('child().sessions[0].date'),'2026-10-12');
 assert.equal(nextDayCap.run('child().lastStudyDate'),'2026-10-12');
@@ -252,7 +254,7 @@ assert.equal(nextDayCap.run('studyHistory.dailyStudyTime(child(),child().activeL
 assert.equal(nextDayCap.run('child().activeLesson.pendingAnswer'),'닫기 직전 작성 중');
 // Real foreground delivery, not just the archive helper, uses submission dates.
 const delayed=fixture();
-delayed.run("applyGradedAnswer(session.queue[0],{score:1,contextSuccess:true,feedback:'확인'},{id:'old-job',answer:'나의 의견을 말했다.',hintUsed:false,submittedAt:Date.now()-86400000,submittedDay:dateAfter(today(),-1)})");
+delayed.run("applyGradedAnswer(session.queue[0],{score:1,contextSuccess:true,feedback:'확인'},{id:'old-job',answer:'나의 의견을 말했다.',hintUsed:false,submittedAt:Date.now()-86200000,submittedDay:dateAfter(today(),-1)})");
 assert.equal(delayed.run('session.results[0].studyDate'),'2026-10-11');
 assert.equal(delayed.run('session.results[0].evidence.date'),'2026-10-11');
 assert.equal(delayed.run('child().words.의견.usageConfirmedAt'),'2026-10-11');
@@ -262,7 +264,7 @@ assert.equal(delayed.run('child().studyHistory.entries[session.lessonId].days["2
 for(const score of [0,1]){
  const newer=fixture();
  newer.run("Object.assign(wordState('의견'),{lastExposureAt:today(),lastFeedbackDate:today(),usageConfirmedAt:today(),usageConfirmedStamp:Date.now(),nextReviewAt:dateAfter(today(),14),recallStage:4,streak:5})");
- newer.run(`applyGradedAnswer(session.queue[0],{score:${score},contextSuccess:${score===1},feedback:'확인'},{id:'old-job',answer:'나의 의견을 말했다.',hintUsed:false,submittedAt:Date.now()-86400000,submittedDay:dateAfter(today(),-1)})`);
+ newer.run(`applyGradedAnswer(session.queue[0],{score:${score},contextSuccess:${score===1},feedback:'확인'},{id:'old-job',answer:'나의 의견을 말했다.',hintUsed:false,submittedAt:Date.now()-86200000,submittedDay:dateAfter(today(),-1)})`);
  assert.equal(newer.run('child().words.의견.nextReviewAt'),'2026-10-26');
  assert.equal(newer.run('child().words.의견.streak'),5);
  assert.equal(newer.run('child().words.의견.lastExposureAt'),'2026-10-12');

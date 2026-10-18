@@ -77,7 +77,7 @@ assert.equal(app.run('child().studyHistory.entries["actual-app"].days["2026-10-1
 const checkpoint=JSON.parse(app.run('JSON.stringify(state)')),resumed=fixture(checkpoint,app.storage);
 resumed.setNow('2026-10-12T11:00:00+09:00');await resumed.run('resumeLesson(child().activeLesson)');
 resumed.setNow('2026-10-12T11:01:00+09:00');resumed.run(`pauseLearningClock();checkpointSession();renderReport()`);
-assert.equal(resumed.run('child().studyHistory.entries["actual-app"].days["2026-10-12"].activeMs'),150000,'restart keeps time and excludes the 58-minute break');
+assert.equal(resumed.run('child().studyHistory.entries["actual-app"].days["2026-10-12"].activeMs'),130000,'restart keeps time and excludes the 58-minute break');
 assert.equal(resumed.run('child().studyHistory.entries["actual-app"].days["2026-10-12"].total'),1,'restart keeps exactly one graded answer');
 assert.match(resumed.node('studyHistory').innerHTML,/2026\.10\.12/);assert.match(resumed.node('studyHistory').innerHTML,/오답 1/);
 resumed.node('studyHistoryFrom').value='2026-11-01';resumed.node('studyHistoryTo').value='2026-11-02';resumed.node('studyHistoryMode').value='study';resumed.node('studyHistoryFrom').onchange();

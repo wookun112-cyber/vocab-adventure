@@ -30,9 +30,9 @@ export function patchStuckPreparation(source){
      }
      const blocked=serverPreparationError(remote);if(blocked)throw blocked;`);
  replace(
-  "function warmDailyQuestions(){\n if(!authUser||preparingSession||savedLesson()||child().lastDate===today()||(session&&current<session.target))return;\n const profile=state.selected,account=authUser.id;",
+  "function warmDailyQuestions(){\n if(!authUser||preparingSession||savedLesson()||(session&&!session.completed&&current<session.target))return;\n const profile=state.selected,account=authUser.id;",
   `function warmDailyQuestions(){
- if(!authUser||preparingSession||child().lastDate===today()||(session&&current<session.target))return;
+ if(!authUser||preparingSession||(session&&!session.completed&&current<session.target))return;
  const profile=state.selected,account=authUser.id;
  if(savedLesson(profile)){
   clearTimeout(preparationRetryTimer);preparationRetryTimer=null;

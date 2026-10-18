@@ -52,7 +52,7 @@ st={introducedAt:day,lastExposureAt:day};evidence=recordLearningEvidence(learner
 const futureLearner={difficulty:2,levelTestCompleted:true,lastDate:learningDay(),words:{}};
 for(let i=0;i<8;i++)futureLearner.words['복습'+i]={seen:1,introducedAt:learningDay(),nextReviewAt:'2099-01-01'};
 const future=makePreparedPlan(futureLearner,{},reviews.map(w=>({word:w.w,definition:w.d,band:2,domain:'국어'})),'family','guest');
-assert.equal(future.plans.length,8);assert.equal(future.budget.additionalPractice,true);assert.equal(future.plannedFor,learningDay());assert.equal(future.newWords.length,0);assert.ok(future.plans.every(p=>p.w.w.startsWith('복습')&&p.practiceOnly),'early practice is allowed without delayed-recall credit');
+assert.equal(future.plans.length,13);assert.equal(future.budget.additionalPractice,true);assert.equal(future.plannedFor,learningDay());assert.equal(future.newWords.length,5);assert.ok(future.plans.filter(p=>p.review).every(p=>p.w.w.startsWith('복습')&&p.practiceOnly),'early practice is allowed without delayed-recall credit');
 assert.deepEqual([studyBudget({words:{}},day).minutes,studyBudget({words:{}},day).minMinutes,studyBudget({words:{}},day).maxMinutes],[25,25,30]);
 console.log('Learning rules verified: Seoul dates, daily/weekly/overdue/performance budgets, spaced new-word plan, recognition/use separated from recall, 7/30-day checks, independent mastery, separate retention evidence and session-based league changes.');
 

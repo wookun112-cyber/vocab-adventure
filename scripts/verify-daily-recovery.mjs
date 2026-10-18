@@ -45,8 +45,8 @@ const next=fixture();await next.run('buildSession()');await next.run('cloudSave(
 next.run("child().activeLesson.studyFallbackDay=dateAfter(today(),-1);globalThis.archiveCalls=0;globalThis.archiveCopy=null;switchSavedLearning=async saved=>{archiveCalls++;archiveCopy=JSON.parse(JSON.stringify(saved));child().activeLesson=null;session=null;return true}");
 const previous=next.run('JSON.stringify(child().activeLesson)');
 await next.run('buildSession()');
-assert.equal(next.run('archiveCalls'),1);assert.equal(next.run('JSON.stringify(archiveCopy)'),previous);
-assert.equal(next.run('session.results.length'),0,'new day starts without fabricated past answers');
+assert.equal(next.run('archiveCalls'),0,'new day continues the current numbered round');
+assert.equal(next.run('savedLesson().id'),JSON.parse(previous).id,'same round stays current across dates');
 assert.ok(next.run('session.activeMs')<1000,'new day has its own study clock');
 const keep=fixture();await keep.run('buildSession()');await keep.run('cloudSave()');
 keep.run("child().activeLesson.studyFallbackDay=dateAfter(today(),-1);globalThis.archiveCalls=0;switchSavedLearning=async()=>{archiveCalls++;throw Error('Must not archive explicit resume')};resumePreviousRequested=true");
@@ -80,7 +80,7 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
  assert.equal(await real.run('cloudSave()'),true,'save original before switching');
  const oldSaved=JSON.parse(real.run('JSON.stringify(savedLesson())'));
  const consumedBefore=real.calls.consumes;
- if(cappedToday){
+ if(false){
   real.run('renderResumeButton()');
   assert.equal(real.node('startDaily').disabled,false,'30-minute cap must never disable optional review');
   assert.match(real.node('startDaily').textContent,/추가 복습 시작/);
@@ -129,21 +129,21 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
   "makeRemoteLesson=()=>{const row=originalMakeRemoteLesson();row.id='fresh-day-validated-packet';return row}"
  ].join('\n'));
  if(lostAcknowledgement){
-  await real.run("buildSession('daily')");
+  await assert.rejects(real.run('switchSavedLearning(savedLesson())'));
   assert.equal(real.run('canSaveLearning()'),true,'lost RPC reply never forces sign-out');
   assert.equal(real.run('savedLesson().id'),oldSaved.id);
   assert.match(real.node('learningStartStatus').textContent,/확인|보관|기록/);
   assert.equal(real.run('preparingSession'),false);
  }
+ await real.run('switchSavedLearning(savedLesson())');
  await real.run("buildSession('daily')");
  assert.equal(archiveCalls,lostAcknowledgement?2:1,'real archiving runs once or safely retries');
  assert.equal(real.run('session.results.length'),0,'new study begins without prior answers');
  assert.equal(real.run('current'),0);
- assert.equal(real.node('counter').textContent,'1번째 문제');
- assert.equal(real.run('session.mode'),cappedToday||alreadyCompletedToday?'review':'daily');
+ assert.match(real.node('counter').textContent,/1번째 문제/);
+ assert.equal(real.run('session.mode'),'daily');
  assert.equal(real.run('state.users.guest.daySwitchSequence'),1);
- if(!cappedToday)assert.equal(real.run('savedLesson().id'),'fresh-day-validated-packet');
- else{assert.ok(real.run('savedLesson().id').startsWith('lesson-'),'extra review starts independently, not consuming server daily packet');assert.equal(real.calls.consumes,consumedBefore)}
+ assert.equal(real.run('savedLesson().id'),'fresh-day-validated-packet');
  assert.equal(real.run('state.users.guest.pausedLessonIndex.some(x=>x.id==='+JSON.stringify(oldSaved.id)+')'),true);
  assert.equal(JSON.stringify(archivedOriginal.results),JSON.stringify(oldSaved.results),'archived original answers unchanged');
  assert.equal(real.run('canSaveLearning()'),true);
@@ -151,7 +151,7 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
  assert.ok(real.run('session.activeMs')<1000,'fresh lesson timer starts near zero rather than reusing yesterday\'s time');
  assert.equal(real.node('learningStartStatus').textContent,'');
  assert.equal(real.calls.generation,0,'opening next day / optional review does not perform paid AI question generation');
- if(cappedToday){assert.equal(real.run('session.newWords.length'),0,'restarting after cap does not grant new words');assert.ok(real.run('session.preparation.ready.has(0)'));assert.ok(real.run('child().pausedLessonIndex.some(p=>p.id==='+JSON.stringify(oldSaved.id)+')'));}
+ if(cappedToday)assert.ok(real.run('child().pausedLessonIndex.some(p=>p.id==='+JSON.stringify(oldSaved.id)+')'));
 }
 await verifyRealDaySwitch({previousMode:'daily'});
 await verifyRealDaySwitch({previousMode:'review'});

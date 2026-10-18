@@ -62,11 +62,11 @@ function isEarlierLesson(saved,day=today()){
 }
 function renderDayChoice(saved=savedLesson()){
  const start=$('startDaily'),card=start?.closest?.('.card');if(!card)return;
- if(isEarlierLesson(saved)&&!preparingSession)start.textContent='오늘 새 학습 시작';
+ if(isEarlierLesson(saved)&&!preparingSession&&!saved?.roundNumber)start.textContent='오늘 새 학습 시작';
  let box=$('previousLearningChoices');
  if(!box){box=document.createElement('div');box.id='previousLearningChoices';box.style.marginTop='12px';card.appendChild(box)}
  box.replaceChildren();
- if(isEarlierLesson(saved)){
+ if(isEarlierLesson(saved)&&!saved?.roundNumber){
   const note=document.createElement('p');note.className='muted';note.textContent=lessonStudyDay(saved)+' 미완료 학습은 보관됩니다. 오늘의 학습시간은 새로 측정해요.';box.appendChild(note);
   const resume=document.createElement('button');resume.className='secondary';resume.textContent='이전 학습 이어하기';resume.disabled=preparingSession||daySwitchBusy;
   resume.onclick=async()=>{if(preparingSession||daySwitchBusy)return;resumePreviousRequested=true;try{await buildSession('daily')}finally{resumePreviousRequested=false}};box.appendChild(resume);
@@ -139,10 +139,11 @@ export function patchDailyRecovery(source){
  source=source.slice(0,begin)+'// daily-recovery-12.16.26\n'+reliableSaveSource+dayChoiceSource+source.slice(end);
  replace('function preservesLearning(previous,next){',"function preservesLearning(previous,next){\n if(Number(next.daySwitchSequence||0)<Number(previous.daySwitchSequence||0))return false;");
  replace('   if(paused){await resumeLesson(paused);return}',`   if(paused){
-    if(mode==='review'&&cappedCurrentDailyLesson(paused)){
+    if((paused.roundNumber&&!cappedCurrentDailyLesson(paused))||paused.roundPolicy){await resumeLesson(paused);return}
+    if(cappedCurrentDailyLesson(paused)){
      // The daily time limit is not a block on extra practice. Preserve the
      // unsolved original lesson in the server archive before opening review.
-     setStudyStartStatus('기본 학습 30분 기록을 보관한 뒤 추가 복습을 시작합니다.');
+     setStudyStartStatus('이전 학습 기록을 보관한 뒤 다음 회차를 준비합니다.');
      if(!(await switchSavedLearning(paused)))return;
     }else if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
      if(!(await switchSavedLearning(paused)))return;
