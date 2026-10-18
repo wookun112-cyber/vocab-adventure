@@ -1774,7 +1774,7 @@ function deferGradingJob(job,error){
 }
 function renderGradingProgress(active=session){
  if(!active||session!==active||!active.waitingForGradeResults||!$('learn').classList.contains('active'))return;
- const jobs=(active.gradingQueue||[]).filter(j=>j.status!=='applied'),pending=jobs.filter(j=>j.status==='pending');
+ const jobs=(active.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)),pending=jobs.filter(j=>j.status==='pending');
  const blocked=pending.some(j=>['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(j.errorCode));
  const stale=pending.filter(j=>Date.now()-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
  const hold=$('holdPendingGrades');
@@ -1786,11 +1786,11 @@ function renderGradingProgress(active=session){
 // An already-started provider request with no saved result cannot safely be
 // billed again. Explicitly set aside only overdue submissions, preserving their
 // full payload for manual review. This is never recorded as a correct/wrong grade.
-async function holdStaleGradingQueue(){
+async function holdStaleGradingQueue(automatic=false,confirmedJobId=null){
  const active=session;
- if(!active||active.completed||!active.waitingForGradeResults||active.gradeHoldInProgress)return;
+ if(!active||active.completed||(!automatic&&!active.waitingForGradeResults)||active.gradeHoldInProgress)return;
  if(active.gradingBusy){active.gradeHoldRequested=true;$('holdPendingGrades').disabled=true;$('holdPendingGrades').textContent='채점 상태 확인 후 이어서 진행 중…';return}
- const jobs=(active.gradingQueue||[]).filter(j=>j.status==='pending'&&Date.now()-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
+ const jobs=(active.gradingQueue||[]).filter(j=>j.status==='pending'&&Date.now()-Number(j.submittedAt||0)>=90000&&(!automatic||(j.id===confirmedJobId&&j.errorCode==='grading_result_recovery_required'))&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
  if(!jobs.length){renderGradingProgress(active);return}
  active.gradeHoldInProgress=true;
  $('holdPendingGrades').disabled=true;
@@ -1799,17 +1799,19 @@ async function holdStaleGradingQueue(){
   const held=state.users[active.profile].ungradedSubmissions||[];
   const existing=new Set(held.map(j=>j.id));
   for(const job of jobs){
-   if(!existing.has(job.id)){held.push({...job,status:'needs_review',manualReviewRequired:true,heldAt:Date.now()});existing.add(job.id)}
+   if(!existing.has(job.id)){held.push({...job,status:'needs_review',manualReviewRequired:true,heldAt:Date.now(),lessonId:active.lessonId,holdReason:automatic?'missing_result':'manual'});existing.add(job.id)}
    job.status='needs_review';job.manualReviewRequired=true;job.heldAt=Date.now();
    for(const r of active.results)if(r.gradingJobId===job.id&&r.gradingPending){
     r.result='확인 필요';r.credit=null;r.gradingPending=false;r.gradingReviewRequired=true;r.excludedFromVocabulary=true;
    }
   }
   state.users[active.profile].ungradedSubmissions=held;
+  const wasWaiting=active.waitingForGradeResults;
   active.waitingForGradeResults=false;
   checkpointSession();localSave();
   // A failed remote save never removes the durable device checkpoint.
   cloudSave().catch(()=>{});
+  if(!wasWaiting)return; // Do not replace a question the learner is still answering.
   prepareExtensions(active);
   if(current<active.target){
    try{await withDeadline(active.preparation.waitFor(current,true),QUESTION_WAIT_MS,'이어갈 문제 준비가 지연됐어요.')}
@@ -1817,7 +1819,7 @@ async function holdStaleGradingQueue(){
    if(session!==active||state.selected!==active.profile)return;
    show('learn');renderQuestion();
   }else{show('home');renderResumeButton()}
-  alert('채점 결과가 없는 답안 '+jobs.length+'개를 확인 필요로 보관했습니다. 정오답과 난이도에는 반영하지 않았고, 중복 유료 채점을 실행하지 않았습니다. 남은 어휘는 계속 학습할 수 있습니다.');
+  if(!automatic)alert('채점 결과가 없는 답안 '+jobs.length+'개를 확인 필요로 보관했습니다. 정오답과 난이도에는 반영하지 않았고, 중복 유료 채점을 실행하지 않았습니다. 남은 어휘는 계속 학습할 수 있습니다.');
  }finally{
   active.gradeHoldInProgress=false;active.gradeHoldRequested=false;
   if(session===active)renderGradingProgress(active);
@@ -1847,7 +1849,7 @@ async function processGradingQueue(active,force=false){
   const atBoundary=current>=active.target;appendReadyGrades(active);
   if(atBoundary&&current<active.queue.length&&$('learn').classList.contains('active'))renderQuestion();
  }catch(e){deferGradingJob(job,e)}
- finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){renderGradingProgress(active);checkpointSession();localSave();cloudSave();if(active.gradeHoldRequested){active.gradeHoldRequested=false;void holdStaleGradingQueue()}}}
+ finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){renderGradingProgress(active);checkpointSession();localSave();cloudSave();if(job.status==='pending'&&job.errorCode==='grading_result_recovery_required'&&Date.now()-Number(job.submittedAt||0)>=90000){await holdStaleGradingQueue(true,job.id)}else if(active.gradeHoldRequested){active.gradeHoldRequested=false;void holdStaleGradingQueue()}}}
 }
 
 function fallbackOpen(q,answer){

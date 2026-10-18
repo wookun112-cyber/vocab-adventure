@@ -1,6 +1,31 @@
 // Applied to the same effective browser source that is exercised by release tests.
 export const reliableSaveSource=String.raw`
-let cloudSaveError=null;
+let cloudSaveError=null,cloudSaveRetryTimer=null,cloudSaveRetryCount=0,cloudSaveRetryScope='';
+function clearCloudSaveRetry(reset=false){
+ if(cloudSaveRetryTimer!==null)clearTimeout(cloudSaveRetryTimer);
+ cloudSaveRetryTimer=null;
+ if(reset){cloudSaveRetryCount=0;cloudSaveRetryScope=''}
+}
+function retryableSaveError(error){
+ const code=String(error?.code||error?.status||'');
+ return !/LEARNING_STATE_REGRESSION/i.test(error?.message||'')&&!/^(learning_conflict|401|403|42501|22\d{3}|23\d{3}|PGRST30[123])$/.test(code);
+}
+function scheduleCloudSaveRetry(account=authUser?.id,epoch=authEpoch){
+ if(!account||account!==authUser?.id||epoch!==authEpoch||!canSaveLearning()||!cloudSavePending||!retryableSaveError(cloudSaveError))return;
+ const scope=account+':'+epoch;
+ if(cloudSaveRetryScope!==scope){clearCloudSaveRetry(true);cloudSaveRetryScope=scope}
+ if(cloudSaveRetryTimer!==null)return;
+ const delay=Math.min(120000,15000*2**Math.min(3,cloudSaveRetryCount++));
+ cloudSaveRetryTimer=setTimeout(async()=>{
+  cloudSaveRetryTimer=null;
+  if(account!==authUser?.id||epoch!==authEpoch){clearCloudSaveRetry(true);return}
+  if(document.hidden||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+   scheduleCloudSaveRetry(account,epoch);return;
+  }
+  if(canSaveLearning()&&cloudSavePending)await cloudSave();
+ },delay);
+ cloudSaveRetryTimer?.unref?.();
+}
 function renderSaveStatus(){
  if(!cloudSaveError)return;
  const code=String(cloudSaveError.code||cloudSaveError.name||'');
@@ -13,6 +38,7 @@ async function cloudSave(silent=true){
  cloudSavePending=true;
  if(cloudSaveTask)return cloudSaveTask;
  const account=authUser.id,epoch=authEpoch;
+ clearCloudSaveRetry();
  // Defer the body until after task assignment. An unchanged save used to leave
  // an already-resolved task here forever, silently suppressing later writes.
  cloudSaveTask=Promise.resolve().then(async()=>{
@@ -23,7 +49,7 @@ async function cloudSave(silent=true){
     cloudSavePending=false;state.updatedAt=Date.now();localSave();
     const snapshot=JSON.parse(JSON.stringify(state));
     const operations=cloudBaseline?learningPatch(cloudBaseline,snapshot):null;
-    if(operations&&!operations.length){cloudSaveError=null;$('cloudPill').textContent='클라우드 저장됨';$('cloudPill').classList.add('on');break}
+    if(operations&&!operations.length){cloudSaveError=null;clearCloudSaveRetry(true);$('cloudPill').textContent='클라우드 저장됨';$('cloudPill').classList.add('on');break}
     let response;
     try{
      let request=operations?sb.rpc('save_learning_patch',{p_operations:operations}):sb.from('app_state').upsert({user_id:account,state:snapshot,updated_at:new Date().toISOString()});
@@ -37,10 +63,11 @@ async function cloudSave(silent=true){
      cloudSavePending=true;renderSaveStatus();
      console.warn(JSON.stringify({event:'learning_save_failed',code:String(error.code||error.name||'unknown').slice(0,60),operations:operations?.length||0}));
      if(error.message?.includes('LEARNING_STATE_REGRESSION')){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('다른 기기의 최신 기록을 보호했어요. 기기의 답안도 보관했습니다. 기록 다시 불러오기를 눌러 주세요.',true);syncAuthControls()}
+     scheduleCloudSaveRetry(account,epoch);
      if(!silent)alert('학습 기록을 아직 서버에 저장하지 못했어요. 기기의 기록은 보관되어 있습니다.');
      return false;
     }
-    cloudBaseline=snapshot;$('cloudPill').textContent='클라우드 저장됨';$('cloudPill').classList.add('on');
+    cloudBaseline=snapshot;clearCloudSaveRetry(true);$('cloudPill').textContent='클라우드 저장됨';$('cloudPill').classList.add('on');
    }while(cloudSavePending&&authUser?.id===account&&epoch===authEpoch);
    return !cloudSaveError&&!cloudSavePending;
   }finally{saving=false;cloudSaveTask=null}
@@ -158,6 +185,6 @@ export function patchDailyRecovery(source){
  source=source.slice(0,renderBegin)+fn.slice(0,brace)+' renderDayChoice(saved);renderSaveStatus();\n'+fn.slice(brace)+source.slice(renderEnd);
  replace("if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';", "if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';\n renderDayChoice(saved);");
  replace("'클라우드 연결';$('cloudPill').classList.add('on');\n }\n}\nfunction renderQuestion", "'클라우드 연결';$('cloudPill').classList.add('on');renderSaveStatus();\n }\n}\nfunction renderQuestion");
- source+="\nwindow.addEventListener('online',()=>{if(canSaveLearning()&&cloudSavePending)cloudSave()});\nsetInterval(()=>{if(!document.hidden&&$('home')?.classList.contains('active'))renderDayChoice()},60000);\n";
+ source+="\nwindow.addEventListener('online',()=>{if(canSaveLearning()&&cloudSavePending&&retryableSaveError(cloudSaveError))cloudSave()});\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden&&canSaveLearning()&&cloudSavePending&&retryableSaveError(cloudSaveError))cloudSave()});\nsetInterval(()=>{if(!document.hidden&&$('home')?.classList.contains('active'))renderDayChoice()},60000);\n";
  return source;
 }
