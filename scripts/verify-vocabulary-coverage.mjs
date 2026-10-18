@@ -41,7 +41,7 @@ const started={difficulty:7.4,words:{누락어0:{seen:2,introducedAt:'2026-09-01
 const selection=selectDailyTargets(small,started,day);
 assert.equal(selection.newWords.length,5);assert.deepEqual(selection.coverage.words,['누락어1','누락어2'],'future-due old vocabulary is deferred while an unseen lower word begins');
 const pending=buildDailyPlan(selection.newWords,selection.reviewWords,w=>started.words[w],started.difficulty).filter(isCoveragePlan);
-assert.equal(pending.length,2);assert.ok(pending.every(p=>p.levelEligible===false&&p.type==='subjective_use'&&p.needsCard===!p.review),'unseen lower target is taught before usage; old due target remains a review');
+assert.equal(pending.length,2);assert.ok(pending.every(p=>p.levelEligible===false&&p.needsCard===!p.review&&(p.review?p.type==='subjective_use':p.type==='mc_usage')),'unseen lower target starts with a taught choice before its own-sentence requirement; due targets use recall/use review');
 assert.ok(pending.every(p=>nextUsagePlan(p,[{word:p.w.w,type:'subjective_use',credit:0}],20).coveragePolicy===COVERAGE_POLICY));
 assert.equal(usageCompleted([{word:'누락어0',type:'mc_usage',credit:1,contextSuccess:true}]).size,0);
 const reserve=selectDailyTargets(small,started,day,{reviewOnly:true});assert.equal(reserve.newWords.length,0);assert.equal(reserve.reviewWords.length,1,'review-only does not prematurely introduce unseen words');
