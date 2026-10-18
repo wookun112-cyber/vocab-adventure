@@ -1580,7 +1580,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  st.mastered=st.streak>=5&&st.days.length>=3&&st.contextKeys.length>=3&&(st.independentCorrect||0)>=5&&(st.targetRecall||0)>=2&&st.recallDays.length>=2;
  if(session.model!==LEARNING_MODEL&&!newer)scheduleReview(st,{credit,independent,revealed,hintUsed},answerDay);
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
- const rec={rawAnswer:meta.rawAnswer??normalized,feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt,studyDate:answerDay};
+ const rec={rawAnswer:meta.rawAnswer??normalized,inputAtReveal:meta.inputAtReveal||'',submissionAction:meta.submissionAction||(meta.gradingJobId?'graded':'direct'),feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt,studyDate:answerDay};
  rec.levelEligible=session.preparation?.plans[current]?.levelEligible!==false&&!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
  if(session.preparation?.plans[current]?.realtimeProbe&&!st.introducedAt)st.introducedAt=answerDay;
  if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec,answerDay);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec,answerDay);rec.evidence=evidence}
@@ -1620,6 +1620,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  }
  if(copiedExample)feedback='예문을 활용한 연습은 잘했어요. 이번에는 다른 내용으로 나만의 문장을 만들어 보세요.';
  const full=credit>=.99&&!hintUsed&&!copiedExample,partial=credit>0&&!full;
+ const assistedCorrect=hintUsed&&contextSuccess&&credit>0&&!copiedExample;
  $('feedback').className='feedback '+(full?'good':credit<=0?'bad':'');
  const sentenceUse=q.type==='subjective_use',correctOption=q.opts?.find(o=>o.ok);
  const example=sentenceUse?String(meta.exampleAnswer||((credit>=1&&contextSuccess)?normalized||$('answer').value:'')||q.learningCard?.example||q.w.example||'').trim():'';
@@ -1627,7 +1628,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const answerLabel=sentenceUse?(example?'자연스러운 표현 예':'목표 어휘의 뜻'):'정답';
  const answerText=sentenceUse?(example||q.w.d):(correctOption?.t||q.answerForm||q.w.w);
  const notes=(levelCheck?.change?'<small>출제 난이도 '+levelCheck.from.toFixed(1)+' → '+levelCheck.to.toFixed(1)+' · '+escapeHtml(levelCheck.reason)+'</small>':'')+(rec.stars?'<small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(full&&contextSuccess&&!targetRecall&&!q.showTarget?'<small>문맥에 맞는 답이에요. 목표 단어를 떠올렸는지는 따로 기록해요.</small>':'')+(practiceOnly&&full?'<small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
- $('feedback').innerHTML='<strong class="feedback-result">'+(copiedExample?'따라 쓰기 연습':full?'○ 잘했어요!':partial?'△ 부분 이해':'× 다시 살펴봐요')+'</strong><p class="feedback-word"><strong>'+escapeHtml(q.w.w)+'</strong> · '+escapeHtml(q.w.d)+'</p><section class="feedback-answer"><h3>'+answerLabel+'</h3><p>'+escapeHtml(answerText)+'</p></section><section class="feedback-explanation"><h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>'+(notes?'<div class="feedback-details">'+notes+'</div>':'');
+ $('feedback').innerHTML='<strong class="feedback-result">'+(copiedExample?'따라 쓰기 연습':full?'○ 잘했어요!':partial?(assistedCorrect?'○ 힌트로 맞혔어요':'△ 부분 이해'):'× 다시 살펴봐요')+'</strong><p class="feedback-word"><strong>'+escapeHtml(q.w.w)+'</strong> · '+escapeHtml(q.w.d)+'</p><section class="feedback-answer"><h3>'+answerLabel+'</h3><p>'+escapeHtml(answerText)+'</p></section><section class="feedback-explanation"><h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>'+(notes?'<div class="feedback-details">'+notes+'</div>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  checkpointSession();localSave();cloudSave();
  if(levelCheck?.change)prefetchStudyTopups(session);
@@ -1650,10 +1651,10 @@ async function gradeCurrent(dontKnow){
  if(stopAtDailyLimit())return;
  const active=session,q=presentWrittenQuestion(active.queue[current]);if(active.waitingForGrading||active.results.length>current||!$('next').classList.contains('hidden'))return;
  const hintUsed=hintLevel>0;
- if(dontKnow){
+ if(dontKnow===true){
    const clue=q.feedbackCorrect||('정답은 “'+q.w.w+'”입니다.');
    applyResult(q,'×',clue+' 정답을 본 뒤 따라 쓰는 것은 숙달로 계산하지 않아요.','',{
-     credit:0,contextSuccess:false,targetRecall:false,independent:false,hintUsed,revealed:true,meaningUnknown:q.type!=='subjective_use'&&!hintUsed
+     credit:0,contextSuccess:false,targetRecall:false,independent:false,hintUsed,revealed:true,inputAtReveal:$('answer').value,submissionAction:'reveal',meaningUnknown:q.type!=='subjective_use'&&!hintUsed
    });
    return;
  }
@@ -1718,6 +1719,9 @@ async function requestGrade(job,timeout=25000,pollOnly=false){
  return value;
 }
 function applyGradedAnswer(q,graded,job){
+ // A delayed/cached AI result cannot override an exact headword answer.
+ const entered=normalizeTyped(job.answer),exact=q.type!=='subjective_use'&&!q.opts?.length&&entered&&[q.w.w,q.answerForm].filter(Boolean).some(w=>normalizeTyped(w)===entered);
+ if(exact)graded={...graded,score:1,result:'○',contextSuccess:true,targetRecall:true,normalizedAnswer:job.answer,feedback:q.feedbackCorrect||'입력한 답이 정답 어휘와 일치해요.',copiedExample:false,gradingMethod:'exact_word_recovery'};
  const credit=Number(graded.score),result=credit===1?'○':credit===.5?'△':'×';
  applyResult(q,result,graded.feedback||q.feedbackCorrect,graded.normalizedAnswer||job.answer,{credit,contextSuccess:Boolean(graded.contextSuccess),targetRecall:q.type==='subjective_use'?false:Boolean(graded.targetRecall),
   independent:credit===1&&!job.hintUsed,hintUsed:job.hintUsed,revealed:false,copiedExample:graded.copiedExample===true,rawAnswer:job.answer,exampleAnswer:graded.exampleAnswer,gradingJobId:job.id,submittedAt:job.submittedAt,submittedDay:job.submittedDay});
