@@ -24,7 +24,7 @@ assert.equal(add(l,a,[row('규범',5),row('책무',5),row('합의',5)]).change,.
 const resultPrefix=JSON.stringify(a.results),saved=structuredClone(a),restarted=structuredClone(l);
 assert.equal(observeRealtimeLevel(restarted,saved),null);assert.equal(JSON.stringify(saved.results),resultPrefix);assert.equal(restarted.difficulty,5.3);
 const final=updateLearningLevels(l,a.results,day,{lessonId:a.lessonId,active:a});
-assert.equal(final.policy,REALTIME_LEVEL_POLICY);assert.equal(final.change,1.3);assert.equal(l.leagueLevel,5.3);assert.equal(l.difficulty,5.3,'completion adds no second adjustment');
+assert.equal(final.policy,REALTIME_LEVEL_POLICY);assert.equal(final.change,0,'first-day rapid task promotion is not a long-term ability gain');assert.equal(final.taskLevelAfter,5.3);assert.equal(l.leagueLevel,4);assert.equal(l.difficulty,4.8,'the next task band is softly centered on the stable baseline');
 updateLearningLevels(l,a.results,day,{lessonId:a.lessonId,active:a});assert.equal(l.levelAdjustmentHistory.length,1);
 
 // Repeated practice, exposed answers, easy old words and ungraded work never
@@ -52,7 +52,7 @@ const old=lesson();old.results=['관점','해석','반박'].map(w=>row(w));l=lea
 assert.equal(observeRealtimeLevel(l,old),null);assert.equal(l.difficulty,4,'upgrade never regrades an old prefix');
 const local=structuredClone(restarted),remote={...learner(4),gradeBackfill:{id:'new-parent-marker',date:day},levelAdjustmentHistory:[]};
 local.levelAdjustmentHistory=[final];local.sessions=[];
-assert.equal(reconcileLevelBackfill(remote,local).difficulty,5.3,'new parent marker retains a valid fast completion delta');
+assert.equal(reconcileLevelBackfill(remote,local).difficulty,4,'parent backfill must replay only earned stable deltas, not task swings');
 assert.equal(realtimeTargetBand(4,0),5);assert.equal(realtimeTargetBand(4,1),4);assert.equal(realtimeTargetBand(4,2,true),5);assert.equal(realtimeTargetBand(9,0,true),9);
 
 // Every neighboring-band probe and its retry alternatives are fixed-bank
@@ -125,6 +125,6 @@ assert.equal(f.run('session.results.slice(3,6).every(r=>r.levelEligible&&!r.prac
 assert.equal(f.run('session.results.slice(3,6).every(r=>child().words[r.word].introducedAt===today())'),true);
 assert.ok(f.requests.every(url=>url==='/api/study-topups'),'transitions continue from cached prompts even when background bank downloads fail');
 f.run("pauseLearningClock();session.activeMs=25*60000;session.studyDays={[today()]:{activeMs:session.activeMs,timeKnown:true}};session.results.push(...session.baseWords.map(w=>({word:w.w,type:'subjective_use',band:w.band,result:'○',credit:1,contextSuccess:true,remedial:true})));current=session.results.length;session.target=current;finishSession()");
-assert.equal(f.run('child().difficulty'),4.8);assert.equal(f.run('child().leagueLevel'),4.8);assert.equal(f.run('child().sessions.length'),1);
+assert.equal(f.run('child().difficulty'),4.8);assert.equal(f.run('child().leagueLevel'),4);assert.equal(f.run('child().sessions.length'),1);
 f.run('finishSession()');assert.equal(f.run('child().sessions.length'),1);assert.equal(f.run('child().activeLesson'),null);
 console.log('Realtime levels verified: three-word .3/.5 promotion, supported-band ceiling, distinct meaning failures, no choice/feedback/typing-error inflation, delayed league finalization, idempotent restart/completion, parent reconciliation, fixed neighboring-bank probes, unchanged prefix/input, five-new budget and instantaneous client transitions.');
