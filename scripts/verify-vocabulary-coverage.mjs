@@ -20,9 +20,9 @@ assert.equal(JSON.stringify(l),before);assert.equal(first.newWords.length,5);ass
 assert.equal(first.coverage.remaining,12);assert.ok(first.newWords.slice(0,2).every(w=>w.band===2));
 l.difficulty=8.9;assert.equal(lowerVocabularyBacklog(small,l).length,12,'rapid promotion retains every lower target');
 let batches=0;const completed=new Set();
-while(lowerVocabularyBacklog(small,l).length){
+while(completed.size<12){
  const selection=selectDailyTargets(small,l,model.dateAfter(day,batches)),targets=selection.newWords.filter(w=>w.coveragePolicy===COVERAGE_POLICY);
- assert.equal(targets.length,Math.min(2,12-completed.size));
+ assert.ok(targets.length>=1&&targets.length<=2,'each day introduces missed lower-band vocabulary while due reviews share slots');
  for(const w of targets){
   assert.ok(!completed.has(w.w));l.words[w.w]={seen:5,correct:5,introducedAt:day};
   assert.equal(vocabularyUsageConfirmed(l,w.w),false,'cards and choice answers are not completion');
@@ -33,17 +33,18 @@ while(lowerVocabularyBacklog(small,l).length){
   recordLearningEvidence(l,l.words[w.w],{w,type:'subjective_use',showTarget:true},{credit:1,contextSuccess:true});
   assert.equal(vocabularyUsageConfirmed(l,w.w),true);completed.add(w.w);
  }
- assert.ok(++batches<=6);
+ assert.ok(++batches<=12,'one new lower-band word daily eventually reaches every missed word');
 }
 assert.equal(completed.size,12);assert.ok(!completed.has('아기'));
+assert.equal(lowerVocabularyBacklog(small,l).length,12,'a single correct sentence still needs long-term recall for mastery');
 const started={difficulty:7.4,words:{누락어0:{seen:2,introducedAt:'2026-09-01',nextReviewAt:'2099-01-01'},누락어1:{seen:1,introducedAt:'2026-09-02'}}};
 const selection=selectDailyTargets(small,started,day);
-assert.equal(selection.newWords.length,5);assert.deepEqual(selection.coverage.words,['누락어0','누락어1']);
+assert.equal(selection.newWords.length,5);assert.deepEqual(selection.coverage.words,['누락어1','누락어2'],'future-due old vocabulary is deferred while an unseen lower word begins');
 const pending=buildDailyPlan(selection.newWords,selection.reviewWords,w=>started.words[w],started.difficulty).filter(isCoveragePlan);
-assert.equal(pending.length,2);assert.ok(pending.every(p=>p.review&&p.practiceOnly&&!p.needsCard&&p.type==='subjective_use'));
+assert.equal(pending.length,2);assert.ok(pending.every(p=>p.levelEligible===false&&!p.needsCard&&p.type==='subjective_use'));
 assert.ok(pending.every(p=>nextUsagePlan(p,[{word:p.w.w,type:'subjective_use',credit:0}],20).coveragePolicy===COVERAGE_POLICY));
 assert.equal(usageCompleted([{word:'누락어0',type:'mc_usage',credit:1,contextSuccess:true}]).size,0);
-const reserve=selectDailyTargets(small,started,day,{reviewOnly:true});assert.equal(reserve.newWords.length,0);assert.equal(reserve.reviewWords.length,2);
+const reserve=selectDailyTargets(small,started,day,{reviewOnly:true});assert.equal(reserve.newWords.length,0);assert.equal(reserve.reviewWords.length,1,'review-only does not prematurely introduce unseen words');
 
 // The actual worker supplies a fully bank-backed packet, and extra study can
 // keep covering lower gaps without generating passages or changing records.
