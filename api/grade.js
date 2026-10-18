@@ -1,3 +1,4 @@
+import {exactWordGrade} from '../lib/server/exact-word-grade.js';
 import {waitUntil} from '@vercel/functions';
 import {createGradeDelivery} from '../lib/server/grade-delivery.js';
 import {requireGradingAccount,authorizeGradeTask} from '../lib/server/grade-access.js';
@@ -171,7 +172,7 @@ export async function gradeRPC(auth,name,args,timeout=2500){
 let reliableDelivery=null;
 export default async function handler(req,res){
  res.setHeader?.('Cache-Control','private, no-store');
- if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,keepAlive:waitUntil});
+ if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,deterministicGrade:exactWordGrade,keepAlive:waitUntil});
  const started=Date.now();let code=200;
  const response={status(n){code=n;res.status(n);return this},json(value){console.info(JSON.stringify({event:'vocab_grade_delivery',status:code,code:value.code||null,cached:value.cached===true,cachePending:value.cachePending===true,elapsedMs:Date.now()-started}));return res.json(value);}};
  return reliableDelivery(req,response);

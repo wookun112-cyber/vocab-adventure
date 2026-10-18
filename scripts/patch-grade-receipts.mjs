@@ -3,7 +3,7 @@ export function patchGradeReceipts(source){
  replace("async function requestGrade(job,timeout=25000,pollOnly=false){",String.raw`
 function gradeReceiptKey(payload){
  // Local lookup only. The server verifies its own HMAC, account and full task hash.
- return JSON.stringify([payload.taskType,payload.targetWord,payload.definition,payload.question,payload.answer,payload.source,payload.readerLevel,payload.acceptedAnswers,payload.allowNaturalDerivations,payload.gradingContext||'']);
+ return JSON.stringify([payload.taskType,payload.targetWord,payload.definition,payload.question,payload.answer,payload.source,payload.readerLevel,payload.acceptedAnswers,payload.allowNaturalDerivations,payload.gradingContext||'',...(payload.gradingPolicy?[payload.gradingPolicy]:[])]);
 }
 async function requestGrade(job,timeout=25000,pollOnly=false){
  if(job.receivedGrade&&[0,.5,1].includes(job.receivedGrade.score))return job.receivedGrade;
