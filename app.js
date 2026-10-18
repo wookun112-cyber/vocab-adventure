@@ -1644,7 +1644,7 @@ function showHint(){
  if(hintLevel>=hints.length)$('hint').disabled=true;
  checkpointSession();localSave();cloudSave();
 }
-const normalizeTyped=s=>String(s||'').replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
+const normalizeTyped=s=>String(s||'').normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[\s"'“”‘’.,!?()\[\]{}]/g,'').trim();
 
 async function gradeCurrent(dontKnow){
  if(stopAtDailyLimit())return;
@@ -1686,7 +1686,7 @@ async function gradeCurrent(dontKnow){
  }
  const job={id:active.lessonId+':'+current+':'+Date.now(),index:current,word:q.w.w,answer,source:answerSource,hintUsed,
   submittedAt:Date.now(),submittedDay:today(),status:'pending',attempts:0,nextRetryAt:0,
-  payload:{taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'&&!q.authored?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
+  payload:{gradingPolicy:'meaning-first-20261018',taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'&&!q.authored?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
    question:q.q+'\n지문: '+q.ctx,targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,acceptedAnswers:q.acceptedAnswers||[],allowNaturalDerivations:q.allowNaturalDerivations||[],previousExamples:wordState(q.w.w).shownExamples||[],answer,source:answerSource}};
  active.gradingQueue=active.gradingQueue||[];active.gradingQueue.push(job);
  checkpointSession();localSave();cloudSave();

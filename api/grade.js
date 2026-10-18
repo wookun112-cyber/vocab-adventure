@@ -80,7 +80,22 @@ ${question}
 반드시 JSON만 출력:
 {"normalizedAnswer":"...","result":"◎|○|△|?|×","score":0.0,"contextSuccess":false,"targetRecall":false,"feedback":"...","correctionApplied":false,"correctionNote":"..."}`;
 
-  const feedbackPrompt=prompt+`\n채점 뒤 보여주는 표현 예: exampleAnswer는 sentence_use에서만 작성하고 다른 과제는 빈 문자열로 반환합니다. 문장 사용이 정확하면 학생 문장을 그대로 쓰되 명백한 오타만 바로잡으세요. 부족한 문장이면 목표 어휘의 뜻과 쓰임이 드러나도록 자연스럽게 다듬은 짧은 문장 하나를 주세요. 단어만 쓴 답은 현재 어휘력 수준에 맞는 평범한 생활 문장 하나로 예를 들어 주세요. 새로운 역사·과학 사실이나 숨은 조건은 추가하지 마세요. 이 예문은 학생 답을 채점한 뒤에 보여줄 참고 자료이며, 학생의 normalizedAnswer·score·contextSuccess를 예문에 맞춰 바꾸지 마세요.`;
+  const usageRubric=sentenceMode?`
+[어휘 사용 판정 — 글쓰기 교정과 분리]
+먼저 학생 원문의 의미를 평가하고 usageAssessment를 작성하세요. 더 좋은 예문과 비교하여 감점하지 마세요.
+- meaning: correct(해당 뜻으로 알맞게 사용), unclear(뜻 일부만 드러나거나 판단할 맥락 부족), incorrect(뜻을 반대로 쓰거나 명백한 오용).
+- target: present(목표어·자연스러운 활용형·허용 파생형 포함, 뜻이 명확한 경미한 오타 포함), missing(목표어가 없음).
+- expression: complete(하나의 생각이 전달됨), incomplete(단어 나열 또는 서술이 끊겨 생각을 전달하지 못함). 사소한 조사·띄어쓰기·맞춤법 오류만으로 incomplete로 판단하지 마세요.
+- issue: none, form_only(뜻은 맞고 표현만 다듬을 수 있음), meaning_error, insufficient_meaning.
+중요: 정의를 문장 안에서 풀어 설명하거나 이유·효능·원리·구체적 사례를 덧붙일 의무는 없습니다. 자연스러운 일반 문장도 정답입니다.
+예: ‘엄마가 나에게 항생제를 먹으라고 했다’는 항생제의 효능 설명이 없어도 correct/present/complete이며 score 1입니다. 세균이라는 말을 추가하라고 감점하지 마세요.
+예: ‘학교 도서관에서 사전을 빌렸다’는 사전의 정의를 설명하지 않아도 score 1입니다.
+예: ‘이곳에서 저곳에 거리는 일정하다’는 조사 ‘에/의’를 다듬을 수 있지만 의미와 용법이 맞으므로 correct/present/complete, issue=form_only, score 1입니다.
+예: ‘비가 와서 우산을 펼쳤다’는 ‘펼치다’를 자연스럽게 활용했으므로 score 1입니다.
+반례: ‘항생제로 바이러스를 없앴다’처럼 목표 뜻을 명백히 오해한 문장은 incorrect입니다. ‘항생제’, ‘바탕 객관적’ 같은 단어 나열은 incomplete입니다. 목표어 없이 뜻만 쓴 답은 target=missing입니다.
+meaning=correct, target=present, expression=complete이면 반드시 score 1, result=○, contextSuccess=true입니다. form_only 교정은 correctionNote에만 적고 feedback에서도 정답임을 분명히 하세요. unclear 또는 incomplete는 0.5, incorrect 또는 missing은 0입니다.
+`:'';
+  const feedbackPrompt=prompt+usageRubric+`\n채점 뒤 보여주는 표현 예: exampleAnswer는 sentence_use에서만 작성하고 다른 과제는 빈 문자열로 반환합니다. 문장 사용이 정확하면 학생 문장을 그대로 쓰되 명백한 오타만 바로잡으세요. 부족한 문장이면 목표 어휘의 뜻과 쓰임이 드러나도록 자연스럽게 다듬은 짧은 문장 하나를 주세요. 단어만 쓴 답은 현재 어휘력 수준에 맞는 평범한 생활 문장 하나로 예를 들어 주세요. 새로운 역사·과학 사실이나 숨은 조건은 추가하지 마세요. 이 예문은 학생 답을 채점한 뒤에 보여줄 참고 자료이며, 학생의 normalizedAnswer·score·contextSuccess를 예문에 맞춰 바꾸지 마세요.`;
   const scoreSchema=contextMode
     ?{type:'number',enum:[0,0.5,1]}
     :{type:'number',minimum:0,maximum:1};
@@ -100,13 +115,17 @@ ${question}
     required:['normalizedAnswer','result','score','contextSuccess','targetRecall','feedback','exampleAnswer','correctionApplied','correctionNote'],
     additionalProperties:false
   };
+  if(sentenceMode){
+    schema.properties.usageAssessment={type:'object',properties:{meaning:{type:'string',enum:['correct','unclear','incorrect']},target:{type:'string',enum:['present','missing']},expression:{type:'string',enum:['complete','incomplete']},issue:{type:'string',enum:['none','form_only','meaning_error','insufficient_meaning']}},required:['meaning','target','expression','issue'],additionalProperties:false};
+    schema.required.push('usageAssessment');
+  }
   const model=process.env.OPENAI_MODEL||'gpt-6-luna';
   const r=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
     signal:AbortSignal.timeout(22000),
     body:JSON.stringify({
-      model,reasoning:{effort:'low'},max_output_tokens:500,input:feedbackPrompt,
+      model,reasoning:{effort:'low'},max_output_tokens:650,input:feedbackPrompt,
       text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
     })
   });
@@ -121,6 +140,14 @@ ${question}
   }));
   const graded=JSON.parse(extractText(response).trim());
   if(![0,.5,1].includes(graded.score))throw new Error('Invalid grade response');
+  if(sentenceMode&&graded.usageAssessment){
+    const a=graded.usageAssessment;
+    if(!['correct','unclear','incorrect'].includes(a.meaning)||!['present','missing'].includes(a.target)||!['complete','incomplete'].includes(a.expression))throw Error('Invalid usage assessment');
+    const previousScore=graded.score;
+    graded.score=a.target==='missing'||a.meaning==='incorrect'?0:a.meaning==='correct'&&a.expression==='complete'?1:.5;
+    graded.result=graded.score===1?'○':graded.score===.5?'△':'×';
+    if(graded.score===1&&previousScore!==1)graded.feedback='목표 어휘를 문장에 알맞게 사용했어요.';
+  }else if(sentenceMode&&payload.gradingPolicy==='meaning-first-20261018')throw Error('Missing usage assessment');
   graded.copiedExample=sentenceMode&&copiedUsageExample(answer,payload.previousExamples||[]);
   if(sentenceMode){
     const compact=s=>String(s).normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,'');
