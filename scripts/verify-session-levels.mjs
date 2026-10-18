@@ -6,7 +6,7 @@ const learner=()=>({difficulty:2,leagueLevel:2,words:{협력:{seen:12}},learning
 for(const [score,delta] of [[100,.2],[90,.2],[89,.1],[80,.1],[79,0],[60,0],[59,-.1],[40,-.1],[39,-.2],[0,-.2]]){
  const l=learner(),before=JSON.stringify({words:l.words,evidence:l.learningEvidence});
  const a=updateLearningLevels(l,rows(score),day,{lessonId:'score-'+score});
- assert.equal(a.change,delta);assert.equal(l.difficulty,Number((2+delta).toFixed(1)));assert.equal(l.leagueLevel,l.difficulty);
+ assert.equal(a.change,0,'a first-day assessment does not alter stable grade');assert.equal(a.taskLevelAfter,Number((2+delta).toFixed(1)));assert.equal(l.difficulty,Number((2+delta).toFixed(1)));assert.equal(l.leagueLevel,2);
  assert.equal(a.score,score);assert.equal(a.samples,20);assert.equal(a.policy,SESSION_LEVEL_POLICY);
  assert.equal(JSON.stringify({words:l.words,evidence:l.learningEvidence}),before,'grade changes cannot invent mastery or delayed-recall evidence');
 }
@@ -25,7 +25,7 @@ assert.equal(reopened.difficulty,2.2,'stored completion IDs survive restart');
 const hinted=learner();updateLearningLevels(hinted,rows(100).map(r=>({...r,hintUsed:true})),day,{lessonId:'hinted'});
 assert.equal(hinted.lastLevelAdjustment.score,75);assert.equal(hinted.difficulty,2);
 const revealed=learner();updateLearningLevels(revealed,rows(100).map(r=>({...r,revealed:true})),day,{lessonId:'revealed'});
-assert.equal(revealed.lastLevelAdjustment.score,0);assert.equal(revealed.difficulty,1.8);
+assert.equal(revealed.lastLevelAdjustment.score,0);assert.equal(revealed.difficulty,2,'retired band one cannot become the automatic task level');
 const early=learner();updateLearningLevels(early,rows(100,5),day,{lessonId:'short'});
 assert.equal(early.difficulty,2.1,'short sessions contribute less than twenty activities');
 const advanced={...learner(),difficulty:7.4,leagueLevel:7.4};
@@ -35,7 +35,7 @@ updateLearningLevels(advanced,rows(100,20,7),day,{lessonId:'advanced'});assert.e
 const excluded=learner();updateLearningLevels(excluded,rows(0).map(r=>({...r,excludedFromVocabulary:true})),day,{lessonId:'skipped'});
 assert.equal(excluded.difficulty,2);assert.equal(excluded.lastLevelAdjustment.samples,0);
 const upper={...learner(),difficulty:9,leagueLevel:9};updateLearningLevels(upper,rows(100,20,9),day,{lessonId:'upper'});assert.equal(upper.difficulty,9);
-const lower={...learner(),difficulty:1,leagueLevel:1};updateLearningLevels(lower,rows(0,20,1),day,{lessonId:'lower'});assert.equal(lower.difficulty,1);
+const lower={...learner(),difficulty:1,leagueLevel:1};updateLearningLevels(lower,rows(0,20,1),day,{lessonId:'lower'});assert.equal(lower.difficulty,2,'minimum currently supported vocabulary band is two');
 const oldState=learner();oldState.lastTeachingAdjustment=day;oldState.lastLeagueAdjustment=day;
 updateLearningLevels(oldState,rows(100),day,{lessonId:'migrated'});assert.equal(oldState.difficulty,2.2,'old daily locks cannot stop the new policy');
 const st={lastExposureAt:day};const practice=rows(100)[0];
@@ -48,9 +48,9 @@ assert.equal(merged.difficulty,2.6);assert.equal(merged.leagueLevel,2.6);assert.
 assert.equal(merged.gradeBackfill.id,'backfill');
 updateLearningLevels(stale,rows(100),day,{lessonId:'local-completion'});
 const extended=reconcileLevelBackfill(backfilled,stale);
-assert.equal(extended.difficulty,2.8,'an unsynchronized completion follows the retroactive grade once');
+assert.equal(extended.difficulty,2.6,'unverified first-day task swing is not reapplied to a parent-adjusted stable grade');
 assert.equal(extended.levelAdjustmentHistory.length,2);
-assert.equal(reconcileLevelBackfill(backfilled,extended).difficulty,2.8,'restart cannot reapply the backfill');
+assert.equal(reconcileLevelBackfill(backfilled,extended).difficulty,2.6,'restart cannot reapply the stable parent backfill');
 
 const narrow=learner();updateLearningLevels(narrow,rows(100).map(r=>({...r,word:'협력'})),day,{lessonId:'one-word'});
 assert.equal(narrow.difficulty,2,'twenty repetitions of one word cannot establish a broader ability change');
