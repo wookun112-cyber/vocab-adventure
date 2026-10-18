@@ -6,7 +6,7 @@ const learner=()=>({difficulty:2,leagueLevel:2,words:{협력:{seen:12}},learning
 for(const [score,delta] of [[100,.2],[90,.2],[89,.1],[80,.1],[79,0],[60,0],[59,-.1],[40,-.1],[39,-.2],[0,-.2]]){
  const l=learner(),before=JSON.stringify({words:l.words,evidence:l.learningEvidence});
  const a=updateLearningLevels(l,rows(score),day,{lessonId:'score-'+score});
- assert.equal(a.change,0,'a first-day assessment does not alter stable grade');assert.equal(a.taskLevelAfter,Number((2+delta).toFixed(1)));assert.equal(l.difficulty,Number((2+delta).toFixed(1)));assert.equal(l.leagueLevel,2);
+ assert.equal(a.change,0,'a first-day assessment does not alter stable grade');assert.equal(a.taskLevelAfter,Math.max(2,Number((2+delta).toFixed(1))));assert.equal(l.difficulty,Math.max(2,Number((2+delta).toFixed(1))));assert.equal(l.leagueLevel,2);
  assert.equal(a.score,score);assert.equal(a.samples,20);assert.equal(a.policy,SESSION_LEVEL_POLICY);
  assert.equal(JSON.stringify({words:l.words,evidence:l.learningEvidence}),before,'grade changes cannot invent mastery or delayed-recall evidence');
 }
