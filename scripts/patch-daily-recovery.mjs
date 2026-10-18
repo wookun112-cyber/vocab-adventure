@@ -1,6 +1,7 @@
 // Applied to the same effective browser source that is exercised by release tests.
 export const reliableSaveSource=String.raw`
-let cloudSaveError=null,cloudSaveRetryTimer=null,cloudSaveRetryCount=0,cloudSaveRetryScope='';
+let cloudSaveError=null;
+let cloudSaveRetryTimer=null,cloudSaveRetryCount=0,cloudSaveRetryScope='';
 function clearCloudSaveRetry(reset=false){
  if(cloudSaveRetryTimer!==null)clearTimeout(cloudSaveRetryTimer);
  cloudSaveRetryTimer=null;
