@@ -213,7 +213,7 @@ console.log('Cumulative daily minimum/maximum verified across separate sessions.
 const settled=fixture({elapsed:1799000});
 settled.run('initRealtimeLevel(child(),session);child().leagueLevel=3;child().difficulty=3.5;');
 settled.advance(1000);
-assert.equal(settled.run('child().leagueLevel'),3.5);
+assert.equal(settled.run('child().leagueLevel'),3,'time-limit settlement cannot transfer a one-day task swing into the stable baseline');
 assert.equal(settled.run('child().learningDays'),1);
 assert.equal(settled.run('child().sessions.length'),1);
 assert.equal(settled.run('child().sessions[0].status'),'time_limit');
