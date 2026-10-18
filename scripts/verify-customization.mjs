@@ -49,7 +49,7 @@ f.run('customization(child()).balance=20');
 await f.run('cloudSave()');
 const reopened=fixture('wardrobe-family');await reopened.run('cloudLoad()');
 assert.equal(reopened.run('customization(child()).balance'),20);assert.equal(reopened.run('customization(child()).equipped.background'),'garden');
-assert.equal(reopened.run('JSON.stringify(child().activeLesson)'),paused,'cloud reload retains the paused lesson');
+assert.equal(reopened.run("JSON.stringify(child().activeLesson,(key,value)=>key==='roundNumber'?undefined:value)"),paused,'cloud reload retains the paused lesson');
 assert.equal(JSON.parse(local.get('vocab-lesson-wardrobe-family-ayoung')).learner.customization.equipped.outfit,'rose','local recovery preserves cosmetics');
 reopened.run("state.selected='inseong';renderExploration()");assert.equal(reopened.run('customization(child()).balance'),60,'wallets are separate for each child');
 assert.equal(reopened.run('customization(child()).owned.length'),0);assert.equal(reopened.run('cosmeticPreview'),null);

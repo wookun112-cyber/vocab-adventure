@@ -82,12 +82,12 @@ const stats="JSON.stringify(child().words,(key,value)=>['__v','usedPassageKeys',
 const wordStats=f.run(stats);
 const restarted=fixture(f.local,f.cloud);
 await restarted.run('cloudLoad()');
-assert.equal(restarted.node('startDaily').textContent,'이어서 학습 · 10번째 문제');
+assert.equal(restarted.node('startDaily').textContent,'1회차 이어서 하기');
 await restarted.run('buildSession()');
 assert.equal(restarted.run('current'),9);
 assert.equal(restarted.run('child().characterId'),'fox');
 assert.equal(restarted.run('exploration(child()).xp'),earnedXp,'resuming preserves XP without re-awarding previous answers');
-assert.equal(restarted.node('counter').textContent,'10번째 문제');
+assert.equal(restarted.node('counter').textContent,'1회차 · 10번째 문제');
 assert.equal(restarted.run('session.results.length'),9);
 assert.ok(restarted.run(stats)===wordStats,'restoring cannot change answer counters or mastery evidence');
 assert.equal(restarted.run('JSON.stringify(session.queue.map(q=>q.signature))'),signatures);
@@ -197,7 +197,7 @@ assert.equal(broken.run('child().activeLesson.ready.length'),8);
 const repair=fixture(broken.local,broken.cloud);await repair.run('cloudLoad()');
 repair.run(`globalThis.recoveryRemote=${JSON.stringify({id:'recovery-job',status:'ready',payload:{...fullLesson,resumeId:fullLesson.id}})}`);
 await repair.run('buildSession()');
-assert.equal(repair.run('current'),1);assert.equal(repair.node('counter').textContent,'2번째 문제');
+assert.equal(repair.run('current'),1);assert.match(repair.node('counter').textContent,/2번째 문제$/);
 assert.equal(repair.run('session.results.length'),1);assert.equal(repair.run('session.queue.length'),20);
 assert.equal(repair.run('session.queue[0].signature'),fullLesson.ready[0][1].signature);
 assert.equal(repair.run('Object.values(child().words).reduce((n,w)=>n+w.seen,0)'),1);
@@ -218,7 +218,7 @@ legacyPartial.run("const draftPlan=child().activeLesson.plans[1];draftPlan.type=
 await legacyPartial.run('buildSession()');
 assert.ok(legacyPartial.run('session'),legacyPartial.alerts.join(' | '));
 assert.equal(legacyPartial.run('session.completionPolicy'),DAILY_POLICY);
-assert.equal(legacyPartial.run('current'),1);assert.equal(legacyPartial.node('counter').textContent,'2번째 문제');
+assert.equal(legacyPartial.run('current'),1);assert.match(legacyPartial.node('counter').textContent,/2번째 문제$/);
 assert.deepEqual(JSON.parse(legacyPartial.run('JSON.stringify(session.results)')),fullLesson.results);
 assert.equal(legacyPartial.run('child().activeLesson.pendingAnswer'),'입력하던 문장');
 legacyPartial.run('finishSession()');assert.equal(legacyPartial.run('child().sessions.length'),0);assert.ok(legacyPartial.run('child().activeLesson'));
@@ -285,7 +285,7 @@ assert.equal(lowRestart.node('qWord').textContent,'간주하다');assert.equal(l
 console.log('Actual 7.4 restart verified: old reservation task skipped without penalty or AI generation, all nine answers and original plans retained, next valid high-band question displayed with separate learner/word levels.');
 
 const creditBlocked=fixture();creditBlocked.run(`globalThis.recoveryRemote={...makeRemoteLesson(),status:'failed'};recoveryRemote.payload.preparationBlocked='ai_credit_exhausted'`);
-await creditBlocked.run('buildSession()');assert.equal(creditBlocked.run('session'),null);assert.equal(creditBlocked.calls.generation,0);assert.ok(creditBlocked.alerts.at(-1).includes('API 잔액'));assert.equal(creditBlocked.node('startDaily').textContent,'문제 생성 서비스 확인 필요');
+await creditBlocked.run('buildSession()');assert.equal(creditBlocked.run('session'),null);assert.equal(creditBlocked.calls.generation,0);assert.ok(creditBlocked.alerts.at(-1).includes('API 잔액'));assert.match(creditBlocked.node('startDaily').textContent,/회차 시작하기/);
 creditBlocked.run('preparationBlock=null;authUser=null;renderResumeButton()');
 const gradeBlocked=fixture();await gradeBlocked.run('buildSession()');
 gradeBlocked.run(`session.queue[0]={...session.queue[0],w:{w:'의견',d:'어떤 일에 대한 생각이나 판단',band:2,cat:'국어'},type:'subjective_use',open:true,showTarget:true,opts:[],acceptedAnswers:[]};session.preparation.ready.set(0,session.queue[0]);session.preparation.plans[0]={...session.preparation.plans[0],w:session.queue[0].w,type:'subjective_use'};renderQuestion();$('answer').value='내 의견은 공원으로 소풍을 가자는 거야.';fetch=async()=>({ok:false,json:async()=>({code:'ai_credit_exhausted',error:'API 잔액 소진'})})`);

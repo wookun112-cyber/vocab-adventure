@@ -57,5 +57,5 @@ while(!f.run('session.completed')){
  assert.ok(steps<180,'eventually all words must finish');
 }
 assert.ok(resumed&&steps>65);assert.equal(f.run('usageCompleted(session.results).size'),15);assert.equal(f.run('child().activeLesson'),null);assert.equal(f.run('child().sessions.length'),1);assert.ok(f.run('child().sessions[0].wrong')>0);assert.equal(f.run('studyBudget(child()).newCount'),0);
-assert.ok(f.alerts.some(x=>x.startsWith('오늘 학습을 완료 하였습니다')));assert.ok(!f.alerts.some(x=>x.includes('준비하지 못')));
+assert.ok(f.alerts.some(x=>/회차 완료/.test(x)));assert.ok(!f.alerts.some(x=>x.includes('준비하지 못')));
 console.log('Unlimited usage verified: 5 new + 10 distinct review targets; 120 failed attempts alternate types; only meaningful unhinted sentences complete words; original grades retained; actual client continues beyond 65 tasks, resumes after answers 9 and 42, pauses without completion, and finishes exactly once after 15 usage confirmations.');

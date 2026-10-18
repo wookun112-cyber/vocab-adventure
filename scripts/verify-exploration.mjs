@@ -141,7 +141,7 @@ evolutionFamily.run("equipEvolution(3);selectCharacter('dino')");await evolution
 assert.equal(evolutionFamily.run('evolutionState(child()).equippedStage'),3,'older unlocked forms remain selectable after changing characters');
 const replay=fixture('evolution-family');await replay.run('cloudLoad()');
 assert.equal(replay.run('child().characterId'),'dino');assert.equal(replay.run('evolutionState(child()).unlockedStage'),10);assert.equal(replay.run('evolutionState(child()).equippedStage'),3);
-assert.equal(replay.run('JSON.stringify(child().activeLesson)'),pendingLesson,'cloud reload preserves the paused question');
+assert.equal(replay.run("JSON.stringify(child().activeLesson,(key,value)=>key==='roundNumber'?undefined:value)"),pendingLesson,'cloud reload preserves the paused question');
 const checkpoint=JSON.parse(local.get('vocab-lesson-evolution-family-ayoung'));
 assert.equal(checkpoint.learner.characterEvolution.unlockedStage,10,'local recovery checkpoints retain the earned form');
 assert.equal((replay.node('evolutionGrid').innerHTML.match(/data-evolution=/g)||[]).length,10);
