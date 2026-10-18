@@ -2363,7 +2363,7 @@ async function loadVocabularyIndex(refresh=false){
    if(vocabularyIndex===index&&authUser?.id===account)index.error='어휘 목록을 불러오지 못했어요. 인터넷 연결을 확인하고 ‘목록 새로고침’을 눌러 주세요.';
   }finally{
    index.loading=false;index.task=null;
-   if(vocabularyIndex===index&&authUser?.id===account)renderVocabularyOverview();
+   if(vocabularyIndex===index&&authUser?.id===account){renderVocabularyOverview();if($('report')?.classList.contains('active'))renderReport()}
   }
  });
  index.task=task;return task;
