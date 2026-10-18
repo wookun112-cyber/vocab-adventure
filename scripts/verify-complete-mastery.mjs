@@ -72,7 +72,7 @@ assert.equal(masteryConfirmed(old),false);
 researchSchedule(old,failed,miss,t(0));
 assert.equal(old.nextReviewAt,t(1));
 assert.deepEqual(old.independentRecallDays,master.independentRecallDays,'failed recall must not erase past proof');
-const again={...miss,credit:1,contextSuccess:true,answeredAt:Date.parse(t(1)+'T09:00:00+09:00')};
+const again={...miss,credit:1,contextSuccess:true,targetRecall:true,answeredAt:Date.parse(t(1)+'T09:00:00+09:00')};
 const regained=recordLearningEvidence(student,old,q,again,t(1));
 assert.equal(regained.success,true);
 assert.equal(old.masteryRefreshDue,false);
