@@ -15,7 +15,7 @@ assert.ok(Object.keys(SINO_KOREAN_MEANINGS).length>=260,'enough curated teaching
 for(const [word,data] of Object.entries(SINO_KOREAN_MEANINGS)){
  assert.equal(data.word,word);
  assert.equal(data.parts.length,[...word].length,word+' has exactly one meaning for each Hangul syllable');
- assert.ok(data.meaning.length>2);
+ assert.ok(data.meaning.trim().length>=2,'concise words such as 사람 also have valid natural explanations');
  for(const [i,part] of data.parts.entries()){
   assert.equal(part.sound,[...word][i]);
   assert.ok(part.meaning.trim(),word+' has a clear meaning for '+part.sound);
