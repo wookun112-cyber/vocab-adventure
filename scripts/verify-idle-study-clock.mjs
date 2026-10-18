@@ -213,7 +213,7 @@ console.log('Cumulative daily minimum/maximum verified across separate sessions.
 const settled=fixture({elapsed:1799000});
 settled.run('initRealtimeLevel(child(),session);child().leagueLevel=3;child().difficulty=3.5;');
 settled.advance(1000);
-assert.equal(settled.run('child().leagueLevel'),3.5);
+assert.equal(settled.run('child().leagueLevel'),3,'time-limit settlement cannot transfer a one-day task swing into the stable baseline');
 assert.equal(settled.run('child().learningDays'),1);
 assert.equal(settled.run('child().sessions.length'),1);
 assert.equal(settled.run('child().sessions[0].status'),'time_limit');
@@ -230,7 +230,7 @@ closeAtCap.run('initRealtimeLevel(child(),session);child().difficulty=3.5;child(
 closeAtCap.node('answer').value='닫기 직전 작성 중';
 closeAtCap.advance(1000,false);
 closeAtCap.run('pauseLearningClock();checkpointSession()');
-assert.equal(closeAtCap.run('child().leagueLevel'),3.5);
+assert.equal(closeAtCap.run('child().leagueLevel'),3,'closing a capped lesson retains the previous long-term baseline');
 assert.equal(closeAtCap.run('child().sessions.length'),1);
 assert.equal(closeAtCap.run('child().activeLesson.pendingAnswer'),'닫기 직전 작성 중');
 // Upgrade/restart of an old un-settled checkpoint is repaired before cap guard.
@@ -240,7 +240,7 @@ missed.users.ayoung.learningDays=0;missed.users.ayoung.lastStudyDate=null;missed
 const recoveredCap=fixture({saved:structuredClone(missed)});
 await recoveredCap.run('resumeLesson(child().activeLesson)');
 assert.equal(recoveredCap.run('session'),null);
-assert.equal(recoveredCap.run('child().leagueLevel'),3.5);
+assert.equal(recoveredCap.run('child().leagueLevel'),3,'recovering a capped lesson cannot silently change the baseline');
 assert.equal(recoveredCap.run('child().learningDays'),1);
 assert.equal(recoveredCap.run('child().sessions.length'),1);
 recoveredCap.run('settleReachedStudyDays(child().activeLesson)');

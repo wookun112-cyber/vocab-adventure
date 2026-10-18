@@ -62,7 +62,7 @@ const oldCap=fixture();await oldCap.run('buildSession()');
 oldCap.run("globalThis.actualSettlement=settleReachedStudyDays;settleReachedStudyDays=()=>false;pauseLearningClock();session.activeMs=1800000;session.studyFallbackDay=today();session.studyDays={[today()]:{activeMs:1800000}};initRealtimeLevel(child(),session);child().difficulty=3.5;child().leagueLevel=3;checkpointSession();session=null;localSave();settleReachedStudyDays=actualSettlement");
 await oldCap.run('cloudSave()');
 await oldCap.run('cloudLoad()');
-assert.equal(oldCap.run('child().leagueLevel'),3.5);
+assert.equal(oldCap.run('child().leagueLevel'),3,'settling a capped lesson without evidence must not copy the volatile task estimate into stable ability');
 assert.equal(oldCap.run('child().sessions.length'),1);
 assert.equal(oldCap.run('child().learningDays'),1);
 assert.equal(oldCap.cloud.get('family').users.guest.sessions.length,1,'load repair is durably flushed');
