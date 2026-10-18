@@ -60,6 +60,7 @@
     <h2 id="introWord" class="word"></h2>
     <p id="introDefinition" class="question"></p>
     <div id="introExample" class="context"></div>
+    <div id="introWordRoots" class="sino-roots hidden" aria-label="단어를 이루는 글자별 뜻"></div>
     <div class="learning-nonexample"><strong>이럴 때는 쓰기 어려워요</strong><p id="introNonExample"></p></div><p id="introStructure" class="structure-note hidden"></p><p class="muted" style="margin-top:10px">쉬운 뜻과 예문을 보고, 이 단어에 맞는 상황을 골라요. 자기 문장으로 써본 뒤, 다른 날 새로운 상황에서 기억을 확인해요.</p>
     <button id="introNext" class="primary wide" style="margin-top:12px">다음</button>
   </div>
@@ -79,7 +80,9 @@
     <div id="voiceRow" class="row hidden" style="margin-top:10px"><button id="mic" class="voice">🎤 음성 입력</button><small id="voiceHint" class="muted">발음은 채점하지 않아요.</small></div>
     <div class="actions" style="margin-top:12px"><button id="submit" class="primary hidden">채점하기</button><button id="hint" class="secondary">힌트</button><button id="dontKnow" class="ghost">모르겠어</button></div>
     <div id="hintBox" class="feedback hidden"></div>
+    <div id="wordRootHint" class="sino-roots sino-hint hidden" aria-label="힌트로 제공한 글자별 뜻"></div>
     <div id="feedback" class="feedback hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="wordRootFeedback" class="sino-roots hidden" aria-label="채점 후 글자별 뜻"></div>
     <button id="holdPendingGrades" type="button" class="primary wide hidden" style="margin-top:14px">미평가 답안 보관 후 남은 학습 계속</button>
     <button id="next" class="primary wide hidden" style="margin-top:12px">다음 문제</button>
   </div>

@@ -4,7 +4,7 @@ import {DELIVERY_POLICY,localPracticeQuestion} from './lib/local-delivery.js';
 import * as studyHistory from './lib/study-history.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY} from './lib/learning-model.js';
+import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -1408,6 +1408,20 @@ function markStudyActivity(event){
  if(stopAtDailyLimit())return;
  studyHistory.recordStudyActivity(session,Date.now());armStudyIdleTimer();renderStudyClock();
 }
+// Optional meaning-based word parts only: no extra question or score change.
+function renderSinoMeaning(id,word,kind='learning'){
+ const el=$(id);if(!el)return false;
+ const root=sinoKoreanMeaning(word);
+ el.classList.toggle('hidden',!root);
+ if(!root){el.innerHTML='';return false}
+ const parts=root.parts.map(p=>'<span class="sino-part"><strong>'+escapeHtml(p.sound)+'</strong><span>'+escapeHtml(p.meaning)+'</span></span>').join('');
+ const similar=kind==='hint'?null:sinoKoreanConnection(word);
+ const transfer=similar?'<p class="sino-transfer">함께 생각해 보기: <strong>'+escapeHtml(similar.word)+'</strong>의 ‘'+escapeHtml(similar.sound)+'’도 ‘'+escapeHtml(similar.meaning)+'’라는 뜻이에요.</p>':'';
+ el.innerHTML='<strong class="sino-heading">'+(kind==='hint'?'뜻을 떠올리는 힌트':'낱말 속 뜻 조각')+'</strong>'+
+  '<div class="sino-parts">'+parts+'</div><p class="sino-summary">합치면 <strong>'+escapeHtml(root.meaning)+'</strong>이라는 뜻이 돼요.</p>'+transfer+
+  (kind==='learning'?'<small class="sino-note">한자를 외울 필요는 없어요. 글자마다 담긴 뜻만 살펴보세요.</small>':'');
+ return true;
+}
 function renderIntro(){
  if(stopAtDailyLimit())return;
  const active=session,list=active?.introWords||[];
@@ -1419,6 +1433,7 @@ function renderIntro(){
  if(w.source==='fixed')state.catalog[w.w]=w;
  $('introCounter').textContent=(active.introCursor+1)+'번째 새 단어';$('introWord').textContent=w.w;
  $('introDefinition').textContent=card.definition||w.d;$('introExample').textContent=card.example;
+ renderSinoMeaning('introWordRoots',w.w);
  if($('introNonExample'))$('introNonExample').textContent=card.nonExample;
  if($('introStructure')){$('introStructure').textContent=card.structureNote||'';$('introStructure').classList.toggle('hidden',!card.structureNote)}
  $('introNext').textContent=active.introCursor===list.length-1?'뜻과 쓰임 연습하기':'다음 단어 익히기';
@@ -1514,6 +1529,7 @@ function renderQuestion(savedHint=0){
  $('qText').textContent=q.q;
  $('qContext').classList.toggle('hidden',!q.ctx); $('qContext').textContent=q.ctx||'';
  $('feedback').className='feedback hidden'; $('hintBox').className='feedback hidden'; $('hintBox').textContent='';
+ renderSinoMeaning('wordRootHint',null);renderSinoMeaning('wordRootFeedback',null);
  $('next').classList.add('hidden');
  const draft=state.users[session.profile].activeLesson;
  renderedAnswerAt={id:session.lessonId,index:current,word:q.w.w};
@@ -1530,6 +1546,7 @@ function renderQuestion(savedHint=0){
  });
  if(hintLevel){
    $('hintBox').textContent='힌트 '+hintLevel+': '+q.hints[hintLevel-1];$('hintBox').className='feedback';
+   renderSinoMeaning('wordRootHint',q.w.w,'hint');
    $('hint').textContent=hintLevel<q.hints.length?'힌트 하나 더':'힌트 모두 사용';$('hint').disabled=hintLevel>=q.hints.length;
  }
  checkpointSession();localSave();cloudSave();prefetchQuestions();
@@ -1630,6 +1647,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const notes=(levelCheck?.change?'<small>출제 난이도 '+levelCheck.from.toFixed(1)+' → '+levelCheck.to.toFixed(1)+' · '+escapeHtml(levelCheck.reason)+'</small>':'')+(rec.stars?'<small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(full&&contextSuccess&&!targetRecall&&!q.showTarget?'<small>문맥에 맞는 답이에요. 목표 단어를 떠올렸는지는 따로 기록해요.</small>':'')+(practiceOnly&&full?'<small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').innerHTML='<strong class="feedback-result">'+(copiedExample?'따라 쓰기 연습':full?'○ 잘했어요!':partial?(assistedCorrect?'○ 힌트로 맞혔어요':'△ 부분 이해'):'× 다시 살펴봐요')+'</strong><p class="feedback-word"><strong>'+escapeHtml(q.w.w)+'</strong> · '+escapeHtml(q.w.d)+'</p><section class="feedback-answer"><h3>'+answerLabel+'</h3><p>'+escapeHtml(answerText)+'</p></section><section class="feedback-explanation"><h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>'+(notes?'<div class="feedback-details">'+notes+'</div>':'');
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
+ renderSinoMeaning('wordRootHint',null);renderSinoMeaning('wordRootFeedback',q.w.w,'feedback');
  checkpointSession();localSave();cloudSave();
  if(levelCheck?.change)prefetchStudyTopups(session);
 }
@@ -1641,6 +1659,7 @@ function showHint(){
  hintLevel=Math.min(hints.length,hintLevel+1);
  $('hintBox').textContent='힌트 '+hintLevel+': '+hints[hintLevel-1];
  $('hintBox').className='feedback';
+ renderSinoMeaning('wordRootHint',q.w.w,'hint');
  $('hint').textContent=hintLevel<hints.length?'힌트 하나 더':'힌트 모두 사용';
  if(hintLevel>=hints.length)$('hint').disabled=true;
  checkpointSession();localSave();cloudSave();
@@ -2072,6 +2091,7 @@ function finishSession(){
   $('qContext').textContent='';$('qContext').classList.add('hidden');
   $('options').innerHTML='';
   for(const id of ['answer','voiceRow','submit','hint','dontKnow','hintBox','next'])$(id).classList.add('hidden');
+   renderSinoMeaning('wordRootHint',null);renderSinoMeaning('wordRootFeedback',null);
   $('feedback').className='feedback';$('feedback').textContent='채점 결과를 확인하고 있어요. 기록은 보존되며 미확정 답안은 정오답·난이도에 반영하지 않습니다.';
   $('finishEarly').classList.remove('hidden');
   renderGradingProgress(session);processGradingQueue(session);return;
