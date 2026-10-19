@@ -49,7 +49,7 @@ function fixture(elapsed=MINIMUM_STUDY_MS-1000,saved=null){
 
 
 function round(elapsed=24*60000){
- const f=fixture(elapsed);f.run("pauseLearningClock();session.roundPolicy=studyHistory.ROUND_POLICY;studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);session.studyStartedAt=Date.now();session.studyFallbackDay=today();session.results[0]={...session.results[0],answeredAt:Date.now(),studyDate:today()};");return f;
+ const f=fixture(elapsed);f.run("pauseLearningClock();session.roundPolicy=studyHistory.LEGACY_ROUND_POLICY;studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);session.studyStartedAt=Date.now();session.studyFallbackDay=today();session.results[0]={...session.results[0],answeredAt:Date.now(),studyDate:today()};");return f;
 }
 const fast=round();fast.run('finishSession()');
 assert.equal(fast.run('session.timeAddedWords.length'),1);assert.equal(fast.run('session.completed'),undefined);assert.equal(fast.requests.length,0);
