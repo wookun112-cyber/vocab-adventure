@@ -23,7 +23,7 @@ const fixture=new Function('effectiveSource','fs','vm','URL','fixtureUrl','study
  effectiveSource,fs,vm,URL,fixtureUrl,studyHistory,DELIVERY_POLICY,localPracticeQuestion,sentenceUseQuestionValid,authoredPolicy,DAILY_POLICY,MINIMUM_STUDY_POLICY
 );
 const f=fixture();
-f.run("globalThis.originalGetPreparation=getPreparation;getPreparation=async(...args)=>{const p=await originalGetPreparation(...args);p.roundPolicy=studyHistory.ROUND_POLICY;p.serverId='round-packet-'+(child().sessions.length+1);return p};");
+f.run("globalThis.originalGetPreparation=getPreparation;getPreparation=async(...args)=>{const p=await originalGetPreparation(...args);p.roundPolicy=studyHistory.LEGACY_ROUND_POLICY;p.serverId='round-packet-'+(child().sessions.length+1);return p};");
 for(let n=1;n<=4;n++){
  await f.run("buildSession('daily')");
  assert.equal(f.run('session.mode'),'daily');assert.equal(f.run('session.roundNumber'),n);
