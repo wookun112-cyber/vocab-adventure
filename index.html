@@ -61,7 +61,7 @@
     <p id="introDefinition" class="question"></p>
     <div id="introExample" class="context"></div>
     <div id="introWordRoots" class="sino-roots hidden" aria-label="단어를 이루는 글자별 뜻"></div>
-    <div class="learning-nonexample"><strong>이럴 때는 쓰기 어려워요</strong><p id="introNonExample"></p></div><p id="introStructure" class="structure-note hidden"></p><p class="muted" style="margin-top:10px">쉬운 뜻과 예문을 보고, 이 단어에 맞는 상황을 골라요. 자기 문장으로 써본 뒤, 다른 날 새로운 상황에서 기억을 확인해요.</p>
+    <div class="learning-nonexample"><strong>이럴 때는 쓰기 어려워요</strong><p id="introNonExample"></p></div><p id="introStructure" class="structure-note hidden"></p><p class="muted" style="margin-top:10px">쉬운 뜻과 예문을 살펴본 뒤 문맥에서 의미를 확인해요. 어려운 단어만 추가 연습하고, 다른 날 새 상황에서 다시 기억을 확인해요.</p>
     <button id="introNext" class="primary wide" style="margin-top:12px">다음</button>
   </div>
 </section>
@@ -86,6 +86,20 @@
     <button id="holdPendingGrades" type="button" class="primary wide hidden" style="margin-top:14px">미평가 답안 보관 후 남은 학습 계속</button>
     <button id="next" class="primary wide hidden" style="margin-top:12px">다음 문제</button>
   </div>
+</section>
+
+<section id="reading" class="screen">
+ <div class="row between"><div><div class="eyebrow">역사·과학·사회 읽기</div><h2 id="readingCounter">어휘 확장 · 1번째 문제</h2></div><button data-go="home" class="ghost">잠시 쉬기</button></div>
+ <p class="muted reading-guide">짧은 글을 읽고 의미를 확인해요. 글에서 본 단어는 장기 마스터로 계산하지 않아요.</p>
+ <div class="card reading-card">
+  <span id="readingTopic" class="tag"></span>
+  <p id="readingText" class="reading-passage"></p>
+  <p id="readingWords" class="muted reading-word-list"></p>
+  <p id="readingPrompt" class="question"></p>
+  <div id="readingOptions" class="options" role="group" aria-label="어휘 이해 문제의 다섯 가지 선택지"></div>
+  <div id="readingFeedback" class="feedback hidden" role="status" aria-live="polite"></div>
+  <button id="readingNext" type="button" class="primary wide hidden">다음 문제</button>
+ </div>
 </section>
 
 <section id="characters" class="screen">
