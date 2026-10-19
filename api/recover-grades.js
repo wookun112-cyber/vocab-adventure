@@ -1,9 +1,9 @@
-import {verifyUser,gradeRPC} from './grade.js';
+import {verifyUser,gradeRPC,recoverGrade} from './grade.js';
 import {requireGradingAccount} from '../lib/server/grade-access.js';
 import {gradeHash,readReceipt} from '../lib/server/grade-delivery.js';
 import {reconcileArchivedGrade} from '../lib/server/archived-grade-recovery.js';
 
-export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC}={}){
+export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC,recover=recoverGrade}={}){
  return async(req,res)=>{
   res.setHeader?.('Cache-Control','private, no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
@@ -20,7 +20,22 @@ export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC}={}){
      if(!snapshot)break;
      skip.push(snapshot.job.id);
      const hash=gradeHash(snapshot.job.payload);
-     const grade=await rpc(auth,'read_saved_vocab_grade',{p_hash:hash})||readReceipt(snapshot.job.gradeReceipt,user.id,hash);
+     let grade=await rpc(auth,'read_saved_vocab_grade',{p_hash:hash})||readReceipt(snapshot.job.gradeReceipt,user.id,hash);
+     if(!grade){
+       // Archived lessons also need provider-ID retrieval after a cold worker
+       // restart. Never launch another paid response for the old answer.
+       let status=null;
+       try{status=await rpc(auth,'read_vocab_grade_status',{p_hash:hash},2500)}catch{}
+       if(status?.providerResponseId&&status?.lease){
+         try{
+           const recovered=await recover(status.providerResponseId,snapshot.job.payload);
+           if(recovered&&[0,.5,1].includes(recovered.score)&&typeof recovered.contextSuccess==='boolean'){
+             const saved=await rpc(auth,'finish_vocab_grade',{p_hash:hash,p_lease:status.lease,p_result:recovered},4500);
+             grade=saved===true?recovered:await rpc(auth,'read_saved_vocab_grade',{p_hash:hash},2500);
+           }
+         }catch{} // Still ungraded, with the original answer kept intact.
+       }
+     }
      if(!grade){waiting++;continue}
      const result=reconcileArchivedGrade(snapshot,grade);
      if(!result){waiting++;continue}

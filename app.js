@@ -1868,7 +1868,7 @@ async function processGradingQueue(active,force=false){
  const job=(active.gradingQueue||[]).filter(j=>j.status==='pending'&&(force||j.nextRetryAt<=Date.now())&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id))
   .sort((a,b)=>(a.lastPolledAt||0)-(b.lastPolledAt||0))[0];
  if(!job){renderGradingProgress(active);return}
- active.gradingBusy=true;job.lastPolledAt=Date.now();
+ active.gradingBusy=true;const previousErrorCode=job.errorCode;job.lastPolledAt=Date.now();
  try{
   let graded;
   try{graded=await requestGrade(job,8000,true)}catch(error){
@@ -1883,7 +1883,18 @@ async function processGradingQueue(active,force=false){
   const atBoundary=current>=active.target;appendReadyGrades(active);
   if(atBoundary&&current<active.queue.length&&$('learn').classList.contains('active'))renderQuestion();
  }catch(e){deferGradingJob(job,e)}
- finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){renderGradingProgress(active);checkpointSession();localSave();cloudSave();if(job.status==='pending'&&job.errorCode==='grading_result_recovery_required'&&Date.now()-Number(job.submittedAt||0)>=90000){await holdStaleGradingQueue(true,job.id)}else if(active.gradeHoldRequested){active.gradeHoldRequested=false;void holdStaleGradingQueue()}}}
+ finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){
+  renderGradingProgress(active);checkpointSession();localSave();
+  // No full 4 MB family-state patch for every read-only grade status poll.
+  // Persist actual state transitions immediately; refresh a still-pending
+  // checkpoint only once per 30 seconds (other app saves are unaffected).
+  const meaningful=job.status!=='pending'||job.errorCode!==previousErrorCode;
+  if(meaningful||Date.now()-(active.lastGradePollCloudSaveAt||0)>=30000){
+   active.lastGradePollCloudSaveAt=Date.now();cloudSave();
+  }
+  if(job.status==='pending'&&job.errorCode==='grading_result_recovery_required'&&Date.now()-Number(job.submittedAt||0)>=90000){await holdStaleGradingQueue(true,job.id)}
+  else if(active.gradeHoldRequested){active.gradeHoldRequested=false;void holdStaleGradingQueue()}
+ }}
 }
 
 function fallbackOpen(q,answer){

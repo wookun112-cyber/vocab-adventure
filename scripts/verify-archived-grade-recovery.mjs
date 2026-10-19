@@ -53,3 +53,31 @@ for(const bad of [
  {...snapshot,lesson:{...lesson,results:[{...r.record,gradingPending:false}]}}
 ])assert.equal(reconcileArchivedGrade(bad,grade),null,'never insert out of order, mismatched, or already graded jobs');
 console.log('Pre-placeholder recovery: cached answer appended only at its original cursor; gaps, mismatches and duplicates rejected.');
+
+
+// Paused lesson: provider finished after an app exit, cache write was missed.
+// Retrieve original response ID, then save once with the original lease.
+let stored=null,providerGets=0,archiveCommits=0;
+const durable=createArchivedRecovery({
+ verify:async()=>({id:AUTHORED_OWNER}),
+ recover:async(responseId,payload)=>{
+  providerGets++;assert.equal(responseId,'resp_archived_mock1');
+  assert.equal(payload.answer,job.answer);
+  return grade;
+ },
+ rpc:async(auth,name,args)=>{
+  if(name==='read_paused_grade_recovery')return args.p_profile==='ayoung'&&!args.p_skip.includes(job.id)?snapshot:null;
+  if(name==='read_saved_vocab_grade')return stored;
+  if(name==='read_vocab_grade_status')return {status:'pending',providerResponseId:'resp_archived_mock1',lease:'lease-original'};
+  if(name==='finish_vocab_grade'){assert.equal(args.p_lease,'lease-original');stored=args.p_result;return true}
+  if(name==='commit_paused_grade_recovery'){archiveCommits++;return true}
+  throw Error('Unexpected '+name);
+ }
+});
+let code,value;
+await durable({method:'POST',headers:{authorization:'Bearer fixture'}},{
+ setHeader(){},status(n){code=n;return this},json(v){value=v}
+});
+assert.equal(code,200);assert.equal(value.recovered,1);
+assert.equal(providerGets,1);assert.equal(archiveCommits,1);
+console.log('Archived background ID retrieval PASS: original grade saved and applied once after app exit, zero paid reruns.');
