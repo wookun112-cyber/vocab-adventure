@@ -2126,6 +2126,57 @@ function renderRoundCompletion(learner,prefix){
  $(prefix+'Detail').textContent='오늘 '+done.length+'회차 종료 · 오늘 총 '+studyHistory.formatStudyTime(studyHistory.dailyStudyTime(learner,learner.activeLesson))+' · 다음 회차도 시작할 수 있어요.';
  return true;
 }
+
+function renderReadingPractice(){
+ const active=session;if(!active||active.completed||!studyHistory.isBreadthRound(active)||!active.readingPractice)return;
+ const saved=active.readingPractice,passage=readingPassageById(saved.id);
+ if(!passage||saved.policy!==READING_EXPOSURE_POLICY){saved.completed=true;checkpointSession();localSave();cloudSave();show('learn');finishStudyRoundBoundary();return}
+ if(saved.completed){show('learn');finishStudyRoundBoundary();return}
+ const step=Math.max(0,Math.min(passage.tasks.length-1,Number(saved.step)||0));
+ const q=passage.tasks[step],answered=(saved.answers||[]).find(a=>a.index===step);
+ beginLearningWindow('reading:'+active.lessonId+':'+step);
+ $('readingCounter').textContent=(active.roundNumber?active.roundNumber+'회차 · ':'')+'어휘 확장 '+(step+1)+' / '+passage.tasks.length+'번째 문제';
+ $('readingTopic').textContent=passage.topic;
+ $('readingText').textContent=passage.passage;
+ $('readingWords').textContent='글에서 만난 단어: '+passage.words.join(' · ');
+ $('readingPrompt').textContent=q.prompt;$('readingOptions').innerHTML='';
+ for(let i=0;i<q.options.length;i++){
+  const b=document.createElement('button');b.type='button';b.className='option';b.textContent=(i+1)+'번 · '+q.options[i];
+  if(answered){b.disabled=true;if(i===q.correct)b.classList.add('correct');else if(i===answered.choice&&!answered.correct)b.classList.add('wrong')}
+  else b.onclick=()=>answerReadingPractice(i);
+  $('readingOptions').appendChild(b);
+ }
+ $('readingFeedback').className=answered?'feedback '+(answered.correct?'good':'bad'):'feedback hidden';
+ $('readingFeedback').textContent=answered?(answered.correct?'○ 뜻을 이해했어요. ':'정답은 '+(q.correct+1)+'번이에요. ')+q.explanation:'';
+ $('readingNext').classList.toggle('hidden',!answered);
+ $('readingNext').textContent=step===passage.tasks.length-1?'어휘 학습 계속':'다음 독해 문제';
+ checkpointSession();localSave();
+}
+function answerReadingPractice(choice){
+ const active=session,saved=active?.readingPractice;
+ if(!studyHistory.isBreadthRound(active)||active.completed||saved?.completed)return;
+ const passage=readingPassageById(saved.id),step=Number(saved.step)||0,q=passage?.tasks[step];
+ if(!q||saved.answers?.some(a=>a.index===step)||!Number.isInteger(choice)||choice<0||choice>=q.options.length)return;
+ saved.answers=saved.answers||[];
+ saved.answers.push({index:step,word:q.word,choice,correct:choice===q.correct,answeredAt:Date.now()});
+ renderReadingPractice();checkpointSession();localSave();cloudSave();
+}
+function nextReadingPractice(){
+ const active=session,saved=active?.readingPractice;
+ if(!studyHistory.isBreadthRound(active)||active.completed||saved?.completed)return;
+ const passage=readingPassageById(saved.id),step=Number(saved.step)||0;
+ if(!passage||!saved.answers?.some(a=>a.index===step))return;
+ if(step+1<passage.tasks.length){
+  saved.step=step+1;checkpointSession();localSave();cloudSave();renderReadingPractice();return;
+ }
+ if(!saved.exposureRecorded){
+  for(const word of passage.words)recordedExposure(state.users[active.profile],word,today());
+  saved.exposureRecorded=true;
+ }
+ saved.completed=true;saved.step=passage.tasks.length;
+ checkpointSession();localSave();cloudSave();
+ show('learn');if(session===active&&!active.completed)finishStudyRoundBoundary();
+}
 function roundAttemptResults(active,word){
  if(!studyHistory.isStudyRound(active)||!studyHistory.roundUnfinished(active).some(w=>w.w===word))return active.results;
  const last=active.results.findLastIndex(r=>r.word===word&&usageCompleted([r]).has(word));
@@ -2144,6 +2195,9 @@ function appendRoundReinforcement(active){
 function finishStudyRoundBoundary(){
  const active=session;if(!active||active.completed)return;
  pauseLearningClock();
+ if(studyHistory.isBreadthRound(active)&&active.readingPractice&&!active.readingPractice.completed&&current>=active.target&&active.results.length>=active.preparation.baseCount&&activeTime(active)<studyHistory.ROUND_MAX_MS){
+  show('reading');renderReadingPractice();return;
+ }
  const status=studyHistory.roundState(active,activeTime(active));
  if(status.shouldEnd){completeStudyRound(status.reason);return}
  if(status.unfinished.length){
@@ -2578,6 +2632,7 @@ document.addEventListener('pointerdown',markStudyActivity,{passive:true});
 document.addEventListener('wheel',markStudyActivity,{passive:true});
 document.addEventListener('touchmove',markStudyActivity,{passive:true});
 $('holdPendingGrades').onclick=()=>{void holdStaleGradingQueue()};
+ $('readingNext').onclick=nextReadingPractice;
  $('submit').onclick=()=>gradeCurrent(false);$('hint').onclick=showHint;$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('introNext').onclick=nextIntro;
 if($('finishEarly')){$('finishEarly').textContent='잠시 쉬기';$('finishEarly').onclick=()=>{if(!session)return;if(session.mode==='level'){finishSession();return}pauseLearningClock();checkpointSession();localSave();cloudSave();show('home');renderResumeButton()}};$('mic').onclick=startVoice;
 $('signIn').onclick=login;$('signUp').onclick=signup;$('resendConfirm').onclick=resendConfirm;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
