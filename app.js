@@ -2188,7 +2188,15 @@ function appendRoundReinforcement(active){
  const pool=errors.size?words.filter(w=>errors.has(w.w)):words;
  const ordered=(pool.length?pool:words).slice().sort((a,b)=>active.results.findLastIndex(r=>r.word===a.w)-active.results.findLastIndex(r=>r.word===b.w));
  const w=ordered[0],p=active.preparation,index=p.plans.length,original=p.plans.find(plan=>plan.w.w===w.w);
- const last=active.results.findLast(r=>r.word===w.w),type=last?.type==='subjective_use'?'mc_usage':'subjective_use';
+ const last=active.results.findLast(r=>r.word===w.w);
+ const weak=wordState(w.w),earlier=(active.results||[]).filter(r=>r.word===w.w&&!r.excludedFromVocabulary);
+ const written=p.plans.filter(x=>x.roundReinforcement&&x.type==='subjective_use').length;
+ // Most new follow-ups are a one-word recall or a different-context choice;
+ // only repeatedly confused vocabulary receives a bounded free sentence.
+ const deep=studyHistory.isBreadthRound(active)&&earlier.length>=2&&Number(weak.wrong)>=2&&written<2;
+ const type=studyHistory.isBreadthRound(active)
+  ?(deep?'subjective_use':last?.type?.startsWith('mc_')?'subjective_recall':'mc_usage')
+  :(last?.type==='subjective_use'?'mc_usage':'subjective_use');
  p.append([{...original,id:String(index),w,type,stage:type==='subjective_use'?'use':'bridge',roundReinforcement:true,review:true,practiceOnly:true,levelEligible:false,firstLearning:false,needsCard:false,remedial:true,allowBankTypeFallback:true}]);
  active.target=p.plans.length;p.pump();return true;
 }
@@ -2215,6 +2223,13 @@ function finishStudyRoundBoundary(){
    $('feedback').className='feedback';$('feedback').textContent='미확정 답안은 정오답·난이도에 반영하지 않습니다.';
    $('finishEarly').classList.remove('hidden');renderGradingProgress(active);processGradingQueue(active);return;
   }
+  if(studyHistory.isBreadthRound(active)&&appendRoundReinforcement(active)){show('learn');renderQuestion();return}
+  checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return;
+ }
+ if(studyHistory.isBreadthRound(active)){
+  // Continue with varied previously taught meanings until the meaningful
+  // 25-minute floor; no extra forced new words or infinite writing gate.
+  if(appendRoundReinforcement(active)){show('learn');renderQuestion();return}
   checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return;
  }
  if(!status.hadErrors&&appendStudyTopup(active)){show('learn');renderQuestion();return}
