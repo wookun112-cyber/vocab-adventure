@@ -8,7 +8,7 @@ const answer={score:1,result:'○',contextSuccess:true,targetRecall:false,normal
  usageAssessment:{meaning:'correct',target:'present',expression:'complete',issue:'none'}};
 const body={taskType:'sentence_use',gradingPolicy:'meaning-first-20261018',question:'의견으로 문장을 쓰세요.',targetWord:'의견',definition:'어떤 일에 대한 생각',answer:'나는 친구의 의견을 들었다.'};
 function fixture(){
- const rows=new Map();let posts=0,gets=0,done=false,dbWriteFailures=0,attachmentFails=false;
+ const rows=new Map();let posts=0,gets=0,done=false,terminal=false,dbWriteFailures=0,attachmentFails=false;
  const rpc=async(auth,name,a)=>{
   const row=rows.get(a.p_hash);
   if(name==='claim_vocab_grade'){
@@ -37,7 +37,7 @@ function fixture(){
  };
  const build=()=>createGradeDelivery({
   verifyUser:async()=>({id:'family'}),runGrade:async(p,{onResponseId})=>{posts++;await onResponseId('resp_durable_example1');return {pending:true}},
-  recoverGrade:async(id,p)=>{gets++;assert.equal(id,'resp_durable_example1');return done?answer:null},
+  recoverGrade:async(id,p)=>{gets++;assert.equal(id,'resp_durable_example1');if(terminal)throw Error('Provider response has no completed grade');return done?answer:null},
   gradeRPC:rpc,gradeForRequest:(r,p)=>({...r,copiedExample:!!p.previousExamples?.length}),pause:async()=>{}
  });
  const submit=async(app,payload={})=>{
@@ -46,7 +46,7 @@ function fixture(){
    {status(n){code=n;return this},json(v){value=v;return this}});
   return {code,value};
  };
- return {build,submit,get posts(){return posts},get gets(){return gets},done:()=>done=true,writeFailures:n=>dbWriteFailures=n,attachmentFails:()=>attachmentFails=true};
+ return {build,submit,get posts(){return posts},get gets(){return gets},done:()=>done=true,terminal:()=>terminal=true,writeFailures:n=>dbWriteFailures=n,attachmentFails:()=>attachmentFails=true};
 }
 try{
  // Exercise the real Responses API adapter entirely offline.
@@ -93,6 +93,16 @@ try{
  down.writeFailures(0);
  assert.equal((await down.submit(down.build(),{pollOnly:true})).value.cachePending,false);
  assert.equal(down.posts,1);
+
+ // A failed or incomplete paid provider response is not a grade; mark as
+ // needing review immediately, not as an endless recoverable queue item.
+ const incomplete=fixture();
+ assert.equal((await incomplete.submit(incomplete.build())).code,202);
+ incomplete.terminal();
+ const unavailable=await incomplete.submit(incomplete.build(),{pollOnly:true});
+ assert.equal(unavailable.code,202);
+ assert.equal(unavailable.value.code,'grading_result_recovery_required');
+ assert.equal(incomplete.posts,1);
 
  // An unpersisted response ID is not a grade and can never be paid again.
  const orphan=fixture();orphan.attachmentFails();
