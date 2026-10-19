@@ -93,3 +93,11 @@ main{padding:18px 18px 100px}.screen{display:none}.screen.active{display:block}.
 
 /* The remembered-vocabulary ledger distinguishes lapse checks from mastery. */
 .vocabulary-progress.refresh{background:#fff1da;color:#8d5b29}
+
+/* One question at a time for the optional, offline reading breadth activity. */
+.reading-card{display:grid;gap:12px}
+.reading-passage{font-size:17px;line-height:1.95;white-space:pre-line;overflow-wrap:anywhere;margin:4px 0}
+.reading-guide,.reading-word-list{font-size:13px;line-height:1.7}
+.reading-word-list{margin:2px 0 9px}
+.reading-card .option{width:100%;min-height:45px;text-align:left}
+@media(max-width:560px){.reading-passage{font-size:16px;line-height:1.9}}
