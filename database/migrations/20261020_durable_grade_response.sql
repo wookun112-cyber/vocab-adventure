@@ -36,3 +36,6 @@ begin
  if row.provider_started then return jsonb_build_object('status','recovery_required');end if;
  return jsonb_build_object('status','retryable');
 end $$;
+
+-- Explicitly refresh the REST RPC schema after creating the public wrapper.
+notify pgrst, 'reload schema';
