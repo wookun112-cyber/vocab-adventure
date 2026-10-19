@@ -96,7 +96,7 @@ const nodes=new Map(),alerts=[],requests=[];
 const node=id=>{
  if(!nodes.has(id)){
   const classes=new Set();
-  nodes.set(id,{id,textContent:'',innerHTML:'',value:'',disabled:false,style:{},children:[],dataset:{},
+  nodes.set(id,{id,textContent:'',_html:'',get innerHTML(){return this._html},set innerHTML(v){this._html=v;this.children=[]},value:'',disabled:false,style:{},children:[],dataset:{},
    appendChild(x){this.children.push(x)},
    closest:()=>null,
    classList:{add(...xs){xs.forEach(x=>classes.add(x))},remove(...xs){xs.forEach(x=>classes.delete(x))},contains:x=>classes.has(x),toggle(x,on){if(on??!classes.has(x))classes.add(x);else classes.delete(x)}}});
