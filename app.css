@@ -96,6 +96,7 @@ main{padding:18px 18px 100px}.screen{display:none}.screen.active{display:block}.
 
 /* One question at a time for the optional, offline reading breadth activity. */
 .reading-card{display:grid;gap:12px}
+.vocabulary-progress.exposed{background:#f5f1e3;color:#887244}
 .reading-passage{font-size:17px;line-height:1.95;white-space:pre-line;overflow-wrap:anywhere;margin:4px 0}
 .reading-guide,.reading-word-list{font-size:13px;line-height:1.7}
 .reading-word-list{margin:2px 0 9px}
