@@ -25,7 +25,7 @@ const first=[...fresh,...reviews].map(w=>({word:w.w,type:'mc_usage',credit:0,ban
 const retries=[...fresh,...reviews].map(w=>({word:w.w,type:'subjective_use',credit:1,contextSuccess:true,band:w.band,remedial:true}));
 const a=updateLearningLevels({difficulty:2,words:{}},first),b=updateLearningLevels({difficulty:2,words:{}},[...first,...retries]);assert.equal(b.score,a.score);assert.equal(b.to,a.to,'eventual correction must not erase the original errors');
 const catalog=[...fresh,...reviews].map(w=>({word:w.w,definition:w.d,band:w.band,domain:w.cat}));
-const packet=makePreparedPlan(learner,{},catalog,'family','guest');packet.roundPolicy=studyHistory.LEGACY_ROUND_POLICY;assert.equal(packet.plans.length,15);assert.equal(packet.newWords.length,5);assert.equal(packet.baseCount,15);assert.equal(packet.completionPolicy,DAILY_POLICY);assert.equal(JSON.stringify(learner),original);
+const packet=makePreparedPlan(learner,{},catalog,'family','guest');assert.equal(packet.plans.length,15);assert.equal(packet.newWords.length,5);assert.equal(packet.baseCount,15);assert.equal(packet.completionPolicy,DAILY_POLICY);assert.equal(JSON.stringify(learner),original);
 function answerFor(p){return browserQuestion({type:p.type,prompt:'검수된 과제',context:p.type==='subjective_use'?'':'서로 다른 탐험 기록 '+p.id+'에서 뜻에 맞는 행동을 살펴보았어요.',showTarget:p.type!=='subjective_recall',options:p.type.startsWith('mc_')?Array.from({length:5},(_,i)=>({text:'다른 상황 '+p.id+' 보기 '+i,correct:i===p.answerSlot})):[],hints:[],learningCard:p.needsCard?{definition:p.w.d,example:'뜻을 확인하는 새 학습 자료 '+p.id,nonExample:'다른 뜻의 상황'}:null,signature:'검수-'+p.id,validation:{deterministic:true,aiVerified:true,checks:{coherentSituation:true}}},p)}
 packet.ready=packet.plans.map((p,i)=>[i,answerFor(p)]);
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').split("window.addEventListener('beforeinstallprompt'")[0];
@@ -39,7 +39,7 @@ function fixture(saved){
  run('state.users.guest=Object.assign(freshChild("게스트"),'+JSON.stringify(learner)+')');if(saved)run('state=mergeState('+JSON.stringify(saved)+')');return {run,node,alerts};
 }
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
-let f=fixture();await f.run('buildSession()');assert.ok(f.run('session'),f.alerts.join(' | '));assert.equal(f.run('session.target'),15);assert.equal(f.run('session.max'),null);
+let f=fixture();await f.run('buildSession()');assert.ok(f.run('session'),f.alerts.join(' | '));f.run('session.roundPolicy=studyHistory.LEGACY_ROUND_POLICY');assert.equal(f.run('session.target'),15);assert.equal(f.run('session.max'),null);
 // This suite exercises unlimited correction. Duration boundaries have their
 // own real-client suite; model 25 minutes already spent studying here.
 f.run('session.activeMs=25*60000;session.studyDays={[today()]:{activeMs:session.activeMs,timeKnown:true}}');
