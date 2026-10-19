@@ -1779,12 +1779,27 @@ function renderGradingProgress(active=session){
  if(!active||session!==active||!active.waitingForGradeResults||!$('learn').classList.contains('active'))return;
  const jobs=(active.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)),pending=jobs.filter(j=>j.status==='pending');
  const blocked=pending.some(j=>['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(j.errorCode));
- const stale=pending.filter(j=>Date.now()-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
+ const now=Date.now(),stale=pending.filter(j=>now-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
  const hold=$('holdPendingGrades');
- if(hold){hold.classList.toggle('hidden',stale.length===0);hold.textContent=active.gradeHoldInProgress?'기존 답안 보관 및 다음 문제 준비 중…':'채점 지연 '+stale.length+'개 · 미평가 보관하고 남은 학습 계속';hold.disabled=!!active.gradeHoldInProgress}
+ if(hold){
+  // The recovery option must not vanish for 90 seconds and then fail to
+  // appear because polling is busy, paused, offline, or on a delayed lease.
+  hold.classList.toggle('hidden',pending.length===0);
+  const oldest=pending.length?Math.max(...pending.map(j=>Math.max(0,now-Number(j.submittedAt||now)))):0;
+  const seconds=Math.max(0,Math.ceil((90000-oldest)/1000));
+  hold.disabled=!!active.gradeHoldInProgress||stale.length===0;
+  hold.textContent=active.gradeHoldInProgress?'저장된 채점 결과 마지막 확인 중…':
+   stale.length?'채점 지연 '+stale.length+'개 · 원본 답안 보관하고 학습 계속':
+   '채점 기다리는 중 · '+seconds+'초 뒤 보관하고 계속하기 가능';
+ }
  $('feedback').className='feedback';
- $('feedback').textContent='남은 채점 '+jobs.length+'개 · '+(blocked?'일부 답안은 채점 연결 또는 결과 복구 확인이 필요해요. 답안은 저장되어 있어요.':
-  pending.some(j=>['temporary','grading_temporarily_unavailable'].includes(j.errorCode))?'연결을 다시 확인하고 있어요. 답안은 저장되어 있어요.':'완성된 결과를 자동으로 확인하고 있어요.')+' 정답 확인 전에는 완료로 처리하지 않으며, 기다리는 시간은 학습시간에 넣지 않아요.';
+ $('feedback').textContent='남은 채점 '+jobs.length+'개 · '+(stale.length?
+  '90초 넘게 결과가 오지 않았어요. 아래 버튼을 누르면 저장된 결과를 한 번 더 확인하고, 없으면 원본 답안을 미평가로 보관해요.':
+  blocked?'일부 답안은 채점 연결 또는 결과 복구 확인이 필요해요. 답안은 저장되어 있어요.':
+  pending.some(j=>['temporary','grading_temporarily_unavailable'].includes(j.errorCode))?
+   '연결을 다시 확인하고 있어요. 답안은 저장되어 있어요.':
+   '채점 결과를 확인 중이에요. 90초 이상 지연되면 아래에서 보관하고 계속할 수 있어요.')+
+  ' 정답 확인 전에는 완료로 처리하지 않으며, 기다리는 시간은 학습시간에 넣지 않아요.';
 }
 // An already-started provider request with no saved result cannot safely be
 // billed again. Explicitly set aside only overdue submissions, preserving their
@@ -1799,9 +1814,23 @@ async function holdStaleGradingQueue(automatic=false,confirmedJobId=null){
  $('holdPendingGrades').disabled=true;
  $('holdPendingGrades').textContent='기존 답안 보관 및 다음 문제 준비 중…';
  try{
+  // Final read-only grade lookup before explicitly filing any missing grade.
+  // No retryable status can ever authorize a paid resubmission in this path.
+  if(!automatic){
+   for(const job of jobs){
+    if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
+    try{
+     const result=await requestGrade(job,4500,true);
+     if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
+     job.grade=result;job.status='ready';job.pollFailures=0;
+    }catch{} // Keep the exact original answer, ungraded, if cache is still missing.
+   }
+   if(jobs.some(j=>j.status==='ready'))appendReadyGrades(active);
+  }
+  const unresolved=jobs.filter(j=>j.status==='pending');
   const held=state.users[active.profile].ungradedSubmissions||[];
   const existing=new Set(held.map(j=>j.id));
-  for(const job of jobs){
+  for(const job of unresolved){
    if(!existing.has(job.id)){held.push({...job,status:'needs_review',manualReviewRequired:true,heldAt:Date.now(),lessonId:active.lessonId,holdReason:automatic?'missing_result':'manual'});existing.add(job.id)}
    job.status='needs_review';job.manualReviewRequired=true;job.heldAt=Date.now();
    for(const r of active.results)if(r.gradingJobId===job.id&&r.gradingPending){
@@ -1822,14 +1851,16 @@ async function holdStaleGradingQueue(automatic=false,confirmedJobId=null){
    if(session!==active||state.selected!==active.profile)return;
    show('learn');renderQuestion();
   }else{show('home');renderResumeButton()}
-  if(!automatic)alert('채점 결과가 없는 답안 '+jobs.length+'개를 확인 필요로 보관했습니다. 정오답과 난이도에는 반영하지 않았고, 중복 유료 채점을 실행하지 않았습니다. 남은 어휘는 계속 학습할 수 있습니다.');
+  if(!automatic)alert(unresolved.length?
+   '채점 결과가 없는 답안 '+unresolved.length+'개를 확인 필요로 보관했습니다. 정오답과 난이도에는 반영하지 않았고, 중복 유료 채점을 실행하지 않았습니다. 남은 어휘는 계속 학습할 수 있습니다.':
+   '서버에 보관된 채점 결과를 찾았습니다. 원래 답안을 다시 유료 채점하지 않고 결과를 이어서 반영합니다.');
  }finally{
   active.gradeHoldInProgress=false;active.gradeHoldRequested=false;
   if(session===active)renderGradingProgress(active);
  }
 }
 async function processGradingQueue(active,force=false){
- if(!active||active.completed||active.gradingBusy||active.waitingForGrading||session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
+ if(!active||active.completed||active.gradingBusy||active.gradeHoldInProgress||active.waitingForGrading||session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
  for(const pending of active.gradingQueue||[])if(pending.status==='pending'&&pending.pollPolicy!=='status-poll-12.16.35'){
   pending.pollPolicy='status-poll-12.16.35';
   if(!['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(pending.errorCode))pending.nextRetryAt=Math.min(Number(pending.nextRetryAt)||0,Date.now()+2000);
@@ -2708,5 +2739,10 @@ setInterval(()=>{if(!document.hidden&&session&&!session.completed&&['learn','int
 
 
 
-setInterval(()=>{if(!document.hidden)processGradingQueue(session)},2000);
+setInterval(()=>{
+ if(document.hidden)return;
+ // Repaint recovery eligibility even when the grade poll is blocked or paused.
+ if(session?.waitingForGradeResults)renderGradingProgress(session);
+ processGradingQueue(session);
+},2000);
 window.addEventListener('online',()=>processGradingQueue(session,true));
