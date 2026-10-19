@@ -54,7 +54,7 @@ const newWords=Array.from({length:5},(_,i)=>w('새말'+i,i)),reviewWords=Array.f
 const plans=buildDailyPlan(newWords,reviewWords,()=>({}),4,{breadth:true});
 assert.equal(plans.length,15);
 assert.equal(plans.filter(x=>x.firstLearning).length,5);
-assert.equal(plans.filter(x=>x.type==='subjective_use').length,0,'a new word does not automatically require a free sentence');
+assert.ok(plans.filter(x=>x.type==='subjective_use').length<=2,'deep sentence writing is capped at two review targets, never every new word');assert.ok(plans.filter(x=>x.type==='subjective_use').every(x=>!x.firstLearning),'no new word has a forced first-day free sentence');
 assert.ok(plans.filter(x=>x.type.startsWith('mc_')).length>=5);
 assert.ok(plans.filter(x=>x.type.startsWith('subjective_')).length>=4);
 assert.ok(plans.filter(x=>x.firstLearning).every(x=>x.needsCard),'unseen vocabulary is explained before its first quiz');
