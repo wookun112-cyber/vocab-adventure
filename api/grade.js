@@ -18,7 +18,7 @@ export async function verifyUser(auth){
   if(!r.ok)return null;
   return r.json();
 }
-export async function runGrade(payload){
+export async function runGrade(payload,{onResponseId}={}){
   const {
     question,answer,source='typed',targetWord='',definition='',band=3,
     gradingContext='',taskType='general',taskDemand='standard',readerLevel=band,acceptedAnswers=[],allowNaturalDerivations=[]
@@ -126,20 +126,54 @@ meaning=correct, target=present, expression=complete이면 반드시 score 1, re
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
     signal:AbortSignal.timeout(22000),
     body:JSON.stringify({
-      model,reasoning:{effort:'low'},max_output_tokens:650,input:feedbackPrompt,
+      model,reasoning:{effort:'low'},max_output_tokens:1300,
+      // Provider work survives the browser's 12-second request and a Vercel
+      // worker restart. No second paid POST is needed to retrieve the grade.
+      background:true,store:true,input:feedbackPrompt,
       text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
     })
   });
-  if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,220));
+  if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,150));
   const response=await r.json();
-  // Aggregate token counts only: never log children's answers or lesson contents.
+  // Persist the provider ID BEFORE handing control back to the browser.
+  // A failed durable ID write must not be mistaken for a successful grade.
+  if(response?.id&&typeof onResponseId==='function')await onResponseId(response.id);
+  if(['queued','in_progress'].includes(response?.status))return {pending:true};
+  return finalizeGrade(response,payload,model);
+}
+// Read-only provider GET: this never initiates another billable generation.
+export async function recoverGrade(responseId,payload){
+  if(typeof responseId!=='string'||!/^resp_[a-zA-Z0-9_-]{3,150}$/.test(responseId))throw Error('Invalid provider response ID');
+  const r=await fetch('https://api.openai.com/v1/responses/'+encodeURIComponent(responseId),{
+    headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY},
+    signal:AbortSignal.timeout(6500)
+  });
+  if(!r.ok)throw Error('Provider grade retrieval HTTP '+r.status);
+  const response=await r.json();
+  if(['queued','in_progress'].includes(response?.status))return null;
+  return finalizeGrade(response,payload,process.env.OPENAI_MODEL||'gpt-6-luna');
+}
+function finalizeGrade(response,payload,model){
+  const {answer='',targetWord='',taskType='general'}=payload||{};
+  const sentenceMode=taskType==='sentence_use',recallMode=taskType==='definition_recall';
+  if(['incomplete','failed','cancelled'].includes(response?.status)){
+    console.warn(JSON.stringify({
+      event:'vocab_grade_provider_terminal',
+      status:response.status,
+      reason:String(response?.incomplete_details?.reason||response?.error?.code||'unknown').slice(0,60)
+    }));
+    throw Error('Provider response has no completed grade');
+  }
   if(response?.usage)console.info(JSON.stringify({
     event:'vocab_grade_usage',model,taskType,
     inputTokens:Number(response.usage.input_tokens)||0,
     cachedInputTokens:Number(response.usage.input_tokens_details?.cached_tokens)||0,
-    outputTokens:Number(response.usage.output_tokens)||0
+    outputTokens:Number(response.usage.output_tokens)||0,
+    reasoningTokens:Number(response.usage.output_tokens_details?.reasoning_tokens)||0
   }));
-  const graded=JSON.parse(extractText(response).trim());
+  const output=extractText(response).trim();
+  if(!output)throw Error('Provider returned no structured grade');
+  const graded=JSON.parse(output);
   if(![0,.5,1].includes(graded.score))throw new Error('Invalid grade response');
   if(sentenceMode&&graded.usageAssessment){
     const a=graded.usageAssessment;
@@ -172,7 +206,7 @@ export async function gradeRPC(auth,name,args,timeout=2500){
 let reliableDelivery=null;
 export default async function handler(req,res){
  res.setHeader?.('Cache-Control','private, no-store');
- if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,deterministicGrade:exactWordGrade,keepAlive:waitUntil});
+ if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,recoverGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,deterministicGrade:exactWordGrade,keepAlive:waitUntil});
  const started=Date.now();let code=200;
  const response={status(n){code=n;res.status(n);return this},json(value){console.info(JSON.stringify({event:'vocab_grade_delivery',status:code,code:value.code||null,cached:value.cached===true,cachePending:value.cachePending===true,elapsedMs:Date.now()-started}));return res.json(value);}};
  return reliableDelivery(req,response);
