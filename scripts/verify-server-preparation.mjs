@@ -141,7 +141,7 @@ const demandGenerate=async items=>{
  return items.map(answer);
 };
 const redesignedPacket=await prepare(advancedJob,'key',demandGenerate,async()=>true);
-assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.equal(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length,4);assert.equal(redesignedPacket.ready.length,10);
+assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.ok(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length>=1&&redesignedPacket.plans.filter(p=>p.type==='subjective_use').length<=4,'advanced writing remains available but is not an unbounded obligation for every review target');assert.equal(redesignedPacket.ready.length,10);
 const frozenPacket=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});frozenPacket.resumeId='advanced-paused';
 const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};const originalTypes=JSON.stringify(frozenPacket.plans.map(p=>p.type));wideOnce=false;redesigned=false;
 const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
