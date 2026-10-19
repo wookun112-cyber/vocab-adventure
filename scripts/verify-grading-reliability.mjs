@@ -172,7 +172,7 @@ assert.equal(stale.run('session.results.at(-1).gradingPending'),false);
 assert.equal(stale.run('child().ungradedSubmissions.length'),1);
 assert.equal(stale.run('child().ungradedSubmissions[0].answer'),'나는 의견을 나누었다.');
 assert.equal(stale.run('wordState(session.queue[0].w.w).seen'),0);
-assert.equal(gradeRequests.length,0,'holding a missing grade never resubmits paid grading');
+assert.deepEqual(gradeRequests.map(opts=>JSON.parse(opts.body).pollOnly),[true],'manual hold performs exactly one read-only cache lookup, never a paid regrade');
 assert.ok(stale.run('session.target>1'),'missing target gets a genuine next practice');
 assert.equal(stale.run('session.preparation.ready.has(current)'),true,'next practice comes from local verified templates');
 assert.equal(stale.run('session.queue[current].type'),'subjective_use');
@@ -182,6 +182,37 @@ assert.equal(stale.node('dontKnow').classList.contains('hidden'),false,'normal q
 await stale.run('cloudSave()');
 assert.equal(stale.cloud.get('family').users.guest.ungradedSubmissions.length,1,'original ungraded submission is durable in cloud');
 console.log('Stale grading hold PASS: 90s wait exposed, original answer retained, no false grade/learning, cloud persistence and no extra model request.');
+
+// A pending code can stay 'grading_pending' after the 90-second threshold,
+// including when server polling was paused. The button must stay visible at
+// every age and become enabled independently of another API response.
+{
+ const waiting=fixture();await waiting.run('buildSession()');await flush();
+ waiting.run("session.gradingQueue=[{id:'waiting-countdown',word:session.queue[0].w.w,index:0,status:'pending',submittedAt:Date.now()-20000,errorCode:'grading_pending',nextRetryAt:Date.now()+600000}];session.results=[{word:session.queue[0].w.w,gradingPending:true,gradingJobId:'waiting-countdown',credit:null,excludedFromVocabulary:true}];session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session)");
+ assert.equal(waiting.node('holdPendingGrades').classList.contains('hidden'),false,'recovery option must be visibly discoverable before 90 seconds');
+ assert.equal(waiting.node('holdPendingGrades').disabled,true,'fresh pending work cannot be archived prematurely');
+ assert.match(waiting.node('holdPendingGrades').textContent,/초 뒤/);
+ waiting.run("session.gradingQueue[0].submittedAt=Date.now()-91000;renderGradingProgress(session)");
+ assert.equal(waiting.node('holdPendingGrades').disabled,false,'even a perpetually pending status unlocks archive after 90 seconds');
+ assert.equal(waiting.node('holdPendingGrades').classList.contains('hidden'),false);
+ assert.match(waiting.node('holdPendingGrades').textContent,/보관하고 학습 계속/);
+ const currentSource=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(currentSource,/if\(session\?\.waitingForGradeResults\)renderGradingProgress\(session\)/,'the timer must repaint the CTA even when polling is busy/offline');
+}
+{
+ // One final cache-only probe can discover a completed grade. In this case
+ // the original response MUST be applied, never mislabeled as missing.
+ const recovered=fixture();await recovered.run('buildSession()');await flush();
+ recovered.run("session.preparation.baseCount=1;session.baseWords=[session.queue[0].w];session.completionPolicy=DAILY_POLICY;session.introDone=true;session.preparation.deliveryPolicy=DELIVERY_POLICY;session.gradingQueue=[{id:'final-cache-only',index:session.target-1,word:session.queue[0].w.w,answer:'문맥 속 어휘를 정확히 사용했다.',payload:{taskType:'sentence_use',answer:'문맥 속 어휘를 정확히 사용했다.'},submittedAt:Date.now()-180000,status:'pending',nextRetryAt:Date.now()+15000}];session.results=Array.from({length:session.target},(_,i)=>i===session.target-1?{word:session.queue[0].w.w,type:'subjective_use',result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:'final-cache-only'}:{word:session.queue[i].w.w,type:session.queue[i].type,result:'제외',credit:null,excludedFromVocabulary:true});current=session.target;session.waitingForGradeResults=true;$('learn').classList.add('active');");
+ const calls=[];
+ recovered.ctx.fetch=async (url,opts)=>{if(url!=='/api/grade')throw Error('No extra provider request');calls.push(JSON.parse(opts.body).pollOnly);return {ok:true,status:200,json:async()=>({score:1,result:'○',contextSuccess:true,targetRecall:false,feedback:'뜻을 바르게 표현했어요.',normalizedAnswer:'문맥 속 어휘를 정확히 사용했다.'})}};
+ await recovered.run('holdStaleGradingQueue()');
+ assert.deepEqual(calls,[true],'cache hit must need only a status lookup');
+ assert.equal(recovered.run('child().ungradedSubmissions?.length||0'),0,'a real cached result cannot be archived as ungraded');
+ assert.equal(recovered.run('session.results.at(-1).credit'),1,'the saved grade is applied without any repeat model call');
+ assert.equal(recovered.run('session.results.at(-1).gradingJobId'),'final-cache-only');
+}
+
 
 // Regression from the October 17 family screenshot: the lesson reached its
 // final answer index, but one already-started AI grade never got a saved result.
