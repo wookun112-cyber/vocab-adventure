@@ -50,6 +50,7 @@ assert.match(next.node('startDaily').textContent,/오늘 새 학습 시작/,'old
 assert.equal(await next.run('autoRolloverPreviousDay()'),true,'new day archives automatically without clicking Start');
 assert.equal(next.run('archiveCalls'),1,'numbered round was archived exactly once');
 assert.equal(next.run('savedLesson()'),null,'old round cannot occupy the new day');
+assert.equal(next.node('startDaily').disabled,false,'new-day start must be enabled immediately after rollover');
 assert.equal(next.run('archiveCopy.results.length'),JSON.parse(previous).results.length,'original answers remain intact');
 assert.equal(next.run('session'),null);
 assert.equal(await next.run('autoRolloverPreviousDay()'),false,'repeat checks never archive twice');
@@ -142,7 +143,10 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
   assert.equal(real.run('preparingSession'),false);
  }
  if(cappedToday)await real.run('switchSavedLearning(savedLesson())');
- else assert.equal(await real.run('autoRolloverPreviousDay()'),true,'older round archives without clicking Start');
+ else{
+  assert.equal(await real.run('autoRolloverPreviousDay()'),true,'older round archives without clicking Start');
+  assert.equal(real.node('startDaily').disabled,false,'new round button is enabled after remote archive');
+ }
  await real.run("buildSession('daily')");
  assert.equal(archiveCalls,lostAcknowledgement?2:1,'real archiving runs once or safely retries');
  assert.equal(real.run('session.results.length'),0,'new study begins without prior answers');
