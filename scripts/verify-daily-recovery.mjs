@@ -44,10 +44,16 @@ assert.equal(f.run('preservesLearning({daySwitchSequence:2,words:{}},{daySwitchS
 const next=fixture();await next.run('buildSession()');await next.run('cloudSave()');
 next.run("child().activeLesson.studyFallbackDay=dateAfter(today(),-1);globalThis.archiveCalls=0;globalThis.archiveCopy=null;switchSavedLearning=async saved=>{archiveCalls++;archiveCopy=JSON.parse(JSON.stringify(saved));child().activeLesson=null;session=null;return true}");
 const previous=next.run('JSON.stringify(child().activeLesson)');
-await next.run('buildSession()');
-assert.equal(next.run('archiveCalls'),0,'new day continues the current numbered round');
-assert.equal(next.run('savedLesson().id'),JSON.parse(previous).id,'same round stays current across dates');
-assert.ok(next.run('session.activeMs')<1000,'new day has its own study clock');
+assert.equal(next.run('isEarlierLesson(savedLesson())'),true,'numbered older rounds must be detected');
+next.run('renderRoundStart()');
+assert.match(next.node('startDaily').textContent,/오늘 새 학습 시작/,'old numbered round must not be offered as default');
+assert.equal(await next.run('autoRolloverPreviousDay()'),true,'new day archives automatically without clicking Start');
+assert.equal(next.run('archiveCalls'),1,'numbered round was archived exactly once');
+assert.equal(next.run('savedLesson()'),null,'old round cannot occupy the new day');
+assert.equal(next.run('archiveCopy.results.length'),JSON.parse(previous).results.length,'original answers remain intact');
+assert.equal(next.run('session'),null);
+assert.equal(await next.run('autoRolloverPreviousDay()'),false,'repeat checks never archive twice');
+assert.equal(next.run('archiveCalls'),1);
 const keep=fixture();await keep.run('buildSession()');await keep.run('cloudSave()');
 keep.run("child().activeLesson.studyFallbackDay=dateAfter(today(),-1);globalThis.archiveCalls=0;switchSavedLearning=async()=>{archiveCalls++;throw Error('Must not archive explicit resume')};resumePreviousRequested=true");
 await keep.run('buildSession()');assert.equal(keep.run('archiveCalls'),0);
@@ -57,7 +63,7 @@ const id=failure.run('savedLesson().id');failure.run('cloudSave=async()=>false')
 await assert.rejects(failure.run('switchSavedLearning(savedLesson())'),/저장/);
 assert.equal(failure.run('savedLesson().id'),id);assert.equal(failure.run('daySwitchBusy'),false);
 assert.equal(failure.calls.generation,0,'failed transition never generates replacement content');
-console.log('Production recovery verified: no-op save, retry, Seoul day boundary, stale-device guard, new-day archive, explicit resume, unsaved-work protection; no paid calls.');
+console.log('Production recovery verified: no-op save, retry, Seoul day boundary, automatic numbered round archive, explicit resume, unsaved-work protection; no paid calls.');
 
 
 // Exercise the actual new-day archive → cloud reconciliation → first-question
@@ -135,7 +141,8 @@ async function verifyRealDaySwitch({previousMode='daily',alreadyCompletedToday=f
   assert.match(real.node('learningStartStatus').textContent,/확인|보관|기록/);
   assert.equal(real.run('preparingSession'),false);
  }
- await real.run('switchSavedLearning(savedLesson())');
+ if(cappedToday)await real.run('switchSavedLearning(savedLesson())');
+ else assert.equal(await real.run('autoRolloverPreviousDay()'),true,'older round archives without clicking Start');
  await real.run("buildSession('daily')");
  assert.equal(archiveCalls,lostAcknowledgement?2:1,'real archiving runs once or safely retries');
  assert.equal(real.run('session.results.length'),0,'new study begins without prior answers');
