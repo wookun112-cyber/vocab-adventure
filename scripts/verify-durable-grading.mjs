@@ -9,7 +9,7 @@ const oldKey=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='offline-fixt
 const lease='11111111-1111-4111-8111-111111111111';
 const payload={gradingPolicy:'meaning-first-20261018',taskType:'sentence_use',targetWord:'의견',definition:'어떤 일에 대한 생각',question:'의견을 넣어 문장을 만드세요.',answer:'친구의 의견을 들었어요.',source:'typed',readerLevel:4};
 const semantic={normalizedAnswer:payload.answer,result:'○',score:1,contextSuccess:true,targetRecall:false,feedback:'의견을 알맞게 썼어요.',exampleAnswer:payload.answer,correctionApplied:false,correctionNote:'',usageAssessment:{meaning:'correct',target:'present',expression:'complete',issue:'none'}};
-const completed=id=>({id,status:'completed',model:'gpt-6-luna',output_text:JSON.stringify(semantic),usage:{input_tokens:100,output_tokens:200,output_tokens_details:{reasoning_tokens:20}}});
+const completed=id=>({id,status:'completed',model:'gpt-6-luna',output:[{type:'reasoning',summary:[]},{type:'message',content:[{type:'output_text',text:JSON.stringify(semantic)}]}],usage:{input_tokens:100,output_tokens:200,output_tokens_details:{reasoning_tokens:20}}});
 function fixture(){
  const rows=new Map();let creates=0,gets=0,owner='family',providerStatus='queued',storeFail=false,checkpointFail=false,lookupFail=false,dropCreate=false,startAckLost=false,seenBody;
  const fetcher=async(url,opts={})=>{
@@ -77,7 +77,7 @@ try{
  slow.status='completed';assert.equal((await slow.call({pollOnly:true})).value.score,1);assert.equal(slow.creates,1);
  // The old untraceable window and already-started legacy requests never rebill.
  const unknown=fixture();unknown.dropCreate=true;assert.equal((await unknown.call()).value.code,'grading_result_recovery_required');unknown.restart();unknown.dropCreate=false;
- assert.equal((await unknown.call({pollOnly:true})).value.code,'grading_result_recovery_required');assert.equal((await unknown.call()).value.code,'grading_result_recovery_required');assert.equal(unknown.creates,1);
+ assert.equal((await unknown.call({pollOnly:true})).value.code,'grading_result_recovery_required');assert.equal((await unknown.call()).value.code,'grading_result_recovery_required');assert.equal(unknown.creates,1);assert.equal([...unknown.rows.values()][0].failureStage,'provider_create');
  // An incomplete JSON/reasoning response is not a grade and never auto-recreated.
  const incomplete=fixture();await incomplete.call();incomplete.status='incomplete';const inc=await incomplete.call({pollOnly:true});assert.equal(inc.status,202);assert.equal(inc.value.causeCode,'grading_provider_incomplete');assert.equal(inc.value.score,undefined);incomplete.restart();assert.equal((await incomplete.call({pollOnly:true})).value.code,'grading_result_recovery_required');assert.equal(incomplete.creates,1);
  // Duplicate concurrent requests share one paid start even across cold handlers.
