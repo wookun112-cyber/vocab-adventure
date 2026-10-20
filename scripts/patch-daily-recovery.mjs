@@ -116,7 +116,10 @@ async function autoRolloverPreviousDay(){
     renderResumeButton();
    }
    return false;
-  }finally{dailyRolloverTask=null}
+  }finally{
+   dailyRolloverTask=null;
+   if(profile===state.selected&&account===authUser?.id&&epoch===authEpoch)renderResumeButton();
+  }
  })();
  return dailyRolloverTask;
 }
