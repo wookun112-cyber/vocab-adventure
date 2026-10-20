@@ -1,3 +1,4 @@
+import {createGradeProvider} from '../lib/server/grade-provider.js';
 import {exactWordGrade} from '../lib/server/exact-word-grade.js';
 import {waitUntil} from '@vercel/functions';
 import {createGradeDelivery} from '../lib/server/grade-delivery.js';
@@ -18,7 +19,7 @@ export async function verifyUser(auth){
   if(!r.ok)return null;
   return r.json();
 }
-export async function runGrade(payload){
+export function gradeRequest(payload){
   const {
     question,answer,source='typed',targetWord='',definition='',band=3,
     gradingContext='',taskType='general',taskDemand='standard',readerLevel=band,acceptedAnswers=[],allowNaturalDerivations=[]
@@ -121,25 +122,23 @@ meaning=correct, target=present, expression=complete이면 반드시 score 1, re
     schema.required.push('usageAssessment');
   }
   const model=process.env.OPENAI_MODEL||'gpt-6-luna';
-  const r=await fetch('https://api.openai.com/v1/responses',{
-    method:'POST',
-    headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
-    signal:AbortSignal.timeout(22000),
-    body:JSON.stringify({
-      model,reasoning:{effort:'low'},max_output_tokens:650,input:feedbackPrompt,
-      text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}
-    })
-  });
-  if(!r.ok)throw new Error('OpenAI '+r.status+': '+(await r.text()).slice(0,220));
-  const response=await r.json();
+  return {model,reasoning:{effort:'low'},max_output_tokens:1400,input:feedbackPrompt,
+    text:{format:{type:'json_schema',name:'vocab_grade',strict:true,schema}}};
+}
+export function parseGradeResponse(payload,response){
+  const {taskType='general',answer,targetWord='',gradingPolicy}=payload;
+  const sentenceMode=taskType==='sentence_use',recallMode=taskType==='definition_recall';
+  const model=response.model||process.env.OPENAI_MODEL||'gpt-6-luna';
+  if(response.status&&response.status!=='completed')throw Object.assign(Error('Incomplete grade response'),{code:'grading_provider_incomplete'});
   // Aggregate token counts only: never log children's answers or lesson contents.
   if(response?.usage)console.info(JSON.stringify({
     event:'vocab_grade_usage',model,taskType,
     inputTokens:Number(response.usage.input_tokens)||0,
     cachedInputTokens:Number(response.usage.input_tokens_details?.cached_tokens)||0,
-    outputTokens:Number(response.usage.output_tokens)||0
+    outputTokens:Number(response.usage.output_tokens)||0,
+    reasoningTokens:Number(response.usage.output_tokens_details?.reasoning_tokens)||0,providerStatus:response.status||'completed'
   }));
-  const graded=JSON.parse(extractText(response).trim());
+  let graded;try{graded=JSON.parse(extractText(response).trim())}catch{throw Object.assign(Error('Invalid grade JSON'),{code:'grading_provider_invalid_json'})}
   if(![0,.5,1].includes(graded.score))throw new Error('Invalid grade response');
   if(sentenceMode&&graded.usageAssessment){
     const a=graded.usageAssessment;
@@ -159,6 +158,13 @@ meaning=correct, target=present, expression=complete이면 반드시 score 1, re
   graded.exampleAnswer=sentenceMode&&typeof graded.exampleAnswer==='string'?graded.exampleAnswer.trim().slice(0,400):'';
   return {...graded,model};
 }
+// Retain the synchronous helper for isolated rubric tests; production uses the
+// durable provider below, including a saved ID and GET-only recovery.
+export async function runGrade(payload){
+ const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},signal:AbortSignal.timeout(22000),body:JSON.stringify(gradeRequest(payload))});
+ if(!r.ok)throw Error('OpenAI '+r.status+': '+(await r.text()).slice(0,220));
+ return parseGradeResponse(payload,await r.json());
+}
 function gradeForRequest(result,payload){
   // Previous lesson examples affect copied-answer credit, not semantic grading.
   // Re-evaluate this flag for the current submission, including cache hits.
@@ -167,13 +173,20 @@ function gradeForRequest(result,payload){
 }
 export async function gradeRPC(auth,name,args,timeout=2500){
  const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(timeout)});
- if(!r.ok){let problem={};try{problem=await r.json()}catch{};const code=String(problem.message||'');throw Error(/GRADE_(DAILY|RATE|CONCURRENCY)_LIMIT/.test(code)?code:'Grade storage unavailable');}return r.json();
+ if(!r.ok){let problem={};try{problem=await r.json()}catch{};const code=String(problem.message||'');throw Object.assign(Error(/GRADE_(DAILY|RATE|CONCURRENCY)_LIMIT/.test(code)?code:'Grade storage unavailable'),{code:String(problem.code||'grade_storage_http_'+r.status)});}return r.json();
 }
 let reliableDelivery=null;
 export default async function handler(req,res){
  res.setHeader?.('Cache-Control','private, no-store');
- if(!reliableDelivery)reliableDelivery=createGradeDelivery({verifyUser,runGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,deterministicGrade:exactWordGrade,keepAlive:waitUntil});
+ if(!reliableDelivery)reliableDelivery=createGradeDelivery({provider:createGradeProvider({request:gradeRequest,decode:parseGradeResponse}),verifyUser,runGrade,gradeRPC,gradeForRequest,authorizeAccount:requireGradingAccount,authorizeTask:authorizeGradeTask,deterministicGrade:exactWordGrade,keepAlive:waitUntil});
  const started=Date.now();let code=200;
  const response={status(n){code=n;res.status(n);return this},json(value){console.info(JSON.stringify({event:'vocab_grade_delivery',status:code,code:value.code||null,cached:value.cached===true,cachePending:value.cachePending===true,elapsedMs:Date.now()-started}));return res.json(value);}};
  return reliableDelivery(req,response);
+}
+
+// Recover an archived submission through the same authenticated GET-only path.
+export async function recoverStoredGrade(auth,p,providerReceipt){
+ let status=0,value=null;
+ await handler({method:'POST',headers:{authorization:auth},body:{...p,pollOnly:true,...(providerReceipt?{providerReceipt}:{})}}, {setHeader(){},status(n){status=n;return this},json(v){value=v;return this}});
+ return status===200&&[0,.5,1].includes(value?.score)?value:null;
 }

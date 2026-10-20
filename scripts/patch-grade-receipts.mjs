@@ -12,7 +12,16 @@ async function requestGrade(job,timeout=25000,pollOnly=false){
  const receiptRows=deviceStore.get(receiptStorageKey)?.rows||[];
  const oldReceipt=receiptRows.find(row=>row.key===gradeReceiptKey(job.payload)&&row.expires>Date.now());
 `);
- replace("body:JSON.stringify({...job.payload,requestId:job.id,pollOnly})", "body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.gradeReceipt||oldReceipt?.receipt?{gradeReceipt:job.gradeReceipt||oldReceipt.receipt}:{})})");
+ replace("body:JSON.stringify({...job.payload,requestId:job.id,pollOnly})", "body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.gradeReceipt||oldReceipt?.receipt?{gradeReceipt:job.gradeReceipt||oldReceipt.receipt}:{}),...(job.providerReceipt||oldReceipt?.providerReceipt?{providerReceipt:job.providerReceipt||oldReceipt.providerReceipt}:{})})");
+ replace(" const value=await r.json();",String.raw`
+ const value=await r.json();
+ if(value.providerReceipt&&authUser?.id===gradeAccount){
+  job.providerReceipt=value.providerReceipt;
+  const rows=[{key:gradeReceiptKey(job.payload),providerReceipt:value.providerReceipt,expires:Date.now()+6*86400000},...receiptRows.filter(row=>row.key!==gradeReceiptKey(job.payload)&&row.expires>Date.now())].slice(0,100);
+  await deviceStore.set(receiptStorageKey,{account:gradeAccount,savedAt:Date.now(),rows});
+  if(session?.gradingQueue?.some(pending=>pending.id===job.id)){checkpointSession();localSave();await deviceStore.flush()}
+ }
+`);
  replace(" return value;\n}\nfunction applyGradedAnswer",String.raw`
  job.receivedGrade=value;
  if(authUser?.id!==gradeAccount)return value;

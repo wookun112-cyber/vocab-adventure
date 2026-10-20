@@ -8,7 +8,7 @@
       "maxDuration": 300
     },
     "api/grade.js": {
-      "maxDuration": 45
+      "maxDuration": 60
     },
     "api/*.js": {
       "maxDuration": 30

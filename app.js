@@ -1722,7 +1722,7 @@ async function gradeCurrent(dontKnow){
  $('submit').disabled=true;$('submit').textContent='답안 확인 중…';
  pauseLearningClock();active.waitingForGrading=true;
  try{
-  const graded=await requestGrade(job,12000);
+  const graded=await requestGrade(job,22000);
   if(session!==active||state.selected!==active.profile)return;
   active.gradingQueue=active.gradingQueue.filter(j=>j.id!==job.id);
   applyGradedAnswer(q,graded,job);
@@ -1868,22 +1868,23 @@ async function processGradingQueue(active,force=false){
  const job=(active.gradingQueue||[]).filter(j=>j.status==='pending'&&(force||j.nextRetryAt<=Date.now())&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id))
   .sort((a,b)=>(a.lastPolledAt||0)-(b.lastPolledAt||0))[0];
  if(!job){renderGradingProgress(active);return}
+ const priorStatus=job.status,priorError=job.errorCode;
  active.gradingBusy=true;job.lastPolledAt=Date.now();
  try{
   let graded;
-  try{graded=await requestGrade(job,8000,true)}catch(error){
+  try{graded=await requestGrade(job,15000,true)}catch(error){
    // Only the server may certify that a request never started (or failed
    // definitively). A timeout/pending result never starts another paid request.
    if(error.code!=='grading_retryable')throw error;
    if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
-   graded=await requestGrade(job,12000);
+   graded=await requestGrade(job,22000);
   }
   if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
   job.grade=graded;job.status='ready';job.pollFailures=0;
   const atBoundary=current>=active.target;appendReadyGrades(active);
   if(atBoundary&&current<active.queue.length&&$('learn').classList.contains('active'))renderQuestion();
  }catch(e){deferGradingJob(job,e)}
- finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){renderGradingProgress(active);checkpointSession();localSave();cloudSave();if(job.status==='pending'&&job.errorCode==='grading_result_recovery_required'&&Date.now()-Number(job.submittedAt||0)>=90000){await holdStaleGradingQueue(true,job.id)}else if(active.gradeHoldRequested){active.gradeHoldRequested=false;void holdStaleGradingQueue()}}}
+ finally{active.gradingBusy=false;if(session===active&&authUser?.id===active.account&&state.selected===active.profile){renderGradingProgress(active);checkpointSession();localSave();if(job.status!==priorStatus||job.errorCode!==priorError||Date.now()-Number(active.lastGradeCloudSaveAt||0)>=30000){active.lastGradeCloudSaveAt=Date.now();cloudSave()}if(job.status==='pending'&&job.errorCode==='grading_result_recovery_required'&&Date.now()-Number(job.submittedAt||0)>=90000){await holdStaleGradingQueue(true,job.id)}else if(active.gradeHoldRequested){active.gradeHoldRequested=false;void holdStaleGradingQueue()}}}
 }
 
 function fallbackOpen(q,answer){
