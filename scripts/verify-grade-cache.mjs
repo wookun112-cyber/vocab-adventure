@@ -7,6 +7,8 @@ process.env.OPENAI_API_KEY='test-only-not-a-real-key';
 globalThis.fetch=async(url,options={})=>{
  if(url.endsWith('/auth/v1/user'))return {ok:true,json:async()=>({id:AUTHORED_OWNER})};
  const args=JSON.parse(options.body||'{}');
+ if(url.endsWith('/read_vocab_grade_status'))return {ok:true,json:async()=>({status:cache.get(args.p_hash)?.result?'ready':'pending',...cache.get(args.p_hash)})};
+ if(url.endsWith('/record_vocab_grade_response')){cache.set(args.p_hash,{...cache.get(args.p_hash),providerId:args.p_response.id,providerResponse:args.p_response,lease:args.p_lease});return {ok:true,json:async()=>true}}
  if(url.endsWith('/get_vocab_grade_assignment'))return {ok:true,json:async()=>true};
  if(url.endsWith('/claim_vocab_grade')){
   if(cache.has(args.p_hash))return {ok:true,json:async()=>cache.get(args.p_hash)};
@@ -15,7 +17,7 @@ globalThis.fetch=async(url,options={})=>{
  if(url.endsWith('/start_vocab_grade'))return {ok:true,json:async()=>true};
  if(url.endsWith('/finish_vocab_grade')){cache.set(args.p_hash,{result:args.p_result});return {ok:true,json:async()=>true}}
  if(url==='https://api.openai.com/v1/responses'){
-  charges++;await new Promise(r=>setTimeout(r,5));return {ok:true,json:async()=>({output_text:JSON.stringify({score:1,contextSuccess:true,targetRecall:false,result:'○',normalizedAnswer:'친구의 의견을 존중했다.',feedback:'생각을 뜻하는 의견을 알맞게 썼어요.',exampleAnswer:'친구의 의견을 존중했다.'})})};
+  charges++;await new Promise(r=>setTimeout(r,5));return {ok:true,json:async()=>({id:'resp_cache_fixture_'+charges,status:'completed',output_text:JSON.stringify({score:1,contextSuccess:true,targetRecall:false,result:'○',normalizedAnswer:'친구의 의견을 존중했다.',feedback:'생각을 뜻하는 의견을 알맞게 썼어요.',exampleAnswer:'친구의 의견을 존중했다.'})})};
  }
  throw Error('Unexpected network '+url);
 };

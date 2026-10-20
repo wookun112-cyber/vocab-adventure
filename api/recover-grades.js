@@ -1,9 +1,9 @@
-import {verifyUser,gradeRPC} from './grade.js';
+import {verifyUser,gradeRPC,recoverStoredGrade} from './grade.js';
 import {requireGradingAccount} from '../lib/server/grade-access.js';
 import {gradeHash,readReceipt} from '../lib/server/grade-delivery.js';
 import {reconcileArchivedGrade} from '../lib/server/archived-grade-recovery.js';
 
-export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC}={}){
+export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC,recover=async()=>null}={}){
  return async(req,res)=>{
   res.setHeader?.('Cache-Control','private, no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
@@ -20,7 +20,7 @@ export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC}={}){
      if(!snapshot)break;
      skip.push(snapshot.job.id);
      const hash=gradeHash(snapshot.job.payload);
-     const grade=await rpc(auth,'read_saved_vocab_grade',{p_hash:hash})||readReceipt(snapshot.job.gradeReceipt,user.id,hash);
+     const grade=await rpc(auth,'read_saved_vocab_grade',{p_hash:hash})||readReceipt(snapshot.job.gradeReceipt,user.id,hash)||await recover(auth,snapshot.job.payload,snapshot.job.providerReceipt);
      if(!grade){waiting++;continue}
      const result=reconcileArchivedGrade(snapshot,grade);
      if(!result){waiting++;continue}
@@ -32,4 +32,4 @@ export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC}={}){
   }catch(error){return res.status(error.status||503).json({code:error.code||'archive_recovery_unavailable',error:'이전 답안은 보관되어 있으며 다음 접속 때 결과를 다시 확인합니다.'})}
  };
 }
-export default createArchivedRecovery();
+export default createArchivedRecovery({recover:recoverStoredGrade});

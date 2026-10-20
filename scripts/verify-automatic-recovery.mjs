@@ -92,3 +92,23 @@ const switched=saves();await switched.run('cloudSave()');switched.ctx.authUser={
 const auth=saves();auth.ctx.sb.from=()=>({upsert:async()=>({error:{code:'42501',message:'denied'}})});await auth.run('cloudSave()');assert.equal(auth.timers.size,0);
 const conflict=saves();conflict.ctx.sb.from=()=>({upsert:async()=>({error:{code:'learning_conflict',message:'LEARNING_STATE_REGRESSION'}})});await conflict.run('cloudSave()');assert.equal(conflict.timers.size,0);
 console.log('Automatic recovery PASS: missing-result hold, saved answer, cache success first, temporary failure preservation, uninterrupted draft, no duplicate AI; idle-home save backoff, offline/hidden pause, account isolation and auth/conflict stop.');
+
+// Provider recovery metadata is durable even on 202, before a score exists.
+const receipt202=fixture();await receipt202.run('buildSession()');
+receipt202.run(`const j={id:'receipt-202',index:0,word:session.queue[0].w.w,answer:'원본 답안',submittedAt:Date.now(),payload:{taskType:'sentence_use',targetWord:'의견',question:'문장 만들기',answer:'원본 답안'},status:'pending'};session.gradingQueue=[j];globalThis.receiptJob=j;`);
+receipt202.ctx.fetch=async()=>({ok:true,status:202,json:async()=>({code:'grading_pending',providerReceipt:'server-signed-provider-fixture'})});
+await assert.rejects(receipt202.run('requestGrade(receiptJob,22000)'),error=>error.code==='grading_pending');
+assert.equal(receipt202.run('session.gradingQueue[0].providerReceipt'),'server-signed-provider-fixture');
+assert.equal(receipt202.run("deviceStore.get('vocab-grade-receipts-family').rows[0].providerReceipt"),'server-signed-provider-fixture');
+let sent;receipt202.ctx.fetch=async(url,opts)=>{sent=JSON.parse(opts.body);return {ok:true,status:202,json:async()=>({code:'grading_pending'})}};
+await assert.rejects(receipt202.run('requestGrade(receiptJob,15000,true)'));assert.equal(sent.providerReceipt,'server-signed-provider-fixture');
+await receipt202.run('cloudSave()');assert.equal(receipt202.cloud.get('family').users.guest.activeLesson.gradingQueue[0].providerReceipt,'server-signed-provider-fixture');
+// Repeated pending cache polls must not rewrite megabytes of history every 2s.
+const quiet=await gradeFixture(false);quiet.run(`session.gradingQueue[0].submittedAt=Date.now();session.gradingQueue[0].errorCode='grading_pending';globalThis.queueWrites=0;cloudSave=async()=>{queueWrites++;return true};`);
+quiet.ctx.fetch=async()=>({ok:true,status:202,json:async()=>({code:'grading_pending'})});
+for(let i=0;i<5;i++)await quiet.run('processGradingQueue(session,true)');
+assert.equal(quiet.run('queueWrites'),1,'pending-only polls are local checkpoints, not a cloud write storm');
+quiet.run('session.lastGradeCloudSaveAt=Date.now()-31000');await quiet.run('processGradingQueue(session,true)');assert.equal(quiet.run('queueWrites'),2,'30-second durability heartbeat remains');
+quiet.ctx.fetch=async()=>({ok:true,status:200,json:async()=>({score:1,contextSuccess:true,feedback:'맞아요.'})});
+await quiet.run('processGradingQueue(session,true)');assert.ok(quiet.run('queueWrites')>2,'new results always trigger cloud persistence');
+console.log('202 provider-receipt checkpoint, subsequent GET recovery metadata, original answer persistence and cloud-poll write throttling PASS.');
