@@ -78,6 +78,7 @@ async function cloudSave(silent=true){
 `;
 export const dayChoiceSource=String.raw`
 let resumePreviousRequested=false,daySwitchBusy=false;
+let dailyRolloverTask=null,manualPreviousLesson=null;
 function lessonStudyDay(saved){
  const date=saved?.studyFallbackDay;
  if(typeof date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(date))return date;
@@ -88,16 +89,51 @@ function isEarlierLesson(saved,day=today()){
  const date=lessonStudyDay(saved);
  return !!saved&&['daily','review'].includes(saved.mode)&&!!date&&date<day;
 }
+
+function isManuallyRestoredOld(saved){
+ return !!saved&&manualPreviousLesson?.id===saved.id&&manualPreviousLesson.day===today()&&
+  manualPreviousLesson.profile===state.selected&&manualPreviousLesson.account===authUser?.id;
+}
+// Transition only on the signed-in selected learner. On failed storage, keep
+// yesterday's original round and let the next wake/Start retry safely.
+async function autoRolloverPreviousDay(){
+ if(dailyRolloverTask)return dailyRolloverTask;
+ if(!canSaveLearning()||preparingSession||daySwitchBusy||resumePreviousRequested)return false;
+ const saved=savedLesson();
+ if(!isEarlierLesson(saved)||isManuallyRestoredOld(saved))return false;
+ const profile=state.selected,account=authUser?.id,epoch=authEpoch;
+ dailyRolloverTask=(async()=>{
+  try{
+   if(!(await switchSavedLearning(saved)))return false;
+   if(profile!==state.selected||account!==authUser?.id||epoch!==authEpoch)return false;
+   manualPreviousLesson=null;
+   if(['learn','intro','reading'].some(id=>$(id)?.classList.contains('active')))show('home');
+   setStudyStartStatus('날짜가 바뀌어 이전 회차를 보관했어요. 오늘의 새 회차를 시작할 수 있어요.');
+   renderAll();return true;
+  }catch(error){
+   if(profile===state.selected&&account===authUser?.id&&epoch===authEpoch){
+    setStudyStartStatus('지난 회차를 보관하지 못했어요. 답안과 진도는 그대로 있습니다. 인터넷 연결 후 다시 시도해 주세요.',true);
+    renderResumeButton();
+   }
+   return false;
+  }finally{
+   dailyRolloverTask=null;
+   if(profile===state.selected&&account===authUser?.id&&epoch===authEpoch)renderResumeButton();
+  }
+ })();
+ return dailyRolloverTask;
+}
 function renderDayChoice(saved=savedLesson()){
  const start=$('startDaily'),card=start?.closest?.('.card');if(!card)return;
- if(isEarlierLesson(saved)&&!preparingSession&&!saved?.roundNumber)start.textContent='오늘 새 학습 시작';
+ if(isEarlierLesson(saved)&&!preparingSession&&!isManuallyRestoredOld(saved))start.textContent='오늘 새 학습 시작 · 이전 회차 보관';
+ if(daySwitchBusy||dailyRolloverTask)start.disabled=true;
  let box=$('previousLearningChoices');
  if(!box){box=document.createElement('div');box.id='previousLearningChoices';box.style.marginTop='12px';card.appendChild(box)}
  box.replaceChildren();
- if(isEarlierLesson(saved)&&!saved?.roundNumber){
-  const note=document.createElement('p');note.className='muted';note.textContent=lessonStudyDay(saved)+' 미완료 학습은 보관됩니다. 오늘의 학습시간은 새로 측정해요.';box.appendChild(note);
-  const resume=document.createElement('button');resume.className='secondary';resume.textContent='이전 학습 이어하기';resume.disabled=preparingSession||daySwitchBusy;
-  resume.onclick=async()=>{if(preparingSession||daySwitchBusy)return;resumePreviousRequested=true;try{await buildSession('daily')}finally{resumePreviousRequested=false}};box.appendChild(resume);
+ if(isEarlierLesson(saved)&&!isManuallyRestoredOld(saved)){
+  const note=document.createElement('p');note.className='muted';
+  note.textContent=lessonStudyDay(saved)+' 미완료 회차는 보관하고 오늘 학습은 0초부터 새로 시작해요. 원본 답안과 정오답 기록은 유지합니다.';
+  box.appendChild(note);
  }
  const archived=child().pausedLessonIndex||[];
  if(archived.length){
@@ -120,7 +156,14 @@ async function switchSavedLearning(saved,restoreId=null){
  const profileButtons=Array.from(document.querySelectorAll('[data-profile]')).map(b=>[b,b.disabled]);
  profileButtons.forEach(([b])=>{b.disabled=true});
  try{
-  if(session?.profile===profile){pauseLearningClock();checkpointSession();localSave();const prior=session;session=null;prior.preparation?.cancel()}
+  if(session?.profile===profile){
+   if(!restoreId&&isEarlierLesson(saved)){
+    studyHistory.captureStudyClock(session,Date.parse(today()+'T00:00:00+09:00'));
+    session.clockStarted=null;
+   }
+   pauseLearningClock();checkpointSession();localSave();
+   const prior=session;session=null;prior.preparation?.cancel();
+  }
   settleReachedStudyDays(saved);
   syncUnfinishedUsage(child(),saved);
   setStudyStartStatus('현재 기기 답안을 먼저 안전하게 저장하고 있습니다.');
@@ -154,7 +197,7 @@ async function restorePausedLearning(id){
  preparingSession=true;renderDayChoice();
  try{
   const restored=await switchSavedLearning(savedLesson(),id);
-  if(restored){resumePreviousRequested=true;preparingSession=false;await buildSession('daily')}
+  if(restored){manualPreviousLesson={account:authUser?.id,profile:state.selected,id,day:today()};resumePreviousRequested=true;preparingSession=false;await buildSession('daily')}
  }catch(error){alert(String(error?.message||error));show('home')}
  finally{preparingSession=false;resumePreviousRequested=false;renderResumeButton();renderDayChoice();renderSaveStatus()}
 }
@@ -165,19 +208,22 @@ export function patchDailyRecovery(source){
  const begin=source.indexOf('async function cloudSave(silent=true){'),end=source.indexOf('function learnerCheckpointKey(',begin);
  if(begin<0||end<0)throw Error('Save function boundary unavailable');
  source=source.slice(0,begin)+'// daily-recovery-12.16.26\n'+reliableSaveSource+dayChoiceSource+source.slice(end);
+ replace(" if($('startReview'))$('startReview').textContent=saved?saved.roundNumber+'회차 이어서 하기':next+'회차 시작하기';"," if($('startReview'))$('startReview').textContent=saved?saved.roundNumber+'회차 이어서 하기':next+'회차 시작하기';\n if(isEarlierLesson(saved)&&!isManuallyRestoredOld(saved)){\n  $('startDaily').textContent='오늘 새 학습 시작 · '+next+'회차';\n  if($('startReview'))$('startReview').textContent='오늘 새 회차 시작';\n  if(daySwitchBusy||dailyRolloverTask)$('startDaily').disabled=true;\n }");
+ replace(" if($('dailyTitle'))$('dailyTitle').textContent=saved?saved.roundNumber+'회차 진행 중':'새 단어 5개 + 복습 최대 10개';"," if($('dailyTitle'))$('dailyTitle').textContent=isEarlierLesson(saved)&&!isManuallyRestoredOld(saved)?'오늘 새 회차 준비':saved?saved.roundNumber+'회차 진행 중':'새 단어 5개 + 복습 최대 10개';");
+ replace("   $('authGate').classList.add('hidden');setMsg('');","   $('authGate').classList.add('hidden');setMsg('');\n   // Open today's study automatically after any successful sign-in.\n   setTimeout(()=>{if(epoch===authEpoch&&canSaveLearning())void autoRolloverPreviousDay()},0);");
+ replace("session=null;state.selected=b.dataset.profile;localSave();cloudSave();renderAll();show('home');warmDailyQuestions()","session=null;state.selected=b.dataset.profile;manualPreviousLesson=null;localSave();cloudSave();renderAll();show('home');void autoRolloverPreviousDay().then(()=>warmDailyQuestions())");
  replace('function preservesLearning(previous,next){',"function preservesLearning(previous,next){\n if(Number(next.daySwitchSequence||0)<Number(previous.daySwitchSequence||0))return false;");
  replace('   if(paused){await resumeLesson(paused);return}',`   if(paused){
-    if((paused.roundNumber&&!cappedCurrentDailyLesson(paused))||paused.roundPolicy){await resumeLesson(paused);return}
-    if(cappedCurrentDailyLesson(paused)){
+    if(isEarlierLesson(paused)&&!resumePreviousRequested&&!isManuallyRestoredOld(paused)){
+     // Every prior-date daily/review lesson, including numbered rounds and
+     // incomplete grading, is archived before another day is started.
+     if(!(await switchSavedLearning(paused)))return;
+     if(!savedLesson(profile)&&child().lastDate===today()&&mode==='daily')mode='review';
+    }else if(cappedCurrentDailyLesson(paused)){
      // The daily time limit is not a block on extra practice. Preserve the
      // unsolved original lesson in the server archive before opening review.
      setStudyStartStatus('이전 학습 기록을 보관한 뒤 다음 회차를 준비합니다.');
      if(!(await switchSavedLearning(paused)))return;
-    }else if(mode==='daily'&&isEarlierLesson(paused)&&!resumePreviousRequested){
-     if(!(await switchSavedLearning(paused)))return;
-     // Preserve the daily one-packet limit, using extra review only after
-     // an already-completed primary lesson for the current calendar day.
-     if(!savedLesson(profile)&&child().lastDate===today())mode='review';
     }else{await resumeLesson(paused);return}
    }`);
  const renderBegin=source.indexOf('function renderResumeButton(){'),renderEnd=source.indexOf('\nfunction storeLearnerCheckpoint',renderBegin);
@@ -186,6 +232,7 @@ export function patchDailyRecovery(source){
  source=source.slice(0,renderBegin)+fn.slice(0,brace)+' renderDayChoice(saved);renderSaveStatus();\n'+fn.slice(brace)+source.slice(renderEnd);
  replace("if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';", "if(saved?.model===LEARNING_MODEL&&!saved.introDone&&saved.nextIndex>=saved.introAt)$('startDaily').textContent='이어서 새 단어 익히기';\n renderDayChoice(saved);");
  replace("'클라우드 연결';$('cloudPill').classList.add('on');\n }\n}\nfunction renderQuestion", "'클라우드 연결';$('cloudPill').classList.add('on');renderSaveStatus();\n }\n}\nfunction renderQuestion");
- source+="\nwindow.addEventListener('online',()=>{if(canSaveLearning()&&cloudSavePending&&retryableSaveError(cloudSaveError))cloudSave()});\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden&&canSaveLearning()&&cloudSavePending&&retryableSaveError(cloudSaveError))cloudSave()});\nsetInterval(()=>{if(!document.hidden&&$('home')?.classList.contains('active'))renderDayChoice()},60000);\n";
+ source+="\nwindow.addEventListener('online',()=>{if(canSaveLearning()&&cloudSavePending&&retryableSaveError(cloudSaveError))cloudSave()});\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden&&canSaveLearning()&&cloudSavePending&&retryableSaveError(cloudSaveError))cloudSave()});\n";
+ source+="\nlet observedStudyDate=today();\nfunction checkStudyDateChange(){\n const day=today();\n if(day!==observedStudyDate){observedStudyDate=day;manualPreviousLesson=null}\n void autoRolloverPreviousDay();\n}\nfunction scheduleKstStudyMidnight(){\n const next=Date.parse(today()+'T00:00:00+09:00')+86400000+100;\n setTimeout(()=>{checkStudyDateChange();scheduleKstStudyMidnight()},Math.max(1000,next-Date.now()));\n}\nscheduleKstStudyMidnight();\nwindow.addEventListener('focus',checkStudyDateChange);\nwindow.addEventListener('pageshow',checkStudyDateChange);\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden)checkStudyDateChange()});\nsetInterval(()=>{if(!document.hidden){checkStudyDateChange();if($('home')?.classList.contains('active'))renderDayChoice()}},60000);\n";
  return source;
 }
