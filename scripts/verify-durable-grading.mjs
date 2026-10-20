@@ -11,7 +11,7 @@ const payload={gradingPolicy:'meaning-first-20261018',taskType:'sentence_use',ta
 const semantic={normalizedAnswer:payload.answer,result:'○',score:1,contextSuccess:true,targetRecall:false,feedback:'의견을 알맞게 썼어요.',exampleAnswer:payload.answer,correctionApplied:false,correctionNote:'',usageAssessment:{meaning:'correct',target:'present',expression:'complete',issue:'none'}};
 const completed=id=>({id,status:'completed',model:'gpt-6-luna',output:[{type:'reasoning',summary:[]},{type:'message',content:[{type:'output_text',text:JSON.stringify(semantic)}]}],usage:{input_tokens:100,output_tokens:200,output_tokens_details:{reasoning_tokens:20}}});
 function fixture(){
- const rows=new Map();let creates=0,gets=0,owner='family',providerStatus='queued',storeFail=false,checkpointFail=false,lookupFail=false,dropCreate=false,startAckLost=false,seenBody;
+ const rows=new Map();let creates=0,gets=0,checkpoints=0,owner='family',providerStatus='queued',storeFail=false,checkpointFail=false,lookupFail=false,dropCreate=false,startAckLost=false,seenBody;
  const fetcher=async(url,opts={})=>{
   if(opts.method==='POST'){
    creates++;seenBody=JSON.parse(opts.body);
@@ -30,6 +30,7 @@ function fixture(){
   }
   if(name==='start_vocab_grade'){if(row.started)return false;row.started=true;if(startAckLost)throw Error('Lost start acknowledgement');return true}
   if(name==='record_vocab_grade_response'){
+   checkpoints++;
    if(checkpointFail)throw Object.assign(Error('Injected checkpoint outage'),{code:'57014'});
    if(!row||row.lease!==args.p_lease)return false;
    if(row.providerId&&row.providerId!==args.p_response.id)return false;
@@ -49,7 +50,7 @@ function fixture(){
  };
  const build=()=>createGradeDelivery({verifyUser:async()=>({id:owner}),authorizeAccount:u=>{if(u.id!=='family')throw Object.assign(Error('wrong owner'),{status:403,code:'grading_account_not_allowed'})},runGrade:()=>{throw Error('Legacy synchronous path must not run')},gradeRPC:rpc,gradeForRequest:r=>r,pause:async()=>{},provider:createGradeProvider({request:gradeRequest,decode:parseGradeResponse,fetcher,fastWaitMs:0})});
  let handler=build();
- return {rows,rpc,restart(){handler=build()},async call(extra={}){let status,value;await handler({method:'POST',headers:{authorization:'Bearer fixture'},body:{...payload,...extra}},{status(n){status=n;return this},json(v){value=v;return this}});return {status,value}},get creates(){return creates},get gets(){return gets},get seenBody(){return seenBody},set status(v){providerStatus=v},set storeFail(v){storeFail=v},set checkpointFail(v){checkpointFail=v},set lookupFail(v){lookupFail=v},set dropCreate(v){dropCreate=v},set startAckLost(v){startAckLost=v},set owner(v){owner=v}};
+ return {rows,rpc,restart(){handler=build()},async call(extra={}){let status,value;await handler({method:'POST',headers:{authorization:'Bearer fixture'},body:{...payload,...extra}},{status(n){status=n;return this},json(v){value=v;return this}});return {status,value}},get checkpoints(){return checkpoints},get creates(){return creates},get gets(){return gets},get seenBody(){return seenBody},set status(v){providerStatus=v},set storeFail(v){storeFail=v},set checkpointFail(v){checkpointFail=v},set lookupFail(v){lookupFail=v},set dropCreate(v){dropCreate=v},set startAckLost(v){startAckLost=v},set owner(v){owner=v}};
 }
 try{
  // Crash/redeploy after dispatch: a cold function retrieves the same provider ID.
@@ -57,6 +58,8 @@ try{
  assert.equal(cold.creates,1);assert.equal(cold.seenBody.background,true);assert.equal(cold.seenBody.store,true);assert.ok(cold.seenBody.max_output_tokens>=1200);
  cold.restart();cold.status='completed';const result=await cold.call({pollOnly:true});assert.equal(result.status,200);assert.equal(result.value.score,1);assert.equal(cold.creates,1);assert.equal(cold.gets,1);
  assert.equal((await cold.call({pollOnly:true})).value.score,1);assert.equal(cold.creates,1);
+ // Warm repeated polls keep the ID checkpoint durable without rewriting it.
+ const quietProvider=fixture();await quietProvider.call();for(let i=0;i<5;i++)await quietProvider.call({pollOnly:true});assert.equal(quietProvider.checkpoints,1);
  // DB ID checkpoint unavailable, browser persists signed receipt on 202.
  const receipt=fixture();receipt.checkpointFail=true;const waiting=await receipt.call();assert.ok(waiting.value.providerReceipt);receipt.restart();receipt.status='completed';
  const recovered=await receipt.call({pollOnly:true,providerReceipt:waiting.value.providerReceipt});assert.equal(recovered.status,200);assert.equal(recovered.value.score,1);assert.equal(receipt.creates,1);
