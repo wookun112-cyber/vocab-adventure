@@ -1936,7 +1936,7 @@ function takeAdaptiveTarget(active){
  return target;
 }
 function adaptPendingTargets(active){
- if(studyHistory.isStudyRound(active)&&studyHistory.roundHasErrors(active))return false;
+ if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  const a=active.adaptation,p=active.preparation;
  if(!a||a.rows.length<3||active.mode==='level'||active.completionPolicy!==DAILY_POLICY)return false;
  const key=child().difficulty+'|'+(a.estimate>=95?'fast':'normal');if(a.selectionKey===key)return false;
@@ -1974,7 +1974,7 @@ function availableStudyTopups(active){
  });
 }
 function prefetchStudyTopups(active,force=false){
- if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode!=='daily'||active.completionPolicy!==DAILY_POLICY||active.completed||studyHistory.isStudyRound(active)&&studyHistory.roundHasErrors(active)||minimumStudyReached(active,dailyPracticeTime(active)))return Promise.resolve(null);
+ if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode!=='daily'||active.completionPolicy!==DAILY_POLICY||active.completed||studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active))||minimumStudyReached(active,dailyPracticeTime(active)))return Promise.resolve(null);
  if(active.topupRequest)return active.topupRequest;
  if(!force&&active.topupErrorLevel===child().difficulty&&active.topupRetryAt>Date.now())return Promise.resolve(null);
  const held=availableStudyTopups(active);
@@ -2011,7 +2011,7 @@ function prefetchStudyTopups(active,force=false){
  return active.topupRequest;
 }
 function appendStudyTopup(active){
- if(studyHistory.isStudyRound(active)&&studyHistory.roundHasErrors(active))return false;
+ if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  if(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active))return false;
  const held=availableStudyTopups(active),target=held.find(t=>isCoveragePlan(t.plan))||takeAdaptiveTarget(active)||held[0];if(!target)return false;
  const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index)},w=plan.w;
@@ -2291,6 +2291,10 @@ function finishStudyRoundBoundary(){
   // Continue with varied previously taught meanings until the meaningful
   // 25-minute floor; no extra forced new words or infinite writing gate.
   if(appendRoundReinforcement(active)){show('learn');renderQuestion();return}
+  // A new learner may have no other learned vocabulary yet. Use the existing
+  // validated topup path rather than looping solved words or blocking the round.
+  if(appendStudyTopup(active)){show('learn');renderQuestion();return}
+  if(availableStudyTopups(active).length===0&&!active.studyTopups?.exhausted){waitForStudyTopup(active);return}
   checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return;
  }
  if(!status.hadErrors&&appendStudyTopup(active)){show('learn');renderQuestion();return}

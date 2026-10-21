@@ -123,6 +123,7 @@ run("authUser={id:'"+AUTHORED_OWNER+"'};loadedAccount=authUser.id;state.selected
  "const prep=createPreparation({account:authUser.id,profile:'guest',plans:lesson.plans,baseCount:1,baseWords:[lesson.plans[0].w],newWords:[],deliveryPolicy:DELIVERY_POLICY,practicePool:[],key:'fixture',adopted:true},lesson.ready);"+
  "session={roundPolicy:studyHistory.ROUND_POLICY,readingPractice:prepareReadingExposure(['분석'],['관찰'],'fixture-3'),lessonId:'round-breadth',profile:'guest',account:authUser.id,mode:'daily',model:LEARNING_MODEL,difficulty:3,preparation:prep,queue:prep.queue,results:[{word:lesson.plans[0].w.w,type:'mc_usage',credit:1,contextSuccess:true,result:'○',band:3,studyDate:today(),answeredAt:Date.now()}],target:1,baseWords:[lesson.plans[0].w],newWords:[],completionPolicy:DAILY_POLICY,introWords:[],introDone:true,activeMs:24*60000,clockStarted:null,studyStartedAt:Date.now(),studyFallbackDay:today(),studyDays:{[today()]:{activeMs:24*60000,timeKnown:true}}};current=1;"+
  "studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);");
+run("const knownExtra=WORDS.find(w=>w.w!==lesson.plans[0].w.w&&isLearningTarget(w)&&inTargetBand(w,3));wordState(knownExtra.w).seen=2;");
 const oldAnswers=run('JSON.stringify(session.results)'),oldWords=run('JSON.stringify(child().words)'),oldEvidence=run('JSON.stringify(child().learningEvidence||[])');
 run('finishSession()');
 assert.equal(run("document.getElementById('reading').classList.contains('active')"),true,'the next screen is reading, not an endless sentence task');
