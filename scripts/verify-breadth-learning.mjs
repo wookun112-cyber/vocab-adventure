@@ -15,6 +15,7 @@ import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import {patchStuckPreparation} from './patch-stuck-preparation.mjs';
 import {authoredCurriculum,authoredEntry} from '../api/authored-bank.js';
 import {hydrateFromBank} from '../lib/question-bank.js';
+import {buildStudyTopups} from '../api/study-topups.js';
 
 assert.equal(READING_PASSAGES.length,9);
 for(const passage of READING_PASSAGES){
@@ -157,6 +158,7 @@ assert.equal(Object.keys(run('child().readingExposure')).length,8);
 assert.deepEqual(requests,[],'reading always uses the offline approved content and creates no paid calls');
 console.log('Adaptive breadth PASS: 5/10 targets, no blanket own-sentence barrier, legacy preservation, 25–30 minute honest ending, 9 reviewed passages, two visible one-at-a-time questions, resume receipt, no false grading/mastery, eight exposure records, zero API requests.');
 
+context.originalCheckpoint=run('checkpointSession');
 // Regression: an old error followed by a full correct answer must not keep
 // drawing the same word to fill the 25-minute minimum, including after resume.
 run(`
@@ -195,3 +197,51 @@ assert.equal(run('session.results[2].excludedFromVocabulary'),true,'skip saved d
 assert.equal(run('finishedRepeatedQuestion'),true);
 assert.deepEqual(requests,[]);
 console.log('Corrected repetition PASS: error→correct retires the word, another learned target fills time, unresolved correction changes type, pending grades are not duplicated, saved stale repeats are skipped without changing answers.');
+
+// Current sentence cycle in the actual delivered browser source.
+context.authoredEntry=authoredEntry;context.hydrateFromBank=hydrateFromBank;
+run(`
+ checkpointSession=originalCheckpoint;child().words={};child().difficulty=3;
+ const cyclePlan={...lesson.plans[0],taskDemand:'standard',id:'0',type:'subjective_use',stage:'use',needsCard:false,firstLearning:true,review:false,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY};
+ const cycleQuestion=localPracticeQuestion(cyclePlan,child());
+ const mc=authoredEntry({...cyclePlan,type:'mc_usage',taskDemand:'standard'},child(),authUser.id,[]);
+ if(!mc)throw Error('Approved MC required');
+ const cyclePrep=createPreparation({account:authUser.id,profile:state.selected,key:'sentence-cycle',plans:[cyclePlan],baseCount:1,baseWords:[cyclePlan.w],newWords:[cyclePlan.w.w],deliveryPolicy:DELIVERY_POLICY,practicePool:[{...mc.question,bankSupportLevel:3,needsCard:false,learningCard:null}],adopted:true},[[0,cycleQuestion]]);
+ session={sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,roundPolicy:studyHistory.ROUND_POLICY,lessonId:'sentence-cycle',profile:state.selected,account:authUser.id,mode:'daily',model:LEARNING_MODEL,difficulty:3,preparation:cyclePrep,queue:cyclePrep.queue,results:[],target:1,baseWords:[cyclePlan.w],newWords:[cyclePlan.w.w],completionPolicy:DAILY_POLICY,introWords:[],introDone:true,activeMs:0,clockStarted:null};current=0;renderQuestion();
+`);
+assert.equal(node('qContext').textContent,'');
+run("applyResult(session.queue[current],'×','뜻을 다시 살펴보세요.','틀린 문장',{credit:0,contextSuccess:false})");
+assert.ok(node('feedback').innerHTML.includes('뜻을 익힌 뒤 다시 연습해요'));
+assert.equal(run('session.preparation.plans[1].type'),'mc_usage');
+run('current=1;renderQuestion()');
+run("applyResult(session.queue[current],'○','알맞아요.','',{credit:1,contextSuccess:true})");
+assert.equal(run('session.preparation.plans[2].type'),'subjective_use');
+assert.equal(run('sessionUsageComplete(session)'),false);
+run('current=2;renderQuestion()');
+run("applyResult(session.queue[current],'○','알맞아요.','뜻이 드러나는 내 문장',{credit:1,contextSuccess:true})");
+assert.equal(run('sessionUsageComplete(session)'),true);
+assert.equal(run('wordState(session.baseWords[0].w).sentenceReviewDue'),run('dateAfter(today(),7)'));
+const answerPrefix=run('JSON.stringify(session.results)');run('checkpointSession()');
+assert.equal(run('child().activeLesson.sentenceCyclePolicy'),run('SENTENCE_CYCLE_POLICY'));
+assert.equal(run('JSON.stringify(child().activeLesson.results)'),answerPrefix);
+assert.deepEqual(requests,[]);
+console.log('Current browser sentence cycle PASS: no initial explanation/example, failed writing explanation, approved MC, return to writing, strict completion, 7-day schedule and preserved checkpoint, zero network calls.');
+context.migrationInput={mode:'daily',roundPolicy:studyHistory.ROUND_POLICY,nextIndex:1,pendingAnswer:'작성 중인 원문',results:[{word:word.w,type:'subjective_use',credit:0,contextSuccess:false}],plans:[basePlan,basePlan,{...basePlan,id:'2'}, {...basePlan,id:'3',deferredGradeId:'keep-job'}],ready:[[0,lesson.ready[0][1]],[1,lesson.ready[0][1]],[2,lesson.ready[0][1]],[3,lesson.ready[0][1]]],introWords:[word.w]};
+const inputBefore=JSON.stringify(context.migrationInput),migrated=run('migrateSentenceCycle(migrationInput)');
+assert.equal(migrated.pendingAnswer,'작성 중인 원문');assert.deepEqual(migrated.results,context.migrationInput.results);
+assert.deepEqual(migrated.plans.slice(0,2),context.migrationInput.plans.slice(0,2));
+assert.equal(migrated.plans[2].type,'subjective_use');assert.equal(migrated.plans[3].deferredGradeId,'keep-job');
+assert.equal(JSON.stringify(context.migrationInput),inputBefore);
+console.log('Sentence migration PASS: submitted prefix, visible prompt/draft and deferred grade assignment unchanged; only future tasks migrate.');
+
+context.buildStudyTopups=buildStudyTopups;
+run("session.studyTopups=buildStudyTopups(child(),authUser.id,session.baseWords.map(w=>w.w),'cycle-topup',5,{coverage:true});");
+assert.equal(run('appendStudyTopup(session)'),true);
+assert.equal(run('session.preparation.plans.at(-1).type'),'subjective_use');
+assert.equal(run('session.preparation.plans.at(-1).needsCard'),false);
+assert.equal(run('session.introDone'),true);
+run('current=session.preparation.plans.length-1;renderQuestion()');
+run("applyResult(session.queue[current],'×','설명을 확인하세요.','틀린 추가문장',{credit:0,contextSuccess:false})");
+assert.equal(run('session.preparation.plans.at(-1).type'),'mc_usage');
+assert.ok(run('session.preparation.ready.has(session.preparation.plans.length-1)'),'topup remediation is already downloaded and compatible');
+console.log('Sentence topup PASS: solved targets add a new example-free sentence; a failed added sentence has immediate offline MC remediation.');

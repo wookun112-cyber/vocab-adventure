@@ -1,0 +1,9 @@
+# Sentence-first cycle — 12.16.47
+
+New daily/review packets start every target with an example-free own-sentence task. Failed, assisted, copied or incomplete sentence use reveals the meaning and queues approved multiple choice, then returns to writing after a full unassisted choice success. Wrong choices stay in recognition practice. Retries are interleaved with the other already prepared targets. Finite MC supply uses unseen approved passages first; exhausted unresolved practice may reuse approved choices, never silently switch to recall or award completion.
+
+Only full unassisted sentence meaning success starts the seven-calendar-day review window. Due sentence success schedules thirty days; a failed sentence resets to learning, and later sentence success restarts seven days. Old MC-only successes do not block sentence practice. Historical successful use dates remain honored. Stale or duplicate results cannot regress a newer cycle. No learner state rows are rewritten by the migration.
+
+Saved modern rounds preserve submitted answer prefixes, the visible question and draft, and deferred grading assignments. Future tasks migrate. Legacy pre-round fixtures/checkpoints remain compatible. Current results still require actual grading; the existing durable grading path, cost policy, rounds, active-time clock and 25/30-minute boundaries are retained. All solved targets trigger fresh-word topups before 25 minutes.
+
+Verification: full regression suites; actual delivered-browser sentence failure → explanation → approved MC → sentence success; strict completion and checkpoint preservation; 7/30/lapse schedule, historical evidence, stale/duplicate grade isolation; 48 offline failed retries; legacy resume and round duration suites. SQL synthetic boundary checks and new 15-target packet validation run without writing learner records. No paid model calls used in tests.

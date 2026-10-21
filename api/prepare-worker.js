@@ -51,7 +51,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
   const reserved=[...(job.reserved||[]),...authored.map(e=>e.question)];
   const cached=trial=>hydrateFromBank({account:job.account,plans:[trial],ready:[]},job.learner,job.bank||[],reserved)>0;
   let e=authoredEntry(plan,job.learner,job.account,reserved);
-  if(!e&&!recovering&&plan.review&&plan.type!=='subjective_recall'&&!cached(plan)){
+  if(!e&&!recovering&&!payload.sentenceCyclePolicy&&plan.review&&plan.type!=='subjective_recall'&&!cached(plan)){
    for(const type of ['subjective_recall','subjective_use','mc_usage','mc_reading','mc_relation','mc_context'].filter(t=>t!==plan.type)){
     const trial={...plan,type,stage:type==='subjective_recall'?'check':type==='subjective_use'?'use':'bridge'};
     const alternative=authoredEntry(trial,job.learner,job.account,reserved);

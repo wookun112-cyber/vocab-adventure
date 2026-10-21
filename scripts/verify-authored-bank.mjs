@@ -74,7 +74,7 @@ const usagePlan={id:'0',w:calibratedWord({w:target.word,d:target.definition,band
 const exhausted=[];
 for(let i=0;i<10;i++){const e=authoredEntry(usagePlan,dueLearner,AUTHORED_OWNER,exhausted);if(!e)break;exhausted.push(e.question)}
 assert.ok(exhausted.length>0);assert.equal(authoredEntry(usagePlan,dueLearner,AUTHORED_OWNER,exhausted),null);
-const fallbackPacket=makePreparedPlan(dueLearner,{},[target],AUTHORED_OWNER,'test',{reviewOnly:true});Object.assign(fallbackPacket.plans[0],usagePlan);
+const fallbackPacket=makePreparedPlan(dueLearner,{},[target],AUTHORED_OWNER,'test',{reviewOnly:true,sentenceCycle:false});Object.assign(fallbackPacket.plans[0],usagePlan);
 let fallbackCalls=0;
 const varied=await prepare({id:'variation',account:AUTHORED_OWNER,profile:'test',kind:'reserve',slot:1,learner:dueLearner,curriculum:[target],catalog:{},reserved:exhausted,payload:structuredClone(fallbackPacket)},'local',async()=>{fallbackCalls++;throw Error('Unexpected variation generation')},async()=>true);
 assert.equal(fallbackCalls,0);assert.equal(varied.plans[0].w.w,target.word);assert.notEqual(varied.plans[0].type,'mc_usage');assert.equal(varied.ready.length,1);assert.ok(authoredQuestionValid(varied.ready[0][1],AUTHORED_OWNER));
