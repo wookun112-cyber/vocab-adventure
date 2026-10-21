@@ -110,3 +110,9 @@ pending.run('session.activeMs=30*60000;session.clockStarted=null;finishSession()
 assert.equal(pending.run('session.roundEndReason'),'time_limit');assert.equal(pending.run('child().ungradedSubmissions[0].payload.answer'),'보관할 문장');
 assert.equal(pending.run('session.results[0].credit'),null,'a timed-out grade is never invented as correct or wrong');
 console.log('Rounds PASS: new5 per round, 4 same-day rounds, no new additions after errors, early reinforcement, 25/28/30 endpoints, same-day unfinished carry, duplicate completion guard, resume draft/time/number, ten-second idle and excluded waits, historical duplicate and 44-minute split. No paid calls.');
+const breadthTopup=round();
+breadthTopup.run("session.roundPolicy=studyHistory.ROUND_POLICY;session.readingPractice={completed:true};session.results.unshift({...session.results[0],credit:0,contextSuccess:false,result:'×'});finishSession()");
+assert.equal(breadthTopup.run('session.timeAddedWords.length'),1,'when no other learned target exists, corrected historical errors must not block a validated new-word topup');
+assert.equal(breadthTopup.run('session.completed'),undefined,'minimum active study time is preserved');
+assert.equal(breadthTopup.requests.length,0,'downloaded topup needs no provider call');
+console.log('Finite review supply PASS: no learned alternatives falls back to a validated downloaded topup after corrections.');

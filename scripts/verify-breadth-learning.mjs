@@ -123,6 +123,7 @@ run("authUser={id:'"+AUTHORED_OWNER+"'};loadedAccount=authUser.id;state.selected
  "const prep=createPreparation({account:authUser.id,profile:'guest',plans:lesson.plans,baseCount:1,baseWords:[lesson.plans[0].w],newWords:[],deliveryPolicy:DELIVERY_POLICY,practicePool:[],key:'fixture',adopted:true},lesson.ready);"+
  "session={roundPolicy:studyHistory.ROUND_POLICY,readingPractice:prepareReadingExposure(['분석'],['관찰'],'fixture-3'),lessonId:'round-breadth',profile:'guest',account:authUser.id,mode:'daily',model:LEARNING_MODEL,difficulty:3,preparation:prep,queue:prep.queue,results:[{word:lesson.plans[0].w.w,type:'mc_usage',credit:1,contextSuccess:true,result:'○',band:3,studyDate:today(),answeredAt:Date.now()}],target:1,baseWords:[lesson.plans[0].w],newWords:[],completionPolicy:DAILY_POLICY,introWords:[],introDone:true,activeMs:24*60000,clockStarted:null,studyStartedAt:Date.now(),studyFallbackDay:today(),studyDays:{[today()]:{activeMs:24*60000,timeKnown:true}}};current=1;"+
  "studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);");
+run("const knownExtra=WORDS.find(w=>w.w!==lesson.plans[0].w.w&&isLearningTarget(w)&&inTargetBand(w,3));wordState(knownExtra.w).seen=2;");
 const oldAnswers=run('JSON.stringify(session.results)'),oldWords=run('JSON.stringify(child().words)'),oldEvidence=run('JSON.stringify(child().learningEvidence||[])');
 run('finishSession()');
 assert.equal(run("document.getElementById('reading').classList.contains('active')"),true,'the next screen is reading, not an endless sentence task');
@@ -155,3 +156,42 @@ assert.equal(run('JSON.stringify(child().learningEvidence||[])'),oldEvidence);
 assert.equal(Object.keys(run('child().readingExposure')).length,8);
 assert.deepEqual(requests,[],'reading always uses the offline approved content and creates no paid calls');
 console.log('Adaptive breadth PASS: 5/10 targets, no blanket own-sentence barrier, legacy preservation, 25–30 minute honest ending, 9 reviewed passages, two visible one-at-a-time questions, resume receipt, no false grading/mastery, eight exposure records, zero API requests.');
+
+// Regression: an old error followed by a full correct answer must not keep
+// drawing the same word to fill the 25-minute minimum, including after resume.
+run(`
+ globalThis.repeatWord=lesson.plans[0].w;
+ globalThis.otherReview=WORDS.find(w=>w.w!==repeatWord.w&&isLearningTarget(w)&&inTargetBand(w,3));
+ if(!otherReview)throw Error('A second known review target is required');
+ child().difficulty=3;child().words={};wordState(repeatWord.w).seen=3;wordState(otherReview.w).seen=2;
+ globalThis.repeatCorrect={word:repeatWord.w,type:'subjective_use',credit:1,contextSuccess:true,hintUsed:false,revealed:false};
+ globalThis.repeatPrep=()=>({plans:[],practicePool:[],append(plans){this.plans.push(...plans)},pump(){}});
+ session={roundPolicy:studyHistory.ROUND_POLICY,mode:'daily',profile:state.selected,account:authUser.id,baseWords:[repeatWord],results:[{...repeatCorrect,credit:0,contextSuccess:false},repeatCorrect],gradingQueue:[],preparation:repeatPrep()};current=2;
+`);
+const originalRepeatAnswers=run('JSON.stringify(session.results)');
+assert.equal(run('appendRoundReinforcement(session)'),true);
+assert.equal(run('session.preparation.plans.at(-1).w.w'),run('otherReview.w'),'corrected target leaves the same-round repetition pool');
+assert.equal(run('session.preparation.plans.at(-1).type'),'subjective_recall');
+assert.equal(run('session.baseWords.length'),2,'other learned vocabulary is tracked for later corrections');
+assert.equal(run('JSON.stringify(session.results)'),originalRepeatAnswers,'selection never rewrites a submitted answer');
+run(`session.baseWords=[repeatWord];session.results=[{...repeatCorrect,credit:0,contextSuccess:false}];session.preparation=repeatPrep();current=1;`);
+assert.equal(run('appendRoundReinforcement(session)'),true);
+assert.equal(run('session.preparation.plans.at(-1).w.w'),run('repeatWord.w'),'currently unresolved word remains first');
+assert.notEqual(run('session.preparation.plans.at(-1).type'),'subjective_use','correction changes the task type');
+run(`session.preparation=repeatPrep();session.gradingQueue=[{word:repeatWord.w,status:'pending'}]`);
+assert.equal(run('appendRoundReinforcement(session)'),false,'do not request another answer while its original grade is pending');
+run(`session.gradingQueue=[];session.results=[repeatCorrect];session.preparation=repeatPrep();session.preparation.plans=[{w:repeatWord,type:'subjective_use'}];current=0;`);
+assert.equal(run('appendRoundReinforcement(session)'),true);
+assert.notEqual(run('session.preparation.plans.at(-1).w.w'),run('repeatWord.w'));
+// A previously saved future reinforcement must also be skipped after correction.
+run(`session.results=[{...repeatCorrect,credit:0},repeatCorrect];
+ session.queue=[lesson.ready[0][1],lesson.ready[0][1],{...lesson.ready[0][1],review:true}];
+ session.preparation.plans=[{w:repeatWord},{w:repeatWord},{w:repeatWord,roundReinforcement:true}];
+ session.completionPolicy=DAILY_POLICY;session.target=3;current=2;
+ checkpointSession=()=>false;globalThis.finishedRepeatedQuestion=false;finishSession=()=>{finishedRepeatedQuestion=true};
+ renderQuestion();`);
+assert.equal(run('current'),3);
+assert.equal(run('session.results[2].excludedFromVocabulary'),true,'skip saved duplicate without a wrong answer or reward');
+assert.equal(run('finishedRepeatedQuestion'),true);
+assert.deepEqual(requests,[]);
+console.log('Corrected repetition PASS: error→correct retires the word, another learned target fills time, unresolved correction changes type, pending grades are not duplicated, saved stale repeats are skipped without changing answers.');

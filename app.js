@@ -1512,11 +1512,11 @@ function renderQuestion(savedHint=0){
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
   const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,pendingGrade=!gradeDelivery&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
-  if(!pendingGrade&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&!pinned&&!gradeDelivery&&!session.preparation.plans[current]?.roundReinforcement))break;
+  if(!pendingGrade&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&!pinned&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
   // Keep the original cursor and answered records. Excluded questions get a
   // checkpoint entry, never a wrong answer, word statistic or reward.
   if(session.results.length!==current)throw Error('학습 순서를 확인하지 못했어요. 기존 답안은 보관되어 있어요.');
-  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:pendingGrade?'grading_pending':usageCompleted(session.results).has(pending.w.w)?'usage_confirmed':isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
+  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:pendingGrade?'grading_pending':studyHistory.isBreadthRound(session)&&!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w)?'round_confirmed':usageCompleted(session.results).has(pending.w.w)?'usage_confirmed':isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
   current++;skipped++;
  }
  if(skipped){checkpointSession();localSave();cloudSave()}
@@ -1936,7 +1936,7 @@ function takeAdaptiveTarget(active){
  return target;
 }
 function adaptPendingTargets(active){
- if(studyHistory.isStudyRound(active)&&studyHistory.roundHasErrors(active))return false;
+ if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  const a=active.adaptation,p=active.preparation;
  if(!a||a.rows.length<3||active.mode==='level'||active.completionPolicy!==DAILY_POLICY)return false;
  const key=child().difficulty+'|'+(a.estimate>=95?'fast':'normal');if(a.selectionKey===key)return false;
@@ -1974,7 +1974,7 @@ function availableStudyTopups(active){
  });
 }
 function prefetchStudyTopups(active,force=false){
- if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode!=='daily'||active.completionPolicy!==DAILY_POLICY||active.completed||studyHistory.isStudyRound(active)&&studyHistory.roundHasErrors(active)||minimumStudyReached(active,dailyPracticeTime(active)))return Promise.resolve(null);
+ if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode!=='daily'||active.completionPolicy!==DAILY_POLICY||active.completed||studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active))||minimumStudyReached(active,dailyPracticeTime(active)))return Promise.resolve(null);
  if(active.topupRequest)return active.topupRequest;
  if(!force&&active.topupErrorLevel===child().difficulty&&active.topupRetryAt>Date.now())return Promise.resolve(null);
  const held=availableStudyTopups(active);
@@ -2011,7 +2011,7 @@ function prefetchStudyTopups(active,force=false){
  return active.topupRequest;
 }
 function appendStudyTopup(active){
- if(studyHistory.isStudyRound(active)&&studyHistory.roundHasErrors(active))return false;
+ if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  if(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active))return false;
  const held=availableStudyTopups(active),target=held.find(t=>isCoveragePlan(t.plan))||takeAdaptiveTarget(active)||held[0];if(!target)return false;
  const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index)},w=plan.w;
@@ -2215,7 +2215,35 @@ function roundAttemptResults(active,word){
  const last=active.results.findLastIndex(r=>r.word===word&&usageCompleted([r]).has(word));
  return active.results.slice(last+1);
 }
+function appendBreadthReinforcement(active){
+ const p=active.preparation;
+ const pending=new Set((active.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)).map(j=>j.word));
+ const queued=new Set(p.plans.slice(current).map(plan=>plan.w.w));
+ const unfinished=studyHistory.roundUnfinished(active);
+ let candidates=unfinished.filter(w=>!pending.has(w.w)&&!queued.has(w.w));
+ let additional=false;
+ if(!unfinished.length){
+  // Already-correct targets are finished for this round, even if an earlier
+  // attempt was wrong. Fill the remaining time with other learned vocabulary.
+  const attempted=new Set([...active.baseWords.map(w=>w.w),...active.results.map(r=>r.word)]);
+  const catalog=new Map([...WORDS,...(p.practicePool||[]).map(q=>q.w)].filter(Boolean).map(w=>[w.w,w]));
+  candidates=[...catalog.values()].filter(w=>{
+   const st=child().words[w.w];
+   return !attempted.has(w.w)&&!pending.has(w.w)&&!queued.has(w.w)&&isLearningTarget(w)&&inTargetBand(w,child().difficulty)&&(st?.seen>0||st?.introducedAt);
+  }).sort((a,b)=>String(child().words[a.w]?.lastFeedbackDate||'').localeCompare(String(child().words[b.w]?.lastFeedbackDate||''))||a.w.localeCompare(b.w));
+  additional=true;
+ }
+ if(!candidates.length)return false;
+ candidates.sort((a,b)=>active.results.findLastIndex(r=>r.word===a.w)-active.results.findLastIndex(r=>r.word===b.w));
+ const w=candidates[0],last=active.results.findLast(r=>r.word===w.w),index=p.plans.length;
+ const original=additional?{}:p.plans.find(plan=>plan.w.w===w.w)||{};
+ const type=additional?'subjective_recall':last?.type==='subjective_use'?'subjective_recall':last?.type?.startsWith('mc_')?'subjective_recall':'mc_usage';
+ const plan={...original,id:String(index),w,type,stage:type==='subjective_recall'?'check':'bridge',taskDemand:original.taskDemand||'standard',supportLevel:wordState(w.w).supportLevel||0,roundReinforcement:true,review:true,practiceOnly:true,levelEligible:false,firstLearning:false,needsCard:false,remedial:!additional,allowBankTypeFallback:true};
+ if(additional){active.baseWords.push(w);p.baseWords=active.baseWords}
+ p.append([plan]);active.target=p.plans.length;p.pump();return true;
+}
 function appendRoundReinforcement(active){
+ if(studyHistory.isBreadthRound(active))return appendBreadthReinforcement(active);
  const words=active.baseWords.filter(w=>isLearningTarget(w));if(!words.length)return false;
  const errors=new Set(active.results.filter(r=>!r.excludedFromVocabulary&&Number.isFinite(r.credit)&&r.credit<1).map(r=>r.word));
  const pool=errors.size?words.filter(w=>errors.has(w.w)):words;
@@ -2263,6 +2291,10 @@ function finishStudyRoundBoundary(){
   // Continue with varied previously taught meanings until the meaningful
   // 25-minute floor; no extra forced new words or infinite writing gate.
   if(appendRoundReinforcement(active)){show('learn');renderQuestion();return}
+  // A new learner may have no other learned vocabulary yet. Use the existing
+  // validated topup path rather than looping solved words or blocking the round.
+  if(appendStudyTopup(active)){show('learn');renderQuestion();return}
+  if(availableStudyTopups(active).length===0&&!active.studyTopups?.exhausted){waitForStudyTopup(active);return}
   checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return;
  }
  if(!status.hadErrors&&appendStudyTopup(active)){show('learn');renderQuestion();return}
