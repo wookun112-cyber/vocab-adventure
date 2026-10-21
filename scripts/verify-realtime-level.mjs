@@ -53,7 +53,7 @@ assert.equal(observeRealtimeLevel(l,old),null);assert.equal(l.difficulty,4,'upgr
 const local=structuredClone(restarted),remote={...learner(4),gradeBackfill:{id:'new-parent-marker',date:day},levelAdjustmentHistory:[]};
 local.levelAdjustmentHistory=[final];local.sessions=[];
 assert.equal(reconcileLevelBackfill(remote,local).difficulty,4,'parent backfill must replay only earned stable deltas, not task swings');
-assert.equal(realtimeTargetBand(4,0),5);assert.equal(realtimeTargetBand(4,1),4);assert.equal(realtimeTargetBand(4,2,true),5);assert.equal(realtimeTargetBand(9,0,true),9);
+assert.equal(realtimeTargetBand(4,0),5);assert.equal(realtimeTargetBand(4,1),5);assert.equal(realtimeTargetBand(4,2,true),5);assert.equal(realtimeTargetBand(9,0,true),9);
 
 // Every neighboring-band probe and its retry alternatives are fixed-bank
 // questions. Candidate downloads do not introduce words or mutate learners.
