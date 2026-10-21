@@ -34,7 +34,7 @@ for(const fixture of fixtures){
   if(q.type!==plan.type){assert.equal(q.bankFallbackFrom,plan.type);plan.type=q.type}
   assert.ok(deliveryQuestionValid(q,plan,learner.difficulty,AUTHORED_OWNER));
   if(q.type!=='subjective_use'){
-   alternatives++;for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key),'practice passages never repeat');seen.add(key)}
+   alternatives++;for(const key of passageKeys(q.ctx,q.opts.map(o=>o.t))){assert.ok(!seen.has(key)||q.repeatedRemediation===true,'only exhausted approved remediation may repeat');seen.add(key)}
    assert.ok(!deliveryQuestionValid({...q,w:{...q.w,band:q.w.band===1?8:1}},plan,learner.difficulty,AUTHORED_OWNER));
    assert.ok(!deliveryQuestionValid({...q,bankReaderLevel:learner.difficulty+1},{...plan,coveragePolicy:null,realtimeLevelPolicy:null},learner.difficulty,AUTHORED_OWNER));
   }else {assert.equal(q.ctx,'');assert.deepEqual(q.acceptedAnswers,[]);assert.equal(q.semanticGraderRequired,true)}

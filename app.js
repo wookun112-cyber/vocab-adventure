@@ -5,7 +5,7 @@ import * as studyHistory from './lib/study-history.js';
 import {READING_EXPOSURE_POLICY,readingPassageById,prepareReadingExposure,recordedExposure} from './lib/reading-exposure.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {copiedUsageExample,CORRECT_COOLDOWN_POLICY,wordOnCooldown,applyCorrectCooldown,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
+import {copiedUsageExample,SENTENCE_CYCLE_POLICY,CORRECT_COOLDOWN_POLICY,wordOnCooldown,applyCorrectCooldown,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -700,7 +700,7 @@ function checkpointSession(){
  const nextIndex=active.results.length;
  state.users[active.profile].activeLesson={
   version:1,engine:active.engine||PREPARATION_ENGINE,id:active.lessonId,account:active.account,profile:active.profile,
-  roundPolicy:active.roundPolicy||null,roundNumber:active.roundNumber||null,readingPractice:active.readingPractice||null,
+  sentenceCyclePolicy:active.sentenceCyclePolicy||null,roundPolicy:active.roundPolicy||null,roundNumber:active.roundNumber||null,readingPractice:active.readingPractice||null,
   mode:active.mode,created:p.created,difficulty:active.difficulty,ability:active.ability,
   target:active.target,max:active.max,baseCount:p.baseCount,completionPolicy:active.completionPolicy,newWords:active.newWords,baseWords:active.baseWords,
   plans:p.plans,ready:[...p.ready],practicePool:p.practicePool||[],deliveryPolicy:p.deliveryPolicy||null,results:active.results,nextIndex,
@@ -753,6 +753,18 @@ function applyVocabularyRetirement(saved){
   deferredVocabulary:{policy:VOCABULARY_POLICY,items:[...(saved.deferredVocabulary?.items||[]),...removed.map(({p,i})=>({originalIndex:i,plan:p,question:new Map(saved.ready||[]).get(i)||null,reason:'level_one_removed'}))],
    currentDraft:currentRemoved?{word:plans[next].w.w,index:next,answer:saved.pendingAnswer||'',hintLevel:saved.hintLevel||0}:saved.deferredVocabulary?.currentDraft||null}};
 }
+function migrateSentenceCycle(saved){
+ if(saved.mode==='level'||saved.roundPolicy!=='round-adaptive-breadth-25-5-20261019'||saved.sentenceCyclePolicy===SENTENCE_CYCLE_POLICY)return saved;
+ const ready=new Map(saved.ready),plans=saved.plans.map((plan,i)=>{
+  if(i<=saved.nextIndex||plan.deferredGradeId)return plan;
+  const remedial=plan.remedial?nextUsagePlan({...plan,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY},saved.results||[],i,child().words?.[plan.w.w]||{}):null;
+  const next=remedial||{...plan,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:plan.taskDemand==='foundation-review'?'foundation-review':'standard'};
+  const question=localPracticeQuestion(next,child(),saved.practicePool||[],[...ready.values()],saved.account);
+  if(!question)return plan;
+  ready.set(i,question);return next;
+ });
+ return {...saved,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,plans,ready:[...ready],introWords:[],introDone:true,introCursor:0};
+}
 async function resumeLesson(saved){
  if(dailyLimitBlocked(saved.mode,saved))return;
  const profile=state.selected,account=authUser?.id;
@@ -790,6 +802,7 @@ let needsRecovery=saved.mode==='daily'&&Array.from({length:saved.baseCount||save
   for(const [i,q] of remote.payload.ready)if(!ready.has(i)&&validPreparedQuestion(q,saved.plans[i]))ready.set(i,q);
   saved={...saved,ready:[...ready]};
  }
+ const cycleSaved=migrateSentenceCycle(saved);migrated=migrated||cycleSaved!==saved;saved=cycleSaved;
  const policySaved=applyPendingReviewPolicy(saved,child());migrated=migrated||policySaved!==saved;saved=policySaved;
  ready=new Map(saved.ready);
  needsRecovery=saved.mode==='daily'&&Array.from({length:saved.baseCount||saved.plans.length},(_,i)=>i).some(i=>!ready.has(i));
@@ -804,7 +817,7 @@ let needsRecovery=saved.mode==='daily'&&Array.from({length:saved.baseCount||save
  // again or ask the server for a replacement lesson.
  const eligibleIntro=(saved.introWords||[]).filter(w=>isLearningTarget(w));
  const eligibleCursor=(saved.introWords||[]).slice(0,saved.introCursor||0).filter(w=>isLearningTarget(w)).length;
- session={roundPolicy:saved.roundPolicy,roundNumber:saved.roundNumber,readingPractice:saved.readingPractice||null,reviewPolicy:saved.reviewPolicy,deferredReview:saved.deferredReview,vocabularyPolicy:saved.vocabularyPolicy,deferredVocabulary:saved.deferredVocabulary,engine:saved.engine,model:saved.model,introAt:saved.introAt||0,introWords:eligibleIntro,introCursor:eligibleCursor,introDone:saved.introDone!==false||eligibleCursor>=eligibleIntro.length,activeMs:saved.activeMs||0,clockStarted:null,mode:saved.mode,queue:p.queue,preparation:p,results:saved.results.slice(),target:saved.target,max:saved.mode==='level'?(saved.max||30):null,completionPolicy:saved.mode==='level'?null:(saved.completionPolicy||null),difficulty:saved.difficulty,ability:saved.ability,intros:[],newWords:saved.newWords,baseWords:saved.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:saved.id};
+ session={sentenceCyclePolicy:saved.sentenceCyclePolicy||null,roundPolicy:saved.roundPolicy,roundNumber:saved.roundNumber,readingPractice:saved.readingPractice||null,reviewPolicy:saved.reviewPolicy,deferredReview:saved.deferredReview,vocabularyPolicy:saved.vocabularyPolicy,deferredVocabulary:saved.deferredVocabulary,engine:saved.engine,model:saved.model,introAt:saved.introAt||0,introWords:eligibleIntro,introCursor:eligibleCursor,introDone:saved.introDone!==false||eligibleCursor>=eligibleIntro.length,activeMs:saved.activeMs||0,clockStarted:null,mode:saved.mode,queue:p.queue,preparation:p,results:saved.results.slice(),target:saved.target,max:saved.mode==='level'?(saved.max||30):null,completionPolicy:saved.mode==='level'?null:(saved.completionPolicy||null),difficulty:saved.difficulty,ability:saved.ability,intros:[],newWords:saved.newWords,baseWords:saved.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:saved.id};
  Object.defineProperty(session,'pendingPlans',{get:()=>p.plans.slice(p.queue.length)});
  session.gradingQueue=(saved.gradingQueue||[]).map(j=>({...j,status:j.status==='sending'?'pending':j.status}));
  session.restoredDraft={index:saved.nextIndex,value:String(saved.pendingAnswer||'')};
@@ -1488,7 +1501,7 @@ async function buildSession(mode='daily'){
    }
    p.adopted=true;preparations.delete(p.key);
    try{localStorage.removeItem(p.key)}catch{}
-   session={roundPolicy:mode==='level'?null:p.roundPolicy,readingPractice:mode==='level'||p.roundPolicy!=='round-adaptive-breadth-25-5-20261019'||typeof prepareReadingExposure!=='function'?null:prepareReadingExposure(p.newWords,(p.baseWords||[]).filter(w=>!p.newWords.includes(w.w)),p.serverId||profile+'|'+p.created),reviewPolicy:p.reviewPolicy||null,deferredReview:null,engine:p.engine||PREPARATION_ENGINE,model:p.model,introAt:p.introAt||0,introWords:p.model===LEARNING_MODEL?(p.newWords||[]).filter(w=>p.plans.some(plan=>plan.w.w===w&&plan.needsCard)):[],introCursor:0,introDone:!p.plans.some(plan=>plan.needsCard)||p.model!==LEARNING_MODEL,activeMs:0,clockStarted:null,mode,queue:p.queue,preparation:p,results:[],target:p.plans.length,max:mode==='level'?30:null,completionPolicy:mode==='level'?null:(p.completionPolicy||null),difficulty:p.difficulty,ability:clamp(p.difficulty||3,1,9),intros:[],newWords:p.newWords,baseWords:p.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:p.serverId||('lesson-'+Date.now()+'-'+Math.random().toString(36).slice(2))};
+   session={sentenceCyclePolicy:mode==='level'?null:p.sentenceCyclePolicy,roundPolicy:mode==='level'?null:p.roundPolicy,readingPractice:mode==='level'||p.roundPolicy!=='round-adaptive-breadth-25-5-20261019'||typeof prepareReadingExposure!=='function'?null:prepareReadingExposure(p.newWords,(p.baseWords||[]).filter(w=>!p.newWords.includes(w.w)),p.serverId||profile+'|'+p.created),reviewPolicy:p.reviewPolicy||null,deferredReview:null,engine:p.engine||PREPARATION_ENGINE,model:p.model,introAt:p.introAt||0,introWords:p.model===LEARNING_MODEL?(p.newWords||[]).filter(w=>p.plans.some(plan=>plan.w.w===w&&plan.needsCard)):[],introCursor:0,introDone:!p.plans.some(plan=>plan.needsCard)||p.model!==LEARNING_MODEL,activeMs:0,clockStarted:null,mode,queue:p.queue,preparation:p,results:[],target:p.plans.length,max:mode==='level'?30:null,completionPolicy:mode==='level'?null:(p.completionPolicy||null),difficulty:p.difficulty,ability:clamp(p.difficulty||3,1,9),intros:[],newWords:p.newWords,baseWords:p.baseWords,validated:true,loadingQuestions:null,profile,account,lessonId:p.serverId||('lesson-'+Date.now()+'-'+Math.random().toString(36).slice(2))};
    Object.defineProperty(session,'pendingPlans',{get:()=>p.plans.slice(p.queue.length)});
    session.studyTopups=p.studyTopups||null;session.timeAddedWords=[];
    studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);
@@ -1512,7 +1525,7 @@ function renderQuestion(savedHint=0){
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
   const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,pendingGrade=!gradeDelivery&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
-  if(!pendingGrade&&(!studyHistory.isBreadthRound(session)||!wordOnCooldown(child(),pending.w.w)||gradeDelivery)&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&!pinned&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
+  if(!pendingGrade&&(!studyHistory.isBreadthRound(session)||!wordOnCooldown(child(),pending.w.w)||gradeDelivery)&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&(!pinned||session.sentenceCyclePolicy)&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
   // Keep the original cursor and answered records. Excluded questions get a
   // checkpoint entry, never a wrong answer, word statistic or reward.
   if(session.results.length!==current)throw Error('학습 순서를 확인하지 못했어요. 기존 답안은 보관되어 있어요.');
@@ -1608,7 +1621,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
  const rec={rawAnswer:meta.rawAnswer??normalized,inputAtReveal:meta.inputAtReveal||'',submissionAction:meta.submissionAction||(meta.gradingJobId?'graded':'direct'),feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt,studyDate:answerDay};
  rec.levelEligible=session.preparation?.plans[current]?.levelEligible!==false&&!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
- if(session.preparation?.plans[current]?.realtimeProbe&&!st.introducedAt)st.introducedAt=answerDay;
+ if((session.preparation?.plans[current]?.realtimeProbe||session.sentenceCyclePolicy&&session.preparation?.plans[current]?.firstLearning)&&!st.introducedAt)st.introducedAt=answerDay;
  if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec,answerDay);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec,answerDay);rec.evidence=evidence}
  applyCorrectCooldown(st,rec,answerDay);
  if(protectedProgress)Object.assign(st,protectedProgress);
@@ -1619,8 +1632,8 @@ function applyResult(q,result,feedback,normalized='',meta={}){
   for(const plan of session.preparation.plans)if(child().words[plan.w.w]?.seen||child().words[plan.w.w]?.introducedAt||plan.realtimeProbe)plan.realtimeLevelPolicy=REALTIME_LEVEL_POLICY;
   $('difficulty').textContent='출제 난이도 '+child().difficulty.toFixed(1)+' · 어휘 '+vocabularyBand(q.w)+'단계';
  }
- if(session.completionPolicy===DAILY_POLICY&&!studyHistory.isBreadthRound(session)){
-  const plan=session.baseWords.some(w=>w.w===q.w.w)?nextUsagePlan(session.preparation.plans[current],roundAttemptResults(session,q.w.w),session.preparation.plans.length,st):null;
+ if(session.completionPolicy===DAILY_POLICY&&(!studyHistory.isBreadthRound(session)||session.sentenceCyclePolicy)){
+  const plan=session.baseWords.some(w=>w.w===q.w.w)?nextUsagePlan({...session.preparation.plans[current],...(session.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY}:{})},roundAttemptResults(session,q.w.w),session.preparation.plans.length,st):null;
   if(plan){session.preparation.append([plan]);session.target=session.preparation.plans.length;session.preparation.pump()}
  }
  if(q.signature){
@@ -1656,6 +1669,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const answerText=sentenceUse?(example||q.w.d):(correctOption?.t||q.answerForm||q.w.w);
  const notes=(levelCheck?.change?'<small>출제 난이도 '+levelCheck.from.toFixed(1)+' → '+levelCheck.to.toFixed(1)+' · '+escapeHtml(levelCheck.reason)+'</small>':'')+(rec.stars?'<small class="earned-stars">✦ 별조각 +'+rec.stars+' · 캐릭터 꾸미기에 쓸 수 있어요.</small>':'')+(full&&contextSuccess&&!targetRecall&&!q.showTarget?'<small>문맥에 맞는 답이에요. 목표 단어를 떠올렸는지는 따로 기록해요.</small>':'')+(practiceOnly&&full?'<small>이번 정답은 연습 기록이에요. 숙달은 다른 날 새 문맥에서 다시 확인해요.</small>':'')+(normalized&&normalized!==$('answer').value?'<small>제가 이해한 답: '+escapeHtml(normalized)+'</small>':'');
  $('feedback').innerHTML='<strong class="feedback-result">'+(copiedExample?'따라 쓰기 연습':full?'○ 잘했어요!':partial?(assistedCorrect?'○ 힌트로 맞혔어요':'△ 부분 이해'):'× 다시 살펴봐요')+'</strong><p class="feedback-word"><strong>'+escapeHtml(q.w.w)+'</strong> · '+escapeHtml(q.w.d)+'</p><section class="feedback-answer"><h3>'+answerLabel+'</h3><p>'+escapeHtml(answerText)+'</p></section><section class="feedback-explanation"><h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>'+(notes?'<div class="feedback-details">'+notes+'</div>':'');
+ if(session.sentenceCyclePolicy&&sentenceUse&&(!full||!contextSuccess)){rec.explanationShown=true;$('feedback').innerHTML+='<section class="feedback-explanation"><h3>뜻을 익힌 뒤 다시 연습해요</h3><p>'+escapeHtml(q.w.d)+'</p>'+(q.w.example?'<p>'+escapeHtml(q.w.example)+'</p>':'')+'<p>다음 연습에서는 객관식으로 뜻을 확인한 뒤 내 문장을 다시 만듭니다.</p></section>';}
  $('feedback').classList.remove('hidden');$('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
  renderSinoMeaning('wordRootHint',null);renderSinoMeaning('wordRootFeedback',q.w.w,'feedback');
  checkpointSession();localSave();cloudSave();
@@ -1947,7 +1961,7 @@ function adaptPendingTargets(active){
   if(isCoveragePlan(old)||old.review||!old.firstLearning||st.seen||st.introducedAt||
    renderedAnswerAt?.id===active.lessonId&&renderedAnswerAt.index===i)continue;
   const target=takeAdaptiveTarget(active);if(!target)break;
-  const plan={...target.plan,id:String(i)},q=target.question;
+  const plan={...target.plan,id:String(i),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:'standard'}:{})},q=active.sentenceCyclePolicy?localPracticeQuestion(plan,child()):target.question;
   p.plans[i]=plan;p.ready.set(i,q);p.queue[i]=q;
   active.baseWords=active.baseWords.map(w=>w.w===old.w.w?plan.w:w);
   active.newWords=active.newWords.map(w=>w===old.w.w?plan.w.w:w);
@@ -2015,13 +2029,13 @@ function appendStudyTopup(active){
  if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  if(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active))return false;
  const held=availableStudyTopups(active),target=held.find(t=>isCoveragePlan(t.plan))||takeAdaptiveTarget(active)||held[0];if(!target)return false;
- const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index)},w=plan.w;
+ const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:'standard'}:{})},w=plan.w;
  if(active.studyTopups)active.studyTopups.targets=active.studyTopups.targets.filter(t=>t.plan.w.w!==w.w);
  active.baseWords.push(w);active.newWords.push(w.w);active.timeAddedWords=[...(active.timeAddedWords||[]),w.w];
  if(plan.needsCard){active.introWords.push(w.w);active.introDone=false;active.introAt=index}active.target=index+1;
  p.baseWords=active.baseWords;p.newWords=active.newWords;
  p.practicePool=[...(p.practicePool||[]),...(target.practicePool||[]).filter(q=>q.w?.w===w.w)];
- p.append([plan]);p.ready.set(index,structuredClone(target.question));p.notify();p.pump();
+ p.append([plan]);p.ready.set(index,active.sentenceCyclePolicy?localPracticeQuestion(plan,child()):structuredClone(target.question));p.notify();p.pump();
  if(checkpointSession()){localSave();cloudSave()}
  return true;
 }
@@ -2053,7 +2067,7 @@ function waitForStudyTopup(active){
 }
 function ensureUsageContinuation(active){
  // Breadth rounds do not force endless own-sentence resubmissions.
- if(studyHistory.isBreadthRound(active))return;
+ if(studyHistory.isBreadthRound(active)&&!active.sentenceCyclePolicy)return;
  if(active.completionPolicy!==DAILY_POLICY||sessionUsageComplete(active))return;
  const pending=new Set(active.preparation.plans.slice(active.results.length).map(p=>p.w.w));
  const lastAttempt=w=>active.results.findLastIndex(r=>r.word===w.w);
@@ -2063,7 +2077,7 @@ function ensureUsageContinuation(active){
  for(const w of remaining){
   if((active.gradingQueue||[]).some(j=>j.word===w.w&&['pending','ready','sending'].includes(j.status))||pending.has(w.w)||(studyHistory.isStudyRound(active)?!studyHistory.roundUnfinished(active).some(v=>v.w===w.w):usageCompleted(active.results).has(w.w))||!isLearningTarget(w.w,w.cat,w.band))continue;
   const original=active.preparation.plans.find(p=>p.w.w===w.w);
-  const plan=nextUsagePlan(original,roundAttemptResults(active,w.w),active.preparation.plans.length,wordState(w.w));
+  const plan=nextUsagePlan({...original,...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY}:{})},roundAttemptResults(active,w.w),active.preparation.plans.length,wordState(w.w));
   if(plan)active.preparation.append([plan]);
  }
  active.target=active.preparation.plans.length;
@@ -2217,6 +2231,7 @@ function roundAttemptResults(active,word){
  return active.results.slice(last+1);
 }
 function appendBreadthReinforcement(active){
+ if(active.sentenceCyclePolicy){ensureUsageContinuation(active);return active.preparation.plans.length>current}
  const p=active.preparation;
  const pending=new Set((active.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)).map(j=>j.word));
  const queued=new Set(p.plans.slice(current).map(plan=>plan.w.w));

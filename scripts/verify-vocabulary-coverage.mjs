@@ -9,6 +9,7 @@ import {DELIVERY_POLICY,localPracticeQuestion} from '../lib/local-delivery.js';
 import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import {authoredCurriculum} from '../api/authored-bank.js';
 import {prepare} from '../api/prepare-worker.js';
+import {makePreparedPlan} from '../lib/prepared-plan.js';
 import {buildRealtimePool,buildStudyTopups} from '../api/study-topups.js';
 
 const {COVERAGE_POLICY,calibratedWord,isCoveragePlan,lowerVocabularyBacklog,selectDailyTargets,vocabularyUsageConfirmed,recordLearningEvidence,learningDay}=model;
@@ -50,7 +51,7 @@ const reserve=selectDailyTargets(small,started,day,{reviewOnly:true});assert.equ
 // keep covering lower gaps without generating passages or changing records.
 const catalog=authoredCurriculum(AUTHORED_OWNER).map(row=>calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,source:'fixed'})).filter(model.isLearningTarget);
 const base={difficulty:4,leagueLevel:4,words:Object.fromEntries(catalog.filter(w=>w.band===4).slice(0,10).map(w=>[w.w,{seen:1,introducedAt:'2026-09-01',nextReviewAt:'2026-09-02',useSuccess:1}]))};
-const baseBefore=JSON.stringify(base),packet=await prepare({id:'coverage',lease:'fixture',account:AUTHORED_OWNER,profile:'ayoung',learner:base},'fixture',async()=>{throw Error('No passage generation')},async()=>true);
+const baseBefore=JSON.stringify(base),packet=await prepare({id:'coverage',lease:'fixture',account:AUTHORED_OWNER,profile:'ayoung',learner:base,payload:makePreparedPlan(base,{},catalog.map(w=>({word:w.w,definition:w.d,band:w.band,domain:w.cat})),AUTHORED_OWNER,'ayoung',{sentenceCycle:false})},'fixture',async()=>{throw Error('No passage generation')},async()=>true);
 assert.equal(JSON.stringify(base),baseBefore);assert.equal(packet.coveragePolicy,COVERAGE_POLICY);assert.equal(packet.plans.length,15);assert.equal(packet.ready.length,15);
 assert.equal(packet.newWords.length,5);assert.equal(packet.plans.filter(p=>p.review).length,10);assert.equal(packet.plans.filter(isCoveragePlan).length,2);
 const expanded=buildStudyTopups({...base,difficulty:8.5},AUTHORED_OWNER,packet.baseWords.map(w=>w.w),'coverage',5,{coverage:true});

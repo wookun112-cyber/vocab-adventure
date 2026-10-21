@@ -6,11 +6,11 @@ const learner={difficulty:2,levelTestCompleted:false,words:Object.fromEntries(Ar
 const before=JSON.stringify(learner);
 const curriculum=[...Array.from({length:30},(_,i)=>({word:'어휘'+i,definition:'상황의 뜻을 나타내는 말',band:2,domain:'국어',example:''})),...Array.from({length:20},(_,i)=>({word:'복습기존'+i,definition:'이미 학습한 말의 뜻',band:2,domain:'국어'}))];
 const job={id:'test',lease:'lease',account:'family',profile:'inseong',learner,curriculum,catalog:{}};
-const plan=makePreparedPlan(learner,{},curriculum,'family','inseong');
+const plan=makePreparedPlan(learner,{},curriculum,'family','inseong',{sentenceCycle:false});
 assert.equal(plan.plans.length,15);
 assert.equal(plan.target,15);assert.equal(plan.newWords.length,5);assert.ok(plan.plans.some(p=>p.type==='subjective_use'));
 assert.ok(new Set(plan.plans.map(p=>p.type)).size>=3);
-assert.equal(plan.snapshot,learnerSnapshot(learner));
+Object.defineProperty(job,'payload',{get:()=>structuredClone(plan)});assert.equal(plan.snapshot,learnerSnapshot(learner));
 assert.equal(JSON.stringify(learner),before);
 for(const word of plan.newWords){
  const seeds=plan.plans.filter(p=>p.w.w===word).map(p=>p.contextSeed);
@@ -133,7 +133,7 @@ assert.equal(isLearningTarget('세포'),false);
 // A rejected advanced blank becomes reviewed sentence use, preserving balance.
 const advancedWords=Array.from({length:8},(_,i)=>({word:'심화어휘'+i,definition:'사건을 이해하는 데 필요한 뜻',band:7,domain:'국어'}));
 const advancedLearner={difficulty:7.4,words:Object.fromEntries(advancedWords.map(w=>[w.word,{seen:2,correct:1,wrong:1,streak:1}]))};
-const advancedJob={...job,kind:'reserve',slot:1,learner:advancedLearner,curriculum:advancedWords};
+const advancedJob={...job,payload:makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true,sentenceCycle:false}),kind:'reserve',slot:1,learner:advancedLearner,curriculum:advancedWords};
 let wideOnce=false,redesigned=false;
 const demandGenerate=async items=>{
  if(items.some(i=>i.id==='0')&&!wideOnce){wideOnce=true;const out=items.filter(i=>i.id!=='0').map(answer);out.failed=[{id:'0',issues:['review_failed:levelDemandFit']}];return out;}
@@ -141,7 +141,7 @@ const demandGenerate=async items=>{
  return items.map(answer);
 };
 const redesignedPacket=await prepare(advancedJob,'key',demandGenerate,async()=>true);
-assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.ok(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length>=1&&redesignedPacket.plans.filter(p=>p.type==='subjective_use').length<=4,'advanced writing remains available but is not an unbounded obligation for every review target');assert.equal(redesignedPacket.ready.length,10);
+assert.equal(redesigned,false);assert.equal(wideOnce,false);assert.equal(redesignedPacket.plans[0].type,'subjective_recall');assert.ok(redesignedPacket.plans.filter(p=>p.type==='subjective_use').length>=1&&redesignedPacket.plans.filter(p=>p.type==='subjective_use').length<=4,'advanced writing remains available but is not an unbounded obligation for every review target');assert.equal(redesignedPacket.ready.length,redesignedPacket.plans.length);
 const frozenPacket=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});frozenPacket.resumeId='advanced-paused';
 const frozenLearner={...advancedLearner,activeLesson:{id:'advanced-paused'}};const originalTypes=JSON.stringify(frozenPacket.plans.map(p=>p.type));wideOnce=false;redesigned=false;
 const frozenOutput=await prepare({...advancedJob,learner:frozenLearner,payload:frozenPacket},'key',demandGenerate,async()=>true);
@@ -149,7 +149,7 @@ assert.equal(JSON.stringify(frozenOutput.plans.map(p=>p.type)),originalTypes);as
 console.log('Legacy review delivery verified: missing advanced recall stays hidden-target recall, with other unsupplied practice using own sentences without generation; interrupted lessons keep their original tasks.');
 
 // A failed relation task keeps its vocabulary, ID, and objective/written balance.
-const relationPlan=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true});
+const relationPlan=makePreparedPlan(advancedLearner,{},advancedWords,'family','inseong',{reviewOnly:true,sentenceCycle:false});
 const relation=relationPlan.plans.find(p=>p.type==='mc_usage');relation.type='mc_relation';let relationFailed=false;
 const diversify=async items=>{if(!relationFailed&&items.some(i=>i.id===relation.id)){relationFailed=true;const out=items.filter(i=>i.id!==relation.id).map(answer);out.failed=[{id:relation.id,issues:['review_failed:levelDemandFit']}];return out;}return items.map(answer)};
 const diversified=await prepare({...advancedJob,payload:relationPlan},'key',diversify,async()=>true);
