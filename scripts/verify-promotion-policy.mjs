@@ -64,5 +64,5 @@ const todayRow=dailyStudyRows(records)[0];
 assert.equal(todayRow.assessmentAttempts,3);assert.equal(todayRow.assessmentCorrect,2);
 assert.equal(todayRow.assessmentAccuracy,67);assert.equal(todayRow.upperAttempts,2);assert.equal(todayRow.upperCorrect,1);
 assert.equal(todayRow.independentAttempts,3,'first assessment is distinct from remedial practice');
-assert.equal(masteryConfirmed(records.words[basic[0].w]),false,'report counters never confer 7/30-day mastery');
+assert.equal(masteryConfirmed(records.words[basic[0].w]||{}),false,'report counters never confer 7/30-day mastery');
 console.log('Promotion policy verified: upper-band selection, 70/80/90/100 promotion, no easy-score inflation, independent due reviews, spaced mastery preserved and report accounting.');
