@@ -1244,7 +1244,7 @@ function createServerPreparation(meta,saved){
    for(const job of p.jobs)job.error=null;
   }).catch(error=>{for(const job of p.jobs)job.error=error}).finally(()=>{
    polling=false;p.notify();
-   if(!p.cancelled&&p.ready.size<p.baseCount&&!p.jobs.some(j=>j.error))timer=setTimeout(()=>p.pump(),2000);
+   if(!p.cancelled&&p.ready.size<p.baseCount&&!p.jobs.some(j=>j.error))timer=setTimeout(()=>p.pump(),1100);
   });
  };
  const cancel=p.cancel;p.cancel=()=>{clearTimeout(timer);cancel()};
@@ -1266,9 +1266,11 @@ async function getPreparation(mode='daily',retry=false){
      const blocked=serverPreparationError(remote);if(blocked)throw blocked;
      if(remote?.payload?.budget?.waitingForReviews)throw Object.assign(new Error('현재 수준에 맞는 복습 후보가 아직 없어요. 학습 기록은 보관되어 있습니다.'),{noReviewCandidates:true});
      if(preparationBlock&&preparationBlock.account===account&&preparationBlock.profile===profile)preparationBlock=null;
-     while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries++<4){
+     while(remote&&['pending','working'].includes(remote.status)&&!remote.payload&&tries<5){
        $('cloudPill').textContent='맞춤 학습 문제를 서버에서 미리 준비 중';
-       await new Promise(resolve=>setTimeout(resolve,2000));
+       // Fast first check, then a bounded backoff during longer preparation.
+       const delay=[550,900,1400,1800,2200][tries++];
+       await new Promise(resolve=>setTimeout(resolve,delay));
        if(authUser?.id!==account||state.selected!==profile)throw new Error('학습 프로필이 변경되었습니다.');
        remote=await serverLesson(profile);
      }
