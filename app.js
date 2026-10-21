@@ -1582,7 +1582,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  beginLearningWindow('feedback:'+session.lessonId+':'+current+':'+q.w.w,true);
  exploration(child());
  rememberQuestion(q);
- const st=wordState(q.w.w),priorExposure=st.lastExposureAt||st.lastFeedbackDate||st.introducedAt;
+ const st=wordState(q.w.w),priorFeedbackDate=st.lastFeedbackDate,priorExposure=st.lastExposureAt||st.lastFeedbackDate||st.introducedAt;
  const answeredAt=meta.submittedAt||Date.now(),answerDay=meta.submittedDay||learningDay(new Date(answeredAt)),delayed=answerDay!==today();
  const newer=(priorExposure||'')>answerDay||Number(st.usageConfirmedStamp)>answeredAt;
  const protectedProgress=newer?Object.fromEntries(['last','lastFeedbackDate','streak','supportLevel','level','mastered'].map(k=>[k,st[k]])):null;
@@ -1620,7 +1620,13 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  if(session.model!==LEARNING_MODEL&&!newer)scheduleReview(st,{credit,independent,revealed,hintUsed},answerDay);
  if(q.w.pair&&credit<.5&&!st.confusions.includes(q.w.pair))st.confusions.push(q.w.pair);
  const rec={rawAnswer:meta.rawAnswer??normalized,inputAtReveal:meta.inputAtReveal||'',submissionAction:meta.submissionAction||(meta.gradingJobId?'graded':'direct'),feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt,studyDate:answerDay};
- rec.levelEligible=session.preparation?.plans[current]?.levelEligible!==false&&!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
+ // Due reviewed words count toward the assessment on their first unassisted
+ // attempt, without being reintroduced or earning premature spaced mastery.
+ const assessmentPlan=session.preparation?.plans[current],firstToday=!delayed&&!newer&&priorFeedbackDate!==answerDay&&!session.results.some(r=>r.word===q.w.w);
+ const dueReview=assessmentPlan?.review===true&&st.seen>1&&(!st.nextReviewAt||st.nextReviewAt<=answerDay)&&!wordOnCooldown(child(),q.w.w,answerDay);
+ rec.levelEligible=assessmentPlan?.levelEligible!==false&&!isCoveragePlan(assessmentPlan)&&!q.needsCard&&!q.remedial&&firstToday&&(!practiceOnly||dueReview);
+ rec.assessmentEligible=rec.levelEligible&&!hintUsed&&(!revealed||rec.meaningUnknown&&credit===0);
+ rec.assessedUpper=rec.assessmentEligible&&vocabularyBand(q.w)>=Math.floor(stableBaselineLevel(child()))+1;
  if((session.preparation?.plans[current]?.realtimeProbe||session.sentenceCyclePolicy&&session.preparation?.plans[current]?.firstLearning)&&!st.introducedAt)st.introducedAt=answerDay;
  if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec,answerDay);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec,answerDay);rec.evidence=evidence}
  applyCorrectCooldown(st,rec,answerDay);
@@ -1942,7 +1948,7 @@ function availableAdaptiveTargets(active){
 function takeAdaptiveTarget(active){
  const candidates=availableAdaptiveTargets(active);if(!candidates.length)return null;
  const a=active.adaptation,ordinal=a.selectionOrdinal||0;
- const desired=realtimeTargetBand(child().difficulty,ordinal,a.estimate>=95);
+ const desired=realtimeTargetBand(child().difficulty,ordinal,a.estimate>=80);
  candidates.sort((x,y)=>Math.abs(x.plan.w.band-desired)-Math.abs(y.plan.w.band-desired));
  const selected=candidates[0],probe=selected.plan.w.band>=Math.floor(child().difficulty);
  const target={...selected,plan:{...(probe?selected.probePlan:selected.plan)},question:structuredClone(probe?selected.probeQuestion:selected.question)};
@@ -1954,7 +1960,7 @@ function adaptPendingTargets(active){
  if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  const a=active.adaptation,p=active.preparation;
  if(!a||a.rows.length<3||active.mode==='level'||active.completionPolicy!==DAILY_POLICY)return false;
- const key=child().difficulty+'|'+(a.estimate>=95?'fast':'normal');if(a.selectionKey===key)return false;
+ const key=child().difficulty+'|'+(a.estimate>=80?'fast':'normal');if(a.selectionKey===key)return false;
  let changed=false;
  for(let i=current;i<p.baseCount;i++){
   const old=p.plans[i],st=child().words[old.w.w]||{};
@@ -1993,7 +1999,7 @@ function prefetchStudyTopups(active,force=false){
  if(active.topupRequest)return active.topupRequest;
  if(!force&&active.topupErrorLevel===child().difficulty&&active.topupRetryAt>Date.now())return Promise.resolve(null);
  const held=availableStudyTopups(active);
- const adaptive=availableAdaptiveTargets(active),desired=active.adaptation&&Math.min(Math.floor(child().difficulty+1),realtimeTargetBand(child().difficulty,active.adaptation.selectionOrdinal||0,active.adaptation.estimate>=95));
+ const adaptive=availableAdaptiveTargets(active),desired=active.adaptation&&Math.min(Math.floor(child().difficulty+1),realtimeTargetBand(child().difficulty,active.adaptation.selectionOrdinal||0,active.adaptation.estimate>=80));
  const needAdaptive=active.adaptivePool?.policy===REALTIME_LEVEL_POLICY&&!!active.adaptation&&(adaptive.length<3||adaptive.filter(t=>t.plan.w.band===desired).length<2);
  if(!needAdaptive&&(held.length>=2||!force&&active.studyTopups?.exhausted))return Promise.resolve(active.studyTopups);
  active.topupRequest=(async()=>{
