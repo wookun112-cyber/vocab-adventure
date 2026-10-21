@@ -18,7 +18,7 @@ begin
  day:=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD');
  if coalesce(active,'null')='null' and j.payload is not null and
   (j.payload->>'snapshot' is distinct from p_snapshot or
-   (p_snapshot like '%round-25-errors-5-12.16.39%' and j.payload->>'roundPolicy' is distinct from 'round-25-errors-5-12.16.39') or
+   ((p_snapshot like '%round-25-errors-5-12.16.39%' or p_snapshot like '%round-adaptive-breadth-25-5-20261019%') and not coalesce(j.payload->>'roundPolicy' in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019'),false)) or
    j.payload->>'retentionPolicy' is distinct from 'learned-word-retention-12.16.22' or
    j.payload->>'coveragePolicy' is distinct from 'lower-stage-usage-12.16.19' or
    j.payload->>'reviewPolicy' is distinct from 'due-review-5-10-12.16.6' or
@@ -66,7 +66,7 @@ begin
   case when r#>>'{1,validation,source}'in ('sentence_use_template','fixed_recall_template') then not vocab_private.sentence_use_question_accepted(r->1,p_payload->'plans'->((r->>0)::integer))
   when r->1 ? 'authored' or r#>>'{1,validation,source}'='authored_bank' then not coalesce(vocab_private.authored_question_accepted(r->1,bound_owner),false)
   else false end) then raise exception 'Invalid saved bank or template question';end if;
- if octet_length(p_payload::text)>2000000 or (jsonb_array_length(coalesce(p_payload->'newWords','[]'))<>0 and (p_payload->>'roundPolicy' is distinct from 'round-25-errors-5-12.16.39' or jsonb_array_length(p_payload->'newWords')>5)) then raise exception 'Invalid reserve';end if;
+ if octet_length(p_payload::text)>2000000 or (jsonb_array_length(coalesce(p_payload->'newWords','[]'))<>0 and (not coalesce(p_payload->>'roundPolicy' in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019'),false) or jsonb_array_length(p_payload->'newWords')>5)) then raise exception 'Invalid reserve';end if;
  if p_payload->>'preparationError' ~ 'credit_balance_exhausted|insufficient_quota' then p_payload:=jsonb_set(p_payload,'{preparationBlocked}','"ai_credit_exhausted"'); end if;
  update vocab_private.lesson_reserves set payload=p_payload,status=case when p_payload#>>'{budget,waitingForReviews}'='true' then 'waiting' when p_failed then 'pending' when vocab_private.packet_complete(p_payload) then 'ready' else 'working' end,
   attempts=case when p_payload->>'preparationBlocked'='ai_credit_exhausted' then 8 else attempts end,
@@ -91,14 +91,14 @@ begin
  if p_payload->>'account'='06c78577-b96e-4919-b979-58683ff5946e' and not coalesce(p_payload->>'bankRevision'=any(array['vocab-bank-20261008-1-2-3-7-8-v1','vocab-bank-20261012-essential-v1','vocab-bank-20261013-level4-v1','vocab-bank-20261014-level5-6-v1','vocab-bank-20261014-level9-v1','vocab-bank-offline-20261014-v1','vocab-discrimination-20261015-v1']),false) then return false;end if;
  if p_payload->>'questionPolicy' is distinct from 'vocabulary-level-fit-12.13' or p_payload->>'selectionPolicy' is distinct from 'target-band-12.9' or p_payload#>>'{budget,policy}' is distinct from 'daily-5-new-10-review-use-unlimited-12.16.4' or not vocab_private.packet_complete(p_payload)
   or abs(coalesce((p_payload->>'difficulty')::numeric,0)-coalesce((l->>'difficulty')::numeric,2))>.35 then return false;end if;
- if p_payload->>'roundPolicy'='round-25-errors-5-12.16.39' and exists(select 1 from jsonb_array_elements(p_payload->'plans') x where coalesce(x->>'review','false')='false' and (coalesce((l#>>array['words',x#>>'{w,w}','seen'])::integer,0)>0 or l#>>array['words',x#>>'{w,w}','introducedAt'] is not null)) then return false;end if;
+ if p_payload->>'roundPolicy' in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019') and exists(select 1 from jsonb_array_elements(p_payload->'plans') x where coalesce(x->>'review','false')='false' and (coalesce((l#>>array['words',x#>>'{w,w}','seen'])::integer,0)>0 or l#>>array['words',x#>>'{w,w}','introducedAt'] is not null)) then return false;end if;
  if exists(select 1 from jsonb_array_elements(p_payload->'plans') x
   join public.curriculum_words c on c.word=x#>>'{w,w}'
   where c.quality_status='rejected' or c.band<>coalesce((x#>>'{w,band}')::integer,0)) then return false;end if;
  if exists(select 1 from jsonb_array_elements(p_payload->'plans') x where coalesce((x->>'review')::boolean,false)=false and coalesce((x#>>'{w,band}')::numeric,0) not between greatest(1,ceil(coalesce((l->>'difficulty')::numeric,2)-1)) and least(9,floor(coalesce((l->>'difficulty')::numeric,2)+1)) and not vocab_private.coverage_plan_valid(x,l,(p_payload->>'difficulty')::numeric)) then return false;end if;
  for r in select value from jsonb_array_elements(p_payload->'ready') loop
   q:=r->1;st:=l#>array['words',q#>>'{w,w}'];
-  if ((st is null or (coalesce((st->>'seen')::integer,0)=0 and st->>'introducedAt' is null)) and not (p_payload->>'roundPolicy'='round-25-errors-5-12.16.39' and coalesce(p_payload->'plans'->((r->>0)::integer)->>'review','false')='false'))
+  if ((st is null or (coalesce((st->>'seen')::integer,0)=0 and st->>'introducedAt' is null)) and not (p_payload->>'roundPolicy' in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019') and coalesce(p_payload->'plans'->((r->>0)::integer)->>'review','false')='false'))
    or not coalesce((case when q#>>'{validation,source}'in ('sentence_use_template','fixed_recall_template') then vocab_private.sentence_use_question_accepted(q,p_payload->'plans'->((r->>0)::integer)) when q ? 'authored' or q#>>'{validation,source}'='authored_bank' then vocab_private.authored_question_accepted(q,(p_payload->>'account')::uuid) else
    q#>>'{validation,policy}'='vocabulary-level-fit-12.13' and q#>>'{validation,aiVerified}'='true'
    and q#>>'{validation,deterministic}'='true' and q#>>'{validation,checks,coherentSituation}'='true'
@@ -126,11 +126,11 @@ begin
  if coalesce(l->'activeLesson','null')<>'null' then return null;end if;
  select count(*) into fresh_count from jsonb_each(coalesce(l->'words','{}')) w where value->>'introducedAt'=day and not exists(select 1 from public.curriculum_words c where c.word=w.key and c.quality_status='rejected');
  -- New full-round reserves also work before today's first five words.
- if fresh_count<5 and not exists(select 1 from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and status='ready' and payload->>'roundPolicy'='round-25-errors-5-12.16.39') then return null;end if;
+ if fresh_count<5 and not exists(select 1 from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and status='ready' and payload->>'roundPolicy' in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019')) then return null;end if;
  for j in select * from vocab_private.lesson_reserves where user_id=p_user and profile=p_profile and status='ready' order by slot for update skip locked loop
   if not vocab_private.reserve_usable(j.payload,l) then update vocab_private.lesson_reserves set status='consumed' where id=j.id;continue;end if;
   data:=j.payload;
-  if data->>'roundPolicy'='round-25-errors-5-12.16.39' then
+  if data->>'roundPolicy' in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019') then
    data:=data||jsonb_build_object('snapshot',null,'fromReserve',true,'plannedFor',day,'created',extract(epoch from now())*1000,'account',p_user,'profile',p_profile);
    update vocab_private.lesson_reserves set status='consumed' where id=j.id;return data;
   end if;
@@ -157,21 +157,21 @@ declare name text:=x#>>'{w,w}'; item jsonb; st jsonb; completed numeric; assigne
 begin
  item:=l#>array['unfinishedUsage',name];st:=l#>array['words',name];
  if item is null or x->>'carryoverPolicy' is distinct from 'unfinished-usage-12.16.32'
-  or x->>'review' is distinct from 'true' or x->>'type' is distinct from 'subjective_use'
+  or x->>'review' is distinct from 'true' or not coalesce(x->>'type' in ('subjective_use','subjective_recall'),false)
   or x->>'practiceOnly' is distinct from 'true' or x->>'levelEligible' is distinct from 'false'
   or coalesce(x->>'needsCard','false')<>'false' or coalesce(x->>'firstLearning','false')<>'false'
   or item#>>'{word,w}' is distinct from name
-  or coalesce(item->>'day','') !~ '^\d{4}-\d{2}-\d{2}$'
+  or coalesce(item->>'day','') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
   or (item->>'day'>=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD') and not (
    item->>'day'=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD') and item->>'carryNextRound'='true'
    and l#>>array['studyHistory','entries',item->>'lessonId','status']='completed'
-   and l#>>array['studyHistory','entries',item->>'lessonId','roundPolicy']='round-25-errors-5-12.16.39'
+   and l#>>array['studyHistory','entries',item->>'lessonId','roundPolicy'] in ('round-25-errors-5-12.16.39','round-adaptive-breadth-25-5-20261019')
    and coalesce(l#>array['studyHistory','entries',item->>'lessonId','unfinishedWords'],'[]') ? name))
   or not exists(select 1 from public.curriculum_words c where c.word=name and c.quality_status<>'rejected'
    and c.band>=2 and c.band=(x#>>'{w,band}')::numeric) then return false;end if;
  assigned:=coalesce((item->>'assignedAt')::numeric,0);
  completed:=coalesce((st->>'usageConfirmedStamp')::numeric,0);
- if completed=0 and st->>'usageConfirmedAt' ~ '^\d{4}-\d{2}-\d{2}$' then
+ if completed=0 and st->>'usageConfirmedAt' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
   completed:=extract(epoch from ((st->>'usageConfirmedAt')::date::timestamp at time zone 'Asia/Seoul'))*1000;
  end if;
  return assigned>0 and assigned<=extract(epoch from now())*1000 and completed<assigned;

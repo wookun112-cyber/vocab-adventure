@@ -1,4 +1,4 @@
-const CACHE='vocab-adventure-v12-16-43';
+const CACHE='vocab-adventure-v12-16-44';
 const ASSETS=['/','/index.html','/app.css','/app.js','/lib/learning-model.js','/lib/daily-practice.js','/lib/authored-policy.js','/lib/sentence-use-template.js','/lib/local-delivery.js','/lib/study-history.js','/lib/study-rounds.js','/manifest.webmanifest','/version.json','/icon.svg'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
 self.addEventListener('activate',e=>{e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()]))});
