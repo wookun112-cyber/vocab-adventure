@@ -15,6 +15,7 @@ import {sentenceUseQuestionValid} from '../lib/sentence-use-template.js';
 import {patchStuckPreparation} from './patch-stuck-preparation.mjs';
 import {authoredCurriculum,authoredEntry} from '../api/authored-bank.js';
 import {hydrateFromBank} from '../lib/question-bank.js';
+import {buildStudyTopups} from '../api/study-topups.js';
 
 assert.equal(READING_PASSAGES.length,9);
 for(const passage of READING_PASSAGES){
@@ -232,3 +233,15 @@ assert.deepEqual(migrated.plans.slice(0,2),context.migrationInput.plans.slice(0,
 assert.equal(migrated.plans[2].type,'subjective_use');assert.equal(migrated.plans[3].deferredGradeId,'keep-job');
 assert.equal(JSON.stringify(context.migrationInput),inputBefore);
 console.log('Sentence migration PASS: submitted prefix, visible prompt/draft and deferred grade assignment unchanged; only future tasks migrate.');
+
+context.buildStudyTopups=buildStudyTopups;
+run("session.studyTopups=buildStudyTopups(child(),authUser.id,session.baseWords.map(w=>w.w),'cycle-topup',5,{coverage:true});");
+assert.equal(run('appendStudyTopup(session)'),true);
+assert.equal(run('session.preparation.plans.at(-1).type'),'subjective_use');
+assert.equal(run('session.preparation.plans.at(-1).needsCard'),false);
+assert.equal(run('session.introDone'),true);
+run('current=session.preparation.plans.length-1;renderQuestion()');
+run("applyResult(session.queue[current],'×','설명을 확인하세요.','틀린 추가문장',{credit:0,contextSuccess:false})");
+assert.equal(run('session.preparation.plans.at(-1).type'),'mc_usage');
+assert.ok(run('session.preparation.ready.has(session.preparation.plans.length-1)'),'topup remediation is already downloaded and compatible');
+console.log('Sentence topup PASS: solved targets add a new example-free sentence; a failed added sentence has immediate offline MC remediation.');

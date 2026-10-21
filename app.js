@@ -758,7 +758,7 @@ function migrateSentenceCycle(saved){
  const ready=new Map(saved.ready),plans=saved.plans.map((plan,i)=>{
   if(i<=saved.nextIndex||plan.deferredGradeId)return plan;
   const remedial=plan.remedial?nextUsagePlan({...plan,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY},saved.results||[],i,child().words?.[plan.w.w]||{}):null;
-  const next=remedial||{...plan,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:plan.taskDemand==='foundation-review'?'foundation-review':'standard'};
+  const next=remedial||{...plan,sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:(saved.practicePool||[]).find(q=>q.w?.w===plan.w.w&&q.type.startsWith('mc_'))?.taskDemand||(plan.taskDemand==='initial-practice'?'standard':plan.taskDemand)};
   const question=localPracticeQuestion(next,child(),saved.practicePool||[],[...ready.values()],saved.account);
   if(!question)return plan;
   ready.set(i,question);return next;
@@ -1539,7 +1539,7 @@ function renderQuestion(savedHint=0){
  const q=presentWrittenQuestion({...session.queue[current],w:calibratedWord(session.queue[current].w)});rememberQuestion(q); selectedOption=null; answerSource='typed';hintLevel=clamp(savedHint,0,(q.hints||[]).length);
  beginLearningWindow('question:'+session.lessonId+':'+current+':'+q.w.w);
  $('learnType').textContent=STAGE_LABELS[q.stage]||(session.mode==='level'?'시작 수준 확인':session.mode==='review'?'집중 복습':'오늘의 학습');
- if($('learningPath'))$('learningPath').textContent=studyHistory.isBreadthRound(session)
+ if($('learningPath'))$('learningPath').textContent=studyHistory.isBreadthRound(session)&&!session.sentenceCyclePolicy
  ?'핵심 어휘 의미 확인 '+sessionUsageCount(session)+'/'+session.baseWords.length+'개 · 어휘 확장 독해 2문제 · 미숙달 어휘는 자동 복습'
  :session.completionPolicy===DAILY_POLICY?'문장 사용 확인 '+sessionUsageCount(session)+'/'+session.baseWords.length+'개 · 모두 확인할 때까지 연습':'';
  renderStudyClock();
@@ -1961,7 +1961,7 @@ function adaptPendingTargets(active){
   if(isCoveragePlan(old)||old.review||!old.firstLearning||st.seen||st.introducedAt||
    renderedAnswerAt?.id===active.lessonId&&renderedAnswerAt.index===i)continue;
   const target=takeAdaptiveTarget(active);if(!target)break;
-  const plan={...target.plan,id:String(i),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:'standard'}:{})},q=active.sentenceCyclePolicy?localPracticeQuestion(plan,child()):target.question;
+  const plan={...target.plan,id:String(i),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:(target.practicePool||[]).find(q=>q.type.startsWith('mc_'))?.taskDemand||'standard'}:{})},q=active.sentenceCyclePolicy?localPracticeQuestion(plan,child()):target.question;
   p.plans[i]=plan;p.ready.set(i,q);p.queue[i]=q;
   active.baseWords=active.baseWords.map(w=>w.w===old.w.w?plan.w:w);
   active.newWords=active.newWords.map(w=>w===old.w.w?plan.w.w:w);
@@ -2029,7 +2029,7 @@ function appendStudyTopup(active){
  if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
  if(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active))return false;
  const held=availableStudyTopups(active),target=held.find(t=>isCoveragePlan(t.plan))||takeAdaptiveTarget(active)||held[0];if(!target)return false;
- const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:'standard'}:{})},w=plan.w;
+ const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:(target.practicePool||[]).find(q=>q.type.startsWith('mc_'))?.taskDemand||'standard'}:{})},w=plan.w;
  if(active.studyTopups)active.studyTopups.targets=active.studyTopups.targets.filter(t=>t.plan.w.w!==w.w);
  active.baseWords.push(w);active.newWords.push(w.w);active.timeAddedWords=[...(active.timeAddedWords||[]),w.w];
  if(plan.needsCard){active.introWords.push(w.w);active.introDone=false;active.introAt=index}active.target=index+1;
