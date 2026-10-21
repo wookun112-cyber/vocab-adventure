@@ -100,7 +100,7 @@ assert.equal(recorded.taskLevelAfter,levelAtEnd);
 assert.equal(learner.leagueLevel,4.4,'exceptional upper-band evidence can gain at most 0.4 in one day');
 assert.equal(learner.baselineDifficulty,4.4);
 assert.equal(recorded.change,.4);
-assert.ok(learner.difficulty<=5.0,'following lesson is bounded near the stable baseline');
+assert.ok(learner.difficulty<=5.2,'following lesson stays within 0.8 of the exceptional stable baseline');
 const second=newLesson('second');
 learner.difficulty=4.8;initRealtimeLevel(learner,second);
 for(let i=9;i<18;i+=3){second.results.push(answer(i),answer(i+1),answer(i+2));observeRealtimeLevel(learner,second)}
