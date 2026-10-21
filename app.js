@@ -1742,18 +1742,52 @@ async function gradeCurrent(dontKnow){
  checkpointSession();localSave();cloudSave();
  $('submit').disabled=true;$('submit').textContent='답안 확인 중…';
  pauseLearningClock();active.waitingForGrading=true;
+ // AI meaning assessment must remain the original single paid request. Its
+ // server fetch continues after the short UI wait; never abort it just to
+ // advance the next question. The same job ID and answer are retained.
+ const showPending=(message)=>{
+  if(!active.results.some(r=>r.gradingJobId===job.id))
+   active.results.push({word:q.w.w,type:q.type,result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:job.id,answeredAt:job.submittedAt,studyDate:job.submittedDay});
+  $('feedback').className='feedback';$('feedback').textContent=message;
+  $('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
+  checkpointSession();localSave();cloudSave();
+ };
  try{
-  const graded=await requestGrade(job,22000);
+  const inFlight=requestGrade(job,22000).then(graded=>({graded}),error=>({error}));
+  let uiTimer;
+  const first=await Promise.race([inFlight,new Promise(resolve=>{uiTimer=setTimeout(()=>resolve(null),1600)})]);
+  clearTimeout(uiTimer);
   if(session!==active||state.selected!==active.profile)return;
+  if(first===null){
+   job.status='sending';
+   showPending('답안을 안전하게 저장했어요. AI 의미 채점이 진행 중이니 다음 문제를 먼저 풀어도 돼요. 결과가 오면 기존 답안에 반영됩니다.');
+   // Preserve one in-flight request instead of aborting/rebilling at 1.6 s.
+   void inFlight.then(outcome=>{
+    if(session!==active||active.completed||authUser?.id!==active.account||state.selected!==active.profile)return;
+    if(job.status!=='sending')return;
+    if(outcome.error){
+     job.status='pending';deferGradingJob(job,outcome.error);
+     if(active.waitingForGradeResults)renderGradingProgress(active);
+    }else{
+     job.grade=outcome.graded;job.status='ready';job.pollFailures=0;
+     appendReadyGrades(active);
+     if(active.waitingForGradeResults&&current<active.target&&!active.waitingForGrading){
+      active.waitingForGradeResults=false;renderQuestion();
+     }
+    }
+    checkpointSession();localSave();cloudSave();
+   });
+   return;
+  }
+  if(first.error)throw first.error;
   active.gradingQueue=active.gradingQueue.filter(j=>j.id!==job.id);
-  applyGradedAnswer(q,graded,job);
+  applyGradedAnswer(q,first.graded,job);
  }catch(e){
   if(session!==active||state.selected!==active.profile)return;
   deferGradingJob(job,e);
-  active.results.push({word:q.w.w,type:q.type,result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:job.id,answeredAt:job.submittedAt,studyDate:job.submittedDay});
-  $('feedback').className='feedback';$('feedback').textContent=e.code==='ai_credit_exhausted'?'답안을 저장했어요. 관리자에게 채점 잔액 확인이 필요해요. 다른 문제는 계속 풀 수 있고, 충전 후 자동으로 다시 확인해요.':'답안을 저장했어요. 다른 문제를 풀면 자동으로 다시 채점해요. 앱을 껐다 켜도 이어서 확인할 수 있어요.';
-  $('next').classList.remove('hidden');$('submit').classList.add('hidden');$('hint').classList.add('hidden');
-  checkpointSession();localSave();cloudSave();
+  showPending(e.code==='ai_credit_exhausted'
+   ?'답안을 저장했어요. 관리자에게 채점 잔액 확인이 필요해요. 다른 문제는 계속 풀 수 있고, 충전 후 다시 확인해요.'
+   :'답안을 보관했어요. 다음 문제를 풀면서 원래 채점 결과를 확인할 수 있어요. 앱을 껐다 켜도 이어서 확인할 수 있어요.');
  }finally{
   active.waitingForGrading=false;
   if(session===active){if(!document.hidden)resumeLearningClock();$('submit').disabled=false;$('submit').textContent='채점하기'}
@@ -1762,8 +1796,10 @@ async function gradeCurrent(dontKnow){
 async function requestGrade(job,timeout=25000,pollOnly=false){
  const {data}=await withDeadline(sb.auth.getSession(),5000,'로그인 확인 지연');
  const token=data.session?.access_token;if(!token)throw new Error('로그인이 필요합니다.');
- const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(timeout),body:JSON.stringify({...job.payload,requestId:job.id,pollOnly})});
+ const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(timeout),body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.providerReceipt?{providerReceipt:job.providerReceipt}:{}),...(job.gradeReceipt?{gradeReceipt:job.gradeReceipt}:{})})});
  const value=await r.json();
+ if(typeof value?.providerReceipt==='string')job.providerReceipt=value.providerReceipt;
+ if(typeof value?.gradeReceipt==='string')job.gradeReceipt=value.gradeReceipt;
  if(!r.ok||r.status===202||![0,.5,1].includes(value.score))throw Object.assign(new Error(value.error||'채점 대기'),{code:value.code||'grading_pending'});
  return value;
 }
