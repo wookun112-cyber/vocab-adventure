@@ -5,7 +5,7 @@ import * as studyHistory from './lib/study-history.js';
 import {READING_EXPOSURE_POLICY,readingPassageById,prepareReadingExposure,recordedExposure} from './lib/reading-exposure.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {copiedUsageExample,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
+import {copiedUsageExample,CORRECT_COOLDOWN_POLICY,wordOnCooldown,applyCorrectCooldown,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -1077,7 +1077,7 @@ const SCENARIOS=['집에서 가족과 계획을 세우는 일','학교에서 친
 function preparationSnapshot(profile){
  const c=state.users[profile];
  const words=Object.entries(c.words||{}).filter(([,s])=>s.seen>0||s.introducedAt).sort(([a],[b])=>a.localeCompare(b)).map(([w,s])=>[w,s.seen,s.correct,s.wrong,s.streak,s.supportLevel,s.nextReviewAt,s.lastFeedbackDate,(s.usedPassageKeys||[]).length,s.introducedAt||null]);
- return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,Object.entries(c.unfinishedUsage||{}).sort(([a],[b])=>a.localeCompare(b)), 'round-25-errors-5-12.16.39',AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY]);
+ return JSON.stringify([c.difficulty,c.levelTestCompleted,words,c.lastDate||null,Object.entries(c.unfinishedUsage||{}).sort(([a],[b])=>a.localeCompare(b)), 'round-25-errors-5-12.16.39',AUTHORED_REVISION+':'+REVIEW_POLICY+':'+COVERAGE_POLICY+':'+RETENTION_POLICY+':'+CORRECT_COOLDOWN_POLICY]);
 }
 function preparationKey(mode,profile=state.selected,account=authUser?.id){return 'vocab-prepared-'+account+'-'+profile+'-'+mode}
 function assignScenarios(plans){
@@ -1512,11 +1512,11 @@ function renderQuestion(savedHint=0){
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
   const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,pendingGrade=!gradeDelivery&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
-  if(!pendingGrade&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&!pinned&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
+  if(!pendingGrade&&(!studyHistory.isBreadthRound(session)||!wordOnCooldown(child(),pending.w.w)||gradeDelivery)&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&!pinned&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
   // Keep the original cursor and answered records. Excluded questions get a
   // checkpoint entry, never a wrong answer, word statistic or reward.
   if(session.results.length!==current)throw Error('학습 순서를 확인하지 못했어요. 기존 답안은 보관되어 있어요.');
-  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:pendingGrade?'grading_pending':studyHistory.isBreadthRound(session)&&!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w)?'round_confirmed':usageCompleted(session.results).has(pending.w.w)?'usage_confirmed':isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
+  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:pendingGrade?'grading_pending':wordOnCooldown(child(),pending.w.w)?'correct_cooldown':studyHistory.isBreadthRound(session)&&!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w)?'round_confirmed':usageCompleted(session.results).has(pending.w.w)?'usage_confirmed':isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
   current++;skipped++;
  }
  if(skipped){checkpointSession();localSave();cloudSave()}
@@ -1610,6 +1610,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  rec.levelEligible=session.preparation?.plans[current]?.levelEligible!==false&&!isCoveragePlan(session.preparation?.plans[current])&&!q.needsCard&&!session.results.some(r=>r.word===q.w.w)&&!q.remedial&&!practiceOnly;
  if(session.preparation?.plans[current]?.realtimeProbe&&!st.introducedAt)st.introducedAt=answerDay;
  if(session.model===LEARNING_MODEL){const exposureAfter=st.lastFeedbackDate;st.lastExposureAt=priorExposure;const evidence=recordLearningEvidence(child(),st,q,rec,answerDay);st.lastFeedbackDate=exposureAfter;researchSchedule(st,evidence,rec,answerDay);rec.evidence=evidence}
+ applyCorrectCooldown(st,rec,answerDay);
  if(protectedProgress)Object.assign(st,protectedProgress);
  rec.xp=delayed?0:rewardAnswer(q,independent);rec.stars=rec.xp?2:0;
  session.results.push(rec);
@@ -2140,7 +2141,7 @@ function renderRoundSummary(){
  const c=child(),saved=savedLesson(),budget=studyBudget(c),rows=roundRowsFor(c);
  if($('dailyTitle'))$('dailyTitle').textContent=saved?saved.roundNumber+'회차 진행 중':'새 단어 5개 + 복습 최대 10개';
  if($('dailyDescription'))$('dailyDescription').textContent=saved&&!studyHistory.isStudyRound(saved)?'이전 방식으로 시작한 학습은 그대로 이어져요':'새 단어 5개 + 복습 최대 10개 · 역사·과학 독해 2문제 · 25분 기본, 필요한 경우 최대 5분 보완 · 하루 회차 제한 없음';
- if($('dailyBudget'))$('dailyBudget').textContent='오늘 총 '+studyHistory.formatStudyTime(studyHistory.dailyStudyTime(c,saved))+' · 복습 예정 '+budget.due+'개 · 입력·터치 없이 10초 이후와 채점·문제 준비 대기는 시간에서 제외';
+ if($('dailyBudget'))$('dailyBudget').textContent='오늘 총 '+studyHistory.formatStudyTime(studyHistory.dailyStudyTime(c,saved))+' · 복습 예정 '+budget.due+'개 · 정답 어휘는 7일 후부터 복습 · 입력·터치 없이 10초 이후와 채점·문제 준비 대기는 시간에서 제외';
  const summary=summarizeEvidence(c);
  if($('learningEvidenceHome'))$('learningEvidenceHome').textContent='장기 확인 '+summary.mastered+'개 · '+(summary.retention7.attempts?'7일 이상 회상 '+summary.retention7.percent+'%':'다른 날 다시 확인하며 기억을 점검해요.');
  renderRoundCompletion(c,'todayCompletion');renderRoundStart();
@@ -2220,7 +2221,7 @@ function appendBreadthReinforcement(active){
  const pending=new Set((active.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)).map(j=>j.word));
  const queued=new Set(p.plans.slice(current).map(plan=>plan.w.w));
  const unfinished=studyHistory.roundUnfinished(active);
- let candidates=unfinished.filter(w=>!pending.has(w.w)&&!queued.has(w.w));
+ let candidates=unfinished.filter(w=>!pending.has(w.w)&&!queued.has(w.w)&&!wordOnCooldown(child(),w.w));
  let additional=false;
  if(!unfinished.length){
   // Already-correct targets are finished for this round, even if an earlier
@@ -2229,7 +2230,7 @@ function appendBreadthReinforcement(active){
   const catalog=new Map([...WORDS,...(p.practicePool||[]).map(q=>q.w)].filter(Boolean).map(w=>[w.w,w]));
   candidates=[...catalog.values()].filter(w=>{
    const st=child().words[w.w];
-   return !attempted.has(w.w)&&!pending.has(w.w)&&!queued.has(w.w)&&isLearningTarget(w)&&inTargetBand(w,child().difficulty)&&(st?.seen>0||st?.introducedAt);
+   return !wordOnCooldown(child(),w.w)&&!attempted.has(w.w)&&!pending.has(w.w)&&!queued.has(w.w)&&isLearningTarget(w)&&inTargetBand(w,child().difficulty)&&(st?.seen>0||st?.introducedAt);
   }).sort((a,b)=>String(child().words[a.w]?.lastFeedbackDate||'').localeCompare(String(child().words[b.w]?.lastFeedbackDate||''))||a.w.localeCompare(b.w));
   additional=true;
  }
@@ -2288,13 +2289,9 @@ function finishStudyRoundBoundary(){
   checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return;
  }
  if(studyHistory.isBreadthRound(active)){
-  // Continue with varied previously taught meanings until the meaningful
-  // 25-minute floor; no extra forced new words or infinite writing gate.
-  if(appendRoundReinforcement(active)){show('learn');renderQuestion();return}
-  // A new learner may have no other learned vocabulary yet. Use the existing
-  // validated topup path rather than looping solved words or blocking the round.
   if(appendStudyTopup(active)){show('learn');renderQuestion();return}
   if(availableStudyTopups(active).length===0&&!active.studyTopups?.exhausted){waitForStudyTopup(active);return}
+  if(appendRoundReinforcement(active)){show('learn');renderQuestion();return}
   checkpointSession();localSave();cloudSave();show('home');renderResumeButton();return;
  }
  if(!status.hadErrors&&appendStudyTopup(active)){show('learn');renderQuestion();return}

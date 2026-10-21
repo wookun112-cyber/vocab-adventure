@@ -258,7 +258,7 @@ delayed.run("applyGradedAnswer(session.queue[0],{score:1,contextSuccess:true,fee
 assert.equal(delayed.run('session.results[0].studyDate'),'2026-10-11');
 assert.equal(delayed.run('session.results[0].evidence.date'),'2026-10-11');
 assert.equal(delayed.run('child().words.의견.usageConfirmedAt'),'2026-10-11');
-assert.equal(delayed.run('child().words.의견.nextReviewAt'),'2026-10-12');
+assert.equal(delayed.run('child().words.의견.nextReviewAt'),'2026-10-18');
 assert.equal(delayed.run('session.results[0].levelEligible'),false);
 assert.equal(delayed.run('child().studyHistory.entries[session.lessonId].days["2026-10-11"].good'),1);
 for(const score of [0,1]){

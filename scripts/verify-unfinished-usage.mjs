@@ -38,7 +38,8 @@ assert.equal(usageLessonComplete([opinion],[{...good,type:'subjective_recall'}])
 assert.equal(usageLessonComplete([opinion],[good]),true);
 const before=learnerSnapshot(learner);delete learner.unfinishedUsage.근거;assert.notEqual(learnerSnapshot(learner),before,'reserve snapshots change when the unfinished list changes');
 const future=selectDailyTargets([opinion],learner,'2026-10-15');assert.equal(future.reviewWords.length,0);
-assert.equal(selectDailyTargets([opinion],learner,'2026-10-16').reviewWords.length,1,'completed lower-level vocabulary returns when scheduled');
+assert.equal(selectDailyTargets([opinion],learner,'2026-10-16').reviewWords.length,0,'correct words stay excluded for seven days even if the old recall schedule is earlier');
+assert.equal(selectDailyTargets([opinion],learner,'2026-10-22').reviewWords.length,1,'day seven permits scheduled review');
 let day='2026-10-16';
 for(const gap of [1,3,7,14,30,60]){
  const rec={...good,type:'subjective_recall',targetRecall:true,practiceOnly:false,answeredAt:at(day)};

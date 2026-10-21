@@ -1,0 +1,9 @@
+# Correct-word cooldown and new-word continuation — 12.16.46
+
+A full correct answer without hint/reveal/copied-example starts a minimum seven-calendar-day cooldown using the Korean study date. Partial, ungraded and assisted answers do not. The client records lastCorrectAt and raises nextReviewAt to at least seven days, retaining any later due date. Previous successful study days, usage days and successful evidence are used for existing records without rewriting them. Additional rounds and future-due review overrides cannot bypass this exclusion.
+
+Daily selection, lower-stage coverage and unfinished carryover share the same exclusion. Current breadth rounds skip stale saved prompts with a non-scoring excluded checkpoint. Such a skip settles only that encounter and does not award vocabulary mastery or overwrite its original answers. Deferred grade delivery retains its recovery path. Once all current targets are solved, validated new vocabulary takes priority while the 25-minute minimum is unmet. Existing 25/30-minute boundaries and pending-grade time exclusion remain.
+
+The preparation snapshot and packet include a cooldown-policy identity. Apply database/correct-word-cooldown.sql after the app deployment: it rejects recent-correct reserve packets and refreshes obsolete ready packets while retaining owner/capability and question guards. No learner rows are updated by the SQL. Rollback verification is in database/tests/correct-word-cooldown.sql.
+
+Tests: seven-day boundaries including additional/unfinished overrides and historical evidence; correct/hinted/wrong/pending isolation; preservation of longer intervals; actual worker-plan exclusion; current client rotation/skip and validated topup; existing timing, grading, storage and round regressions. Two old test expectations were updated because they explicitly required next-day reappearance, which is superseded by the seven-day policy.
