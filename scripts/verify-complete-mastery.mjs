@@ -97,23 +97,23 @@ const recorded=updateLearningLevels(learner,first.results,learningDay(),{lessonI
 assert.equal(recorded.policy,'realtime-level-12.16.18');
 assert.equal(recorded.baselinePolicy,STABLE_BASELINE_POLICY);
 assert.equal(recorded.taskLevelAfter,levelAtEnd);
-assert.equal(learner.leagueLevel,4.2,'multi-day baseline gains at most 0.2 in one day');
-assert.equal(learner.baselineDifficulty,4.2);
-assert.equal(recorded.change,.2);
+assert.equal(learner.leagueLevel,4.4,'exceptional upper-band evidence can gain at most 0.4 in one day');
+assert.equal(learner.baselineDifficulty,4.4);
+assert.equal(recorded.change,.4);
 assert.ok(learner.difficulty<=5.0,'following lesson is bounded near the stable baseline');
 const second=newLesson('second');
 learner.difficulty=4.8;initRealtimeLevel(learner,second);
 for(let i=9;i<18;i+=3){second.results.push(answer(i),answer(i+1),answer(i+2));observeRealtimeLevel(learner,second)}
 updateLearningLevels(learner,second.results,learningDay(),{lessonId:second.lessonId,active:second});
-assert.equal(learner.baselineDifficulty,4.2,'same-day extra sessions cannot rapidly raise ranking');
+assert.equal(learner.baselineDifficulty,4.4,'same-day extra sessions cannot exceed the 0.4 grade cap');
 const saved=JSON.parse(JSON.stringify(learner));
-assert.equal(stableBaselineLevel(saved),4.2);
+assert.equal(stableBaselineLevel(saved),4.4);
 updateLearningLevels(saved,second.results,learningDay(),{lessonId:second.lessonId,active:second});
-assert.equal(saved.baselineDifficulty,4.2,'idempotent completion survives reload');
+assert.equal(saved.baselineDifficulty,4.4,'idempotent completion survives reload');
 assert.equal(saved.levelAdjustmentHistory.length,2);
 
 // Parent backfill is authoritative even if an earlier automatic anchor exists.
 const adjusted={...saved,gradeBackfill:{id:'parent-reset',date:learningDay()},leagueLevel:6.3,difficulty:6.3};
 assert.equal(stableBaselineLevel(adjusted),6.3,'manual level change must not be reversed by an old baseline anchor');
 assert.equal(curriculumMasterySummary(names,student).totals.mastered,1);
-console.log('Complete mastery PASS: cumulative approved vocabulary, no missed lower stages, due-only revisits, long-term lapse repair, 120-day recall, stable 0.2/day baseline, safe restart, parent override.');
+console.log('Complete mastery PASS: cumulative approved vocabulary, no missed lower stages, due-only revisits, long-term lapse repair, 120-day recall, exceptional +0.4/day baseline cap, safe restart, parent override.');
