@@ -1,0 +1,11 @@
+# Learning Start recovery — 12.16.44
+
+The production ensure_prepared_lesson RPC compared a legacy policy marker in the learner snapshot against the packet roundPolicy. The snapshot intentionally retained its legacy compatibility identity, while new packets carried the breadth policy. As a result a status check discarded an otherwise complete ready packet and enqueued another one. A rollback reproduction on 2026-10-21 confirmed a 15-question ready packet became a new pending job with a different ID.
+
+Accept both supported numbered-round policies in ensure, reserve save/validation/promotion, and unfinished-word carryover. Keep snapshot freshness, owner/capability/lease, day, difficulty and question-validation checks. Existing rounds and answers are untouched. Use unambiguous numeric date patterns for unfinished-word checks.
+
+Production SQL: database/round-policy-compatibility.sql. Integration verification: database/tests/round-policy-compatibility.sql. The integration test repeatedly reads the ready packet, saves/promotes a reserve and consumes a lesson inside a transaction that rolls back; it checks that the learner-state hash is unchanged. It requires a current-day ready unconsumed packet and an existing reserve slot. No paid AI calls.
+
+The initial browser fixture loaded the actual ready packet successfully because its RPC was stubbed; it could not expose the database invalidation. The added database test exercises the actual RPC boundary. Vercel runtime logs were inaccessible (403); database reproduction established the failure independently.
+
+A second production failure was reproduced for Inseong: save_preparation returned HTTP 400 / Invalid review window because breadth carryover plans use subjective_recall, while unfinished_plan_valid accepted only subjective_use. Allow recall and sentence-use practice, retain non-level-eligible/practice-only and unfinished ownership/date/completion guards. Recall success does not itself become usage/mastery success. A synthetic database test checks both supported types, rejects multiple choice and rejects already-completed carryover. Running the existing bank-only worker after the fix saved the previously blocked packet successfully; no paid generation and no learner-state changes.
