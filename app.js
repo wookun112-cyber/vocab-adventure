@@ -1748,6 +1748,9 @@ async function gradeCurrent(dontKnow){
  // server fetch continues after the short UI wait; never abort it just to
  // advance the next question. The same job ID and answer are retained.
  const showPending=(message)=>{
+  // Submitted-answer feedback is an active learning screen, not AI wait time.
+  // Renew the bounded clock only when the student can read/continue again.
+  beginLearningWindow('feedback:'+active.lessonId+':'+current+':'+q.w.w,true);
   if(!active.results.some(r=>r.gradingJobId===job.id))
    active.results.push({word:q.w.w,type:q.type,result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:job.id,answeredAt:job.submittedAt,studyDate:job.submittedDay});
   $('feedback').className='feedback';$('feedback').textContent=message;
