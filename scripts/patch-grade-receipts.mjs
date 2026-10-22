@@ -12,7 +12,7 @@ async function requestGrade(job,timeout=25000,pollOnly=false){
  const receiptRows=deviceStore.get(receiptStorageKey)?.rows||[];
  const oldReceipt=receiptRows.find(row=>row.key===gradeReceiptKey(job.payload)&&row.expires>Date.now());
 `);
- replace("body:JSON.stringify({...job.payload,requestId:job.id,pollOnly})", "body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.gradeReceipt||oldReceipt?.receipt?{gradeReceipt:job.gradeReceipt||oldReceipt.receipt}:{}),...(job.providerReceipt||oldReceipt?.providerReceipt?{providerReceipt:job.providerReceipt||oldReceipt.providerReceipt}:{})})");
+ replace("body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.providerReceipt?{providerReceipt:job.providerReceipt}:{}),...(job.gradeReceipt?{gradeReceipt:job.gradeReceipt}:{})})", "body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.gradeReceipt||oldReceipt?.receipt?{gradeReceipt:job.gradeReceipt||oldReceipt.receipt}:{}),...(job.providerReceipt||oldReceipt?.providerReceipt?{providerReceipt:job.providerReceipt||oldReceipt.providerReceipt}:{})})");
  replace(" const value=await r.json();",String.raw`
  const value=await r.json();
  if(value.providerReceipt&&authUser?.id===gradeAccount){
@@ -39,6 +39,6 @@ async function requestGrade(job,timeout=25000,pollOnly=false){
 }
 function applyGradedAnswer`);
  replace(" const keys=['vocab-account-'+account,...['ayoung'", " const keys=['vocab-account-'+account,'vocab-grade-receipts-'+account,...['ayoung'");
- replace("$('feedback').textContent=e.code==='ai_credit_exhausted'?'답안을 저장했어요.","$('feedback').textContent=e.code==='grading_result_recovery_required'?'이전 채점 결과의 복구 확인이 필요해요. 답안은 보관하고 중복 유료 채점은 하지 않습니다. 다른 문제를 풀 수 있어요.':e.code==='ai_credit_exhausted'?'답안을 저장했어요.");
+ replace("showPending(e.code==='ai_credit_exhausted'","showPending(e.code==='grading_result_recovery_required'?'원래 답안을 보관하고 채점 결과를 복구하고 있어요. 다시 결제하지 않아요.':e.code==='ai_credit_exhausted'");
  return source;
 }
