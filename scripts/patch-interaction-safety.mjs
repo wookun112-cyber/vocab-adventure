@@ -59,7 +59,7 @@ const safeUpdater=createSafeUpdate({
  replace("async function applyAuth(sessionObj){","async function applyAuth(sessionObj){\n stopVoice();");
  replace("<h3>해설</h3><p>'+escapeHtml(feedback||q.feedbackCorrect||q.w.d)+'</p></section>","<h3>해설</h3>'+feedbackExplanationHtml(feedback||q.feedbackCorrect||q.w.d)+'</section>");
  replace("const text=$('feedback').querySelector?.('.feedback-explanation p');if(text)text.textContent=record.feedback","const text=$('feedback').querySelector?.('.feedback-explanation');if(text)text.innerHTML='<h3>해설</h3>'+feedbackExplanationHtml(record.feedback)");
- replace("$('feedback').textContent=e.code==='grading_result_recovery_required'?","$('feedback').textContent=['grading_daily_limit','grading_rate_limit','grading_assignment_pending','grading_account_not_allowed'].includes(e.code)?String(e.message):e.code==='grading_result_recovery_required'?");
+ replace("showPending(e.code==='grading_result_recovery_required'?","showPending(['grading_daily_limit','grading_rate_limit','grading_assignment_pending','grading_account_not_allowed'].includes(e.code)?String(e.message):e.code==='grading_result_recovery_required'?");
  replace("    reloading=true;\n    location.reload();","    reloading=true;\n    safeUpdater.available();");
  // One policy definition supplies settings, ranking and parent report copy.
  source=source.replace(/(<h3>오늘의 적정 분량<\/h3>[\s\S]*?<p class="muted">)[\s\S]*?(<\/p><small class="muted">최근 학습 시간:)/, '$1${escapeHtml(POLICY_COPY.daily)}$2');

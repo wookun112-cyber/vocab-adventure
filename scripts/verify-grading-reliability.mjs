@@ -260,3 +260,70 @@ exact.node('answer').value='생각';exact.ctx.fetch=async()=>{throw Error('Valid
 await exact.run('gradeCurrent(false)');assert.equal(exact.run('session.results[0].credit'),1);
 assert.equal(exact.run('session.results[0].targetRecall'),false,'approved synonym is not independent target recall');
 console.log('Legacy wait migration, quota backoff preservation and exact validated synonym fast path PASS.');
+
+
+// A slow, already-started AI request must not hold the answer screen hostage.
+// The real request stays alive (no AbortSignal at the UI threshold), the next
+// question remains playable, and the grade returns exactly once with the
+// original first-attempt evidence rather than counting the pending placeholder.
+{
+ const responsive=fixture();await responsive.run('buildSession()');await flush();
+ responsive.run(`session.queue[current]={...session.queue[current],type:'subjective_use',open:true,showTarget:true,opts:[],review:true,practiceOnly:false,needsCard:false};
+  session.preparation.plans[current]={...session.preparation.plans[current],type:'subjective_use',review:true,practiceOnly:false,needsCard:false,firstLearning:false};
+  session.preparation.ready.set(current,session.queue[current]);
+  wordState(session.queue[current].w.w).seen=1;wordState(session.queue[current].w.w).introducedAt='2026-10-01';
+  wordState(session.queue[current].w.w).nextReviewAt='2026-10-20';renderQuestion();`);
+ responsive.node('answer').value='나는 친구의 의견을 존중해서 내 생각을 고쳤다.';
+ const defaultFetch=responsive.ctx.fetch,realSetTimeout=responsive.ctx.setTimeout;
+ let release,gradeCalls=0,firstBody=null;
+ responsive.ctx.fetch=(url,options)=>{
+  if(url==='/api/grade'){gradeCalls++;firstBody=JSON.parse(options.body);return new Promise(resolve=>{release=resolve})}
+  return defaultFetch(url,options);
+ };
+ // Move the UI-only threshold forward without changing other test timers.
+ responsive.ctx.setTimeout=(fn,ms,...args)=>realSetTimeout(fn,ms===1600?0:ms,...args);
+ await responsive.run('gradeCurrent(false)');
+ assert.equal(gradeCalls,1,'one semantic provider submission');
+ assert.equal(responsive.run('session.gradingQueue[0].status'),'sending','the original request stays in flight');
+ assert.equal(responsive.run('session.results[0].gradingPending'),true);
+ assert.equal(responsive.node('next').classList.contains('hidden'),false,'next task is immediately available');
+ assert.equal(responsive.run('wordState(session.queue[0].w.w).correct'),0,'pending grade does not invent success');
+ const savedAnswer=responsive.run('child().activeLesson.gradingQueue[0].answer');
+ assert.equal(savedAnswer,responsive.node('answer').value);
+ await responsive.run('nextQuestion()');
+ assert.equal(responsive.run('current'),1,'the next question is available while AI is in flight');
+ release({ok:true,status:200,json:async()=>({score:1,result:'○',contextSuccess:true,targetRecall:false,feedback:'어휘를 문맥에 맞게 사용했어요.',normalizedAnswer:savedAnswer,exampleAnswer:savedAnswer})});
+ await flush();await flush();
+ assert.equal(gradeCalls,1,'a slow response is not resubmitted after the UI advances');
+ assert.equal(responsive.run('session.gradingQueue[0].status'),'ready');
+ const delivered=responsive.run('session.preparation.plans.findIndex(p=>p.deferredGradeId===session.gradingQueue[0].id)');
+ assert.ok(delivered>0,'original score is queued as feedback without replacing the current question');
+ responsive.run(`while(session.results.length<${delivered})session.results.push({excludedFromVocabulary:true,credit:null});current=${delivered};renderQuestion()`);
+ assert.equal(responsive.run('session.results.at(-1).credit'),1);
+ assert.equal(responsive.run('session.results.at(-1).practiceOnly'),false,'ungraded placeholder cannot erase first independent attempt');
+ assert.equal(responsive.run('session.results.at(-1).gradingJobId'),responsive.run('session.gradingQueue[0].id'));
+ assert.equal(responsive.run('session.gradingQueue[0].status'),'applied');
+ assert.equal(gradeCalls,1);
+ console.log('Nonblocking sentence grade PASS: 1.6s UI cap, one paid request, next question, receipt-safe job, original independent credit and delayed feedback.');
+}
+
+// A provider receipt returned with 202 must be saved and forwarded on the
+// read-only status poll, allowing recovery without creating another request.
+{
+ const receipt=fixture();await receipt.run('buildSession()');await flush();
+ receipt.run("session.queue[current]={...session.queue[current],type:'subjective_use',open:true,showTarget:true,opts:[]};session.preparation.plans[current].type='subjective_use';session.preparation.ready.set(current,session.queue[current]);renderQuestion()");
+ receipt.node('answer').value='나는 친구의 의견을 존중했다.';
+ const originalFetch=receipt.ctx.fetch,posted=[];
+ receipt.ctx.fetch=async(url,options)=>{
+  if(url!=='/api/grade')return originalFetch(url,options);
+  const args=JSON.parse(options.body);posted.push(args);
+  return {ok:true,status:202,json:async()=>({code:'grading_pending',providerReceipt:'signed-test-receipt'})};
+ };
+ await receipt.run('gradeCurrent(false)');
+ assert.equal(receipt.run('session.gradingQueue[0].providerReceipt'),'signed-test-receipt');
+ await receipt.run('processGradingQueue(session,true)');
+ assert.equal(posted.length,2);
+ assert.equal(posted[0].pollOnly,false);assert.equal(posted[1].pollOnly,true);
+ assert.equal(posted[1].providerReceipt,'signed-test-receipt');
+ console.log('Pending provider receipt PASS: preserved in checkpoint and read-only result lookup.');
+}

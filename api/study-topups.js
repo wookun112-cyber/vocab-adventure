@@ -13,7 +13,7 @@ const fingerprint=text=>{let n=2166136261;for(const ch of text)n=Math.imul(n^ch.
 // Only the client completion boundary introduces one when time is short.
 export function buildStudyTopups(learner,account,excluded=[],seed='',count=5,options={}){
  const blocked=new Set(excluded),level=Number(learner.difficulty)||2;
- const all=authoredCurriculum(account).map(row=>calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,example:row.example||'',pair:row.confusion||'',contrast:row.contrast||'',source:'fixed'}));
+ const all=options.catalog||authoredCurriculum(account).map(row=>calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,example:row.example||'',pair:row.confusion||'',contrast:row.contrast||'',source:'fixed'}));
  const coverage=options.coverage===true?selectCoverageWords(all,learner,2,{excluded,unseenOnly:true,newLimit:count}):[];
  for(const w of coverage)blocked.add(w.w);
  const candidates=[...coverage,...all
@@ -38,10 +38,12 @@ export function buildStudyTopups(learner,account,excluded=[],seed='',count=5,opt
 // They are downloaded with the lesson so a level change never invokes generation.
 export function buildRealtimePool(learner,account,excluded=[],seed=''){
  const originLevel=Number(learner.difficulty)||2,targets=[],held=new Set(excluded);
+ // Build the calibrated authored list once, not once for every neighboring band.
+ const catalog=authoredCurriculum(account).map(row=>calibratedWord({w:row.word,d:row.definition,band:row.band,cat:row.domain,example:row.example||'',pair:row.confusion||'',contrast:row.contrast||'',source:'fixed'}));
  const floor=Math.max(2,Math.floor(originLevel)-1),ceiling=Math.min(9,Math.floor(originLevel)+2);
  for(let band=floor;band<=ceiling;band++){
   const reader={...learner,difficulty:band};
-  const pool=buildStudyTopups(reader,account,[...held],seed+'|adaptive:'+band);
+  const pool=buildStudyTopups(reader,account,[...held],seed+'|adaptive:'+band,5,{catalog});
   for(const t of pool.targets.filter(t=>t.plan.w.band===band).slice(0,4)){
    const probePlan={...t.plan,type:'subjective_recall',stage:'check',firstLearning:true,needsCard:false,review:false,
     taskDemand:band>4.5?'advanced':'standard',realtimeProbe:true,realtimeLevelPolicy:REALTIME_LEVEL_POLICY};
