@@ -1594,7 +1594,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const revealed=Boolean(meta.revealed)||copiedExample;
  const contextSuccess=meta.contextSuccess??credit>=.5;
  const targetRecall=q.showTarget||q.type==='subjective_use'?false:Boolean(meta.targetRecall);
- const practiceOnly=delayed||newer||!!q.practiceOnly||st.introducedAt===answerDay||st.lastFeedbackDate===answerDay||session.results.some(r=>r.word===q.w.w);
+ const practiceOnly=delayed||newer||!!q.practiceOnly||st.introducedAt===answerDay||st.lastFeedbackDate===answerDay||session.results.some(r=>r.word===q.w.w&&!r.excludedFromVocabulary);
  const independent=!practiceOnly&&Boolean(meta.independent??(!hintUsed&&!revealed&&credit>=1));
  if(hintUsed&&credit>=1){credit=.75;result='△'}
  st.seen++;st.last=result;st.types[q.type]=(st.types[q.type]||0)+1;
@@ -1624,7 +1624,7 @@ function applyResult(q,result,feedback,normalized='',meta={}){
  const rec={rawAnswer:meta.rawAnswer??normalized,inputAtReveal:meta.inputAtReveal||'',submissionAction:meta.submissionAction||(meta.gradingJobId?'graded':'direct'),feedback:String(feedback||'').slice(0,800),copiedExample,gradingJobId:meta.gradingJobId||null,word:q.w.w,result,credit,type:q.type,band:q.w.band||3,contextSuccess,targetRecall,independent,practiceOnly,hintUsed,revealed,meaningUnknown:meta.meaningUnknown===true,signature:q.signature||'',remedial:!!q.remedial,answeredAt,studyDate:answerDay};
  // Due reviewed words count toward the assessment on their first unassisted
  // attempt, without being reintroduced or earning premature spaced mastery.
- const assessmentPlan=session.preparation?.plans[current],firstToday=!delayed&&!newer&&priorFeedbackDate!==answerDay&&!session.results.some(r=>r.word===q.w.w);
+ const assessmentPlan=session.preparation?.plans[current],firstToday=!delayed&&!newer&&priorFeedbackDate!==answerDay&&!session.results.some(r=>r.word===q.w.w&&!r.excludedFromVocabulary);
  const dueReview=assessmentPlan?.review===true&&st.seen>1&&(!st.nextReviewAt||st.nextReviewAt<=answerDay)&&!wordOnCooldown(child(),q.w.w,answerDay);
  rec.levelEligible=assessmentPlan?.levelEligible!==false&&!isCoveragePlan(assessmentPlan)&&!q.needsCard&&!q.remedial&&firstToday&&(!practiceOnly||dueReview);
  rec.assessmentEligible=rec.levelEligible&&!hintUsed&&(!revealed||rec.meaningUnknown&&credit===0);
