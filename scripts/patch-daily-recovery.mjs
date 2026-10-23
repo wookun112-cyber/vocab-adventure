@@ -34,6 +34,32 @@ function renderSaveStatus(){
   /57014|Abort|Timeout|timeout/.test(code)?'저장 지연 · 기록은 기기에 보관됨':'저장 오류 · 기록은 기기에 보관됨';
  $('cloudPill').classList.remove('on');
 }
+const gradeSaveWaiters=new Set();
+function gradeSubmissionSaved(snapshot,job,active){
+ const lesson=snapshot?.users?.[active.profile]?.activeLesson;
+ if(lesson?.id!==active.lessonId)return false;
+ const saved=(lesson.gradingQueue||[]).find(j=>j.id===job.id);
+ return saved?.answer===job.answer&&JSON.stringify(saved?.payload)===JSON.stringify(job.payload)&&
+  (lesson.ready||[]).some(([index,q])=>index===job.index&&q?.w?.w===job.word);
+}
+function notifyGradeSaves(snapshot,account,epoch,failed=false){
+ for(const w of [...gradeSaveWaiters]){
+  if(w.account!==authUser?.id||w.epoch!==authEpoch||w.account!==account||w.epoch!==epoch){w.finish(false);continue}
+  if(failed)w.finish(false);
+  else if(gradeSubmissionSaved(snapshot,w.job,w.active))w.finish(true);
+ }
+}
+async function waitForGradeSave(job){
+ const active=session,account=authUser?.id,epoch=authEpoch;
+ if(!active||!account||!active.gradingQueue?.some(j=>j.id===job.id))return false;
+ if(gradeSubmissionSaved(cloudBaseline,job,active))return true;
+ return new Promise(resolve=>{
+  const w={job,active,account,epoch,finish(value){clearTimeout(w.timer);gradeSaveWaiters.delete(w);resolve(value)}};
+  w.timer=setTimeout(()=>w.finish(false),12000);gradeSaveWaiters.add(w);
+  // Resolve on this answer's committed snapshot, not the full save drain.
+  void cloudSave().then(saved=>{if(saved===false)w.finish(false)},()=>w.finish(false));
+ });
+}
 async function cloudSave(silent=true){
  if(!canSaveLearning())return false;
  cloudSavePending=true;
@@ -61,14 +87,14 @@ async function cloudSave(silent=true){
     if(account!==authUser?.id||epoch!==authEpoch)return false;
     cloudSaveError=error||null;
     if(error){
-     cloudSavePending=true;renderSaveStatus();
+     cloudSavePending=true;renderSaveStatus();notifyGradeSaves(null,account,epoch,true);
      console.warn(JSON.stringify({event:'learning_save_failed',code:String(error.code||error.name||'unknown').slice(0,60),operations:operations?.length||0}));
      if(error.message?.includes('LEARNING_STATE_REGRESSION')){loadedAccount=null;$('authGate').classList.remove('hidden');setMsg('다른 기기의 최신 기록을 보호했어요. 기기의 답안도 보관했습니다. 기록 다시 불러오기를 눌러 주세요.',true);syncAuthControls()}
      scheduleCloudSaveRetry(account,epoch);
      if(!silent)alert('학습 기록을 아직 서버에 저장하지 못했어요. 기기의 기록은 보관되어 있습니다.');
      return false;
     }
-    cloudBaseline=snapshot;clearCloudSaveRetry(true);$('cloudPill').textContent='클라우드 저장됨';$('cloudPill').classList.add('on');
+    cloudBaseline=snapshot;notifyGradeSaves(snapshot,account,epoch);clearCloudSaveRetry(true);$('cloudPill').textContent='클라우드 저장됨';$('cloudPill').classList.add('on');
    }while(cloudSavePending&&authUser?.id===account&&epoch===authEpoch);
    return !cloudSaveError&&!cloudSavePending;
   }finally{saving=false;cloudSaveTask=null}

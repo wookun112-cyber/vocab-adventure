@@ -83,7 +83,7 @@ function fixture({elapsed=0,type='subjective_use',saved=null}={}){
  const packet={account:AUTHORED_OWNER,plans:[plan],ready:[]};assert.equal(hydrateFromBank(packet,{difficulty:2,words:{}},[authoredEntry(plan,{difficulty:2,words:{}},AUTHORED_OWNER)]),1);
  context.packet=structuredClone(packet);context.topups=structuredClone(topups);
  run(`authUser={id:${JSON.stringify(AUTHORED_OWNER)}};loadedAccount=authUser.id;state.selected='ayoung';child().difficulty=2;
-  renderAll=()=>{};renderReport=()=>{};renderExploration=()=>{};warmDailyQuestions=()=>{};localSave=()=>{};cloudSave=()=>Promise.resolve();
+  renderAll=()=>{};renderReport=()=>{};renderExploration=()=>{};warmDailyQuestions=()=>{};localSave=()=>{};cloudSave=()=>Promise.resolve(true);waitForGradeSave=()=>Promise.resolve(true);
   globalThis.prep=createPreparation({account:authUser.id,profile:'ayoung',mode:'daily',plans:packet.plans,baseWords:[packet.plans[0].w],newWords:[],key:'fixture',deliveryPolicy:DELIVERY_POLICY,practicePool:[],adopted:true},packet.ready);
   session={lessonId:'idle-fixture',profile:'ayoung',account:authUser.id,mode:'daily',model:LEARNING_MODEL,reviewPolicy:REVIEW_POLICY,difficulty:2,preparation:prep,queue:prep.queue,results:[],target:1,baseWords:[packet.plans[0].w],newWords:[],completionPolicy:DAILY_POLICY,introWords:[],introCursor:0,introDone:true,activeMs:${elapsed},clockStarted:null,studyTopups:topups,timeAddedWords:[]};
   current=0;show('learn');renderQuestion();`);
