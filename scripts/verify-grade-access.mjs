@@ -15,5 +15,7 @@ try{
  limit=true;assert.equal((await call()).code,429);assert.equal(paid,0);
  limit=false;assert.equal((await call()).code,200);assert.equal(paid,1);
  limit=true;assigned=false;assert.equal((await call()).code,200);assert.equal(paid,1,'cached result unaffected by budget/assignment expiry');
+ let received;await authorizeGradeTask('test',{...body,assignmentId:'11111111-1111-4111-8111-111111111111:3'},async(a,n,args)=>{received=args;return true});assert.equal(received.p_request.assignmentId,'11111111-1111-4111-8111-111111111111:3');
+ assert.equal(await import('../lib/server/grade-delivery.js').then(m=>m.gradeHash(body)),await import('../lib/server/grade-delivery.js').then(m=>m.gradeHash({...body,assignmentId:'new-id'})),'assignment IDs do not change existing paid-grade cache keys');
  console.log('Grade access PASS: uninvited account, unassigned task, unsupported type and budget blocked before provider; cached repair bypasses new-payment limits.');
 }finally{if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key;}

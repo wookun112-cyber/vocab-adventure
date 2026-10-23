@@ -28,7 +28,7 @@ function fixture(){
    if(row?.started)return {recoveryRequired:true,lease};
    if(row)return {pending:true};rows.set(key,{lease,started:false});return {lease};
   }
-  if(name==='start_vocab_grade'){if(row.started)return false;row.started=true;if(startAckLost)throw Error('Lost start acknowledgement');return true}
+  if(name==='start_vocab_grade'){if(row.started)return false;row.started=true;if(startAckLost)throw Object.assign(Error('Lost start acknowledgement'),{name:startAckLost==='timeout'?'TimeoutError':'Error'});return true}
   if(name==='record_vocab_grade_response'){
    checkpoints++;
    if(checkpointFail)throw Object.assign(Error('Injected checkpoint outage'),{code:'57014'});
@@ -38,7 +38,7 @@ function fixture(){
   }
   if(name==='read_vocab_grade_status'){
    if(checkpointFail)throw Error('Injected read outage');
-   return row?.result?{status:'ready',result:row.result}:row?.providerId?{status:'pending',providerId:row.providerId,providerResponse:row.providerResponse,lease}:row?.started?{status:'recovery_required'}:{status:'retryable'};
+   return row?.result?{status:'ready',result:row.result}:row?.providerId?{status:'pending',providerId:row.providerId,providerResponse:row.providerResponse,lease}:row?.started?{status:startAckLost==='timeout'?'pending':'recovery_required',startReserved:true,lease}:{status:'retryable'};
   }
   if(name==='record_vocab_grade_failure'){if(row){row.failureStage=args.p_stage;row.failureCode=args.p_code}return true}
   if(name==='finish_vocab_grade'){
@@ -53,6 +53,10 @@ function fixture(){
  return {rows,rpc,restart(){handler=build()},async call(extra={}){let status,value;await handler({method:'POST',headers:{authorization:'Bearer fixture'},body:{...payload,...extra}},{status(n){status=n;return this},json(v){value=v;return this}});return {status,value}},get checkpoints(){return checkpoints},get creates(){return creates},get gets(){return gets},get seenBody(){return seenBody},set status(v){providerStatus=v},set storeFail(v){storeFail=v},set checkpointFail(v){checkpointFail=v},set lookupFail(v){lookupFail=v},set dropCreate(v){dropCreate=v},set startAckLost(v){startAckLost=v},set owner(v){owner=v}};
 }
 try{
+ // Lost DB start acknowledgement: confirm the same lease, never reserve twice.
+ const ack=fixture();ack.startAckLost='timeout';ack.status='completed';
+ assert.equal((await ack.call()).status,200);assert.equal(ack.creates,1);
+ assert.equal((await ack.call()).status,200);assert.equal(ack.creates,1);
  // Crash/redeploy after dispatch: a cold function retrieves the same provider ID.
  const cold=fixture();const pending=await cold.call();assert.equal(pending.status,202);assert.equal(pending.value.code,'grading_pending');assert.ok(pending.value.providerReceipt);
  assert.equal(cold.creates,1);assert.equal(cold.seenBody.background,true);assert.equal(cold.seenBody.store,true);assert.ok(cold.seenBody.max_output_tokens>=1200);
