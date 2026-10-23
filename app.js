@@ -1255,7 +1255,18 @@ async function getPreparation(mode='daily',retry=false){
  if(!account)throw new Error('로그인이 필요합니다.');
  const snapshot=preparationSnapshot(profile),existing=preparations.get(key);
  if(existing&&!existing.adopted&&!existing.cancelled&&existing.snapshot===snapshot&&existing.plans.every(p=>isLearningTarget(p.w?.w,p.w?.cat,p.w?.band))&&Date.now()-existing.created<PREPARATION_TTL&&(mode!=='daily'||existing.plannedFor===today()&&existing.budget?.policy===DAILY_POLICY)&&!(retry&&existing.jobs.some(j=>j.error))){existing.pump();return existing}
- if(preparationLoads.has(key))return preparationLoads.get(key);
+ if(preparationLoads.has(key)){
+  const pending=preparationLoads.get(key);
+  if(retry&&!pending.explicitRetry){
+   try{return await pending}catch(error){
+    if(error.code!=='preparation_failed')throw error;
+    if(authUser?.id!==account||state.selected!==profile)throw Error('학습 프로필이 변경되었습니다.');
+    if(preparationLoads.get(key)===pending)preparationLoads.delete(key);
+    return getPreparation(mode,true);
+   }
+  }
+  return pending;
+ }
  if(existing)existing.cancel();
  const loading=(async()=>{
    let saved=null;
@@ -1309,8 +1320,9 @@ async function getPreparation(mode='daily',retry=false){
    const p=createPreparation(meta,restored?saved.ready||[]:[]);
    preparations.set(key,p);p.pump();return p;
  })();
+ loading.explicitRetry=retry;
  preparationLoads.set(key,loading);
- try{return await loading}finally{preparationLoads.delete(key)}
+ try{return await loading}finally{if(preparationLoads.get(key)===loading)preparationLoads.delete(key)}
 }
 let preparationRetryTimer=null;
 function warmDailyQuestions(){
@@ -1480,6 +1492,7 @@ async function buildSession(mode='daily'){
  const profile=state.selected,account=authUser?.id,button=requestedMode==='level'?'levelTest':requestedMode==='review'?'startReview':'startDaily',oldText=$(button).textContent;
  for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=true;
  $(button).textContent='준비된 문제를 불러오는 중…';$('cloudPill').textContent='문제 준비 중';
+ let startFailure=null;
  try{
    const paused=savedLesson(profile);
    if(paused){await resumeLesson(paused);return}
@@ -1511,13 +1524,13 @@ async function buildSession(mode='daily'){
    current=0;introIndex=0;hintLevel=0;$('next').disabled=false;
    show('learn');renderQuestion();prefetchQuestions();setStudyStartStatus('');
  }catch(e){
-   if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')preparationBlock={account,profile};if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));setStudyStartStatus(e.preparationPending?'오늘 학습 문제를 준비 중입니다. 잠시 뒤 다시 눌러 주세요.':String(e?.message||e),!e.preparationPending);show('home')}
+   if(state.selected===profile&&authUser?.id===account){if(e.code==='ai_credit_exhausted')preparationBlock={account,profile};if(!e.preparationPending)alert('문제 준비를 완료하지 못했어요. 학습 기록은 유지됩니다.\n'+String(e?.message||e));startFailure=e;setStudyStartStatus(e.preparationPending?'오늘 학습 문제를 준비 중입니다. 잠시 뒤 다시 눌러 주세요.':String(e?.message||e),!e.preparationPending);if(!$('home').classList.contains('active'))show('home')}
  }finally{
    preparingSession=false;
    $(button).textContent=oldText;
    for(const id of ['startDaily','startReview','levelTest'])$(id).disabled=false;
    renderResumeButton();
-   $('cloudPill').textContent=preparationBlock&&preparationBlock.account===account&&preparationBlock.profile===profile?'API 잔액 확인 필요':'클라우드 연결';$('cloudPill').classList.add('on');
+   $('cloudPill').textContent=startFailure?(startFailure.preparationPending?'학습 문제 준비 중':'학습 시작 확인 필요'):preparationBlock&&preparationBlock.account===account&&preparationBlock.profile===profile?'API 잔액 확인 필요':'클라우드 연결';$('cloudPill').classList.add('on');
  }
 }
 function renderQuestion(savedHint=0){

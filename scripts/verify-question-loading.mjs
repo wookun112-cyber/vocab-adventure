@@ -13,7 +13,7 @@ const storage=new Map();
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 function fixture(seed,account='family',shared=storage,server=false){
  const nodes=new Map(),alerts=[];
- const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:id,classList:{add(){},remove(){},toggle(){}},style:{}});return nodes.get(id)};
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:id,classList:{add(){},remove(){},toggle(){},contains(){return false}},style:{}});return nodes.get(id)};
  const ctx=vm.createContext({studyHistory,AbortSignal,AUTHORED_REVISION:authoredPolicy.AUTHORED_REVISION,authoredQuestionValid:authoredPolicy.authoredQuestionValid,sentenceUseQuestionValid,DELIVERY_POLICY,localPracticeQuestion,console,setTimeout,clearTimeout,Map,Set,Date,Math,Promise,
    document:{getElementById:node,querySelectorAll:()=>[]},window:{scrollTo(){}},
    localStorage:{setItem:(k,v)=>shared.set(k,v),getItem:k=>shared.get(k)||null,removeItem:k=>shared.delete(k)},
