@@ -1770,7 +1770,7 @@ async function gradeCurrent(dontKnow){
  }
  const job={id:active.lessonId+':'+current+':'+Date.now(),index:current,word:q.w.w,answer,source:answerSource,hintUsed,
   submittedAt:Date.now(),submittedDay:today(),status:'pending',attempts:0,nextRetryAt:0,
-  payload:{gradingPolicy:'meaning-first-20261018',taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'&&!q.authored?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
+  payload:{assignmentId:active.lessonId+':'+current,gradingPolicy:'meaning-first-20261018',taskType:q.type==='subjective_use'?'sentence_use':q.type==='subjective_recall'&&!q.authored?'definition_recall':'context_answer',taskDemand:q.taskDemand||'standard',readerLevel:child().difficulty,
    question:q.q+'\n지문: '+q.ctx,targetWord:q.w.w,definition:q.w.d,band:q.w.band||3,acceptedAnswers:q.acceptedAnswers||[],allowNaturalDerivations:q.allowNaturalDerivations||[],previousExamples:wordState(q.w.w).shownExamples||[],answer,source:answerSource}};
  active.gradingQueue=active.gradingQueue||[];active.gradingQueue.push(job);
  checkpointSession();localSave();cloudSave();
@@ -1797,7 +1797,7 @@ async function gradeCurrent(dontKnow){
   if(session!==active||state.selected!==active.profile)return;
   if(first===null){
    job.status='sending';
-   showPending('답안을 안전하게 저장했어요. AI 의미 채점이 진행 중이니 다음 문제를 먼저 풀어도 돼요. 결과가 오면 기존 답안에 반영됩니다.');
+   showPending('답안을 안전하게 저장했어요. 서버 저장과 AI 의미 채점을 확인 중이니 다음 문제를 먼저 풀어도 돼요. 결과가 오면 기존 답안에 반영됩니다.');
    // Preserve one in-flight request instead of aborting/rebilling at 1.6 s.
    void inFlight.then(outcome=>{
     if(session!==active||active.completed||authUser?.id!==active.account||state.selected!==active.profile)return;
@@ -1833,6 +1833,12 @@ async function gradeCurrent(dontKnow){
 async function requestGrade(job,timeout=25000,pollOnly=false){
  const {data}=await withDeadline(sb.auth.getSession(),5000,'로그인 확인 지연');
  const token=data.session?.access_token;if(!token)throw new Error('로그인이 필요합니다.');
+ if(!pollOnly&&session?.gradingQueue?.some(pending=>pending.id===job.id)){
+  const account=authUser?.id,active=session;
+  const saved=await withDeadline(cloudSave(),12000,'답안 서버 저장을 확인하고 있어요.');
+  if(saved!==true)throw Object.assign(new Error('답안 서버 저장을 확인하고 있어요.'),{code:'grading_assignment_pending'});
+  if(authUser?.id!==account||session!==active)throw Object.assign(new Error('학습 프로필이 변경됐어요.'),{code:'grading_assignment_pending'});
+ }
  const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(timeout),body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.providerReceipt?{providerReceipt:job.providerReceipt}:{}),...(job.gradeReceipt?{gradeReceipt:job.gradeReceipt}:{})})});
  const value=await r.json();
  if(typeof value?.providerReceipt==='string')job.providerReceipt=value.providerReceipt;

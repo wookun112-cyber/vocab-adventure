@@ -172,8 +172,12 @@ function gradeForRequest(result,payload){
   return {...result,copiedExample:copiedUsageExample(payload.answer,payload.previousExamples||[])};
 }
 export async function gradeRPC(auth,name,args,timeout=2500){
+ const begun=Date.now();let failure=null;
+ try{
  const r=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(timeout)});
  if(!r.ok){let problem={};try{problem=await r.json()}catch{};const code=String(problem.message||'');throw Object.assign(Error(/GRADE_(DAILY|RATE|CONCURRENCY)_LIMIT/.test(code)?code:'Grade storage unavailable'),{code:String(problem.code||'grade_storage_http_'+r.status)});}return r.json();
+ }catch(error){failure=error.code||error.name||'unknown';throw error}
+ finally{console.info(JSON.stringify({event:'vocab_grade_rpc',operation:name,elapsedMs:Date.now()-begun,code:failure}))}
 }
 let reliableDelivery=null;
 export default async function handler(req,res){

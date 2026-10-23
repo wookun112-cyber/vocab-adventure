@@ -48,7 +48,7 @@ function fixture(elapsed=MINIMUM_STUDY_MS-1000,saved=null){
  run(fs.readFileSync(new URL('../lib/daily-practice.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,''));run(source);
  context.packet=structuredClone(packet);context.topups=structuredClone(topups);context.correct=correct;
  run(`authUser={id:${JSON.stringify(AUTHORED_OWNER)}};loadedAccount=authUser.id;state.selected='ayoung';child().difficulty=${level};wordState(${JSON.stringify(w.w)}).seen=1;
-  renderAll=()=>{};renderReport=()=>{};renderExploration=()=>{};warmDailyQuestions=()=>{};localSave=()=>{};cloudSave=()=>Promise.resolve();
+  renderAll=()=>{};renderReport=()=>{};renderExploration=()=>{};warmDailyQuestions=()=>{};localSave=()=>{};cloudSave=()=>Promise.resolve(true);
   globalThis.prep=createPreparation({account:authUser.id,profile:'ayoung',plans:packet.plans,baseWords:[packet.plans[0].w],newWords:[],key:'fixture',deliveryPolicy:DELIVERY_POLICY,practicePool:[],adopted:true},packet.ready);
   session={lessonId:'duration-fixture',profile:'ayoung',account:authUser.id,mode:'daily',model:LEARNING_MODEL,difficulty:${level},preparation:prep,queue:prep.queue,results:[correct],target:1,baseWords:[packet.plans[0].w],newWords:[],completionPolicy:DAILY_POLICY,introWords:[],introCursor:0,introDone:true,activeMs:${elapsed},clockStarted:Date.now(),studyTopups:topups,timeAddedWords:[]};
   current=1;document.getElementById('learn').classList.add('active');`);
