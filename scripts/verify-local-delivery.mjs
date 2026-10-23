@@ -2,6 +2,7 @@ import * as studyHistory from '../lib/study-history.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {bundlePractice,approvedRemediation} from '../api/practice-pool.js';
 import {prepare} from '../api/prepare-worker.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 import {authoredCurriculum} from '../api/authored-bank.js';
@@ -68,6 +69,33 @@ for(const fixture of fixtures){
  vm.runInContext(`session={baseWords:[word],queue:restarted.queue,preparation:restarted};restarted.append(makeExtensionPlan(restarted.plans.length,6));restarted.pump()`,context);
  assert.equal(vm.runInContext('restarted.ready.size',context),saved.plans.length+7,'level-check extensions also use local variants');
  assert.equal(vm.runInContext('networkRequests',context),0);
+ // Exhausted bank history still carries a canonical MC bridge, without mutation.
+ const exhausted=structuredClone(learner),all=packet.practicePool.filter(q=>q.w.w===word.w);
+ exhausted.words??={};exhausted.words[word.w]={...(exhausted.words[word.w]||{}),problemHistory:all.map(q=>({signature:q.signature,context:q.ctx,options:q.opts.map(o=>o.t)})),usedPassageKeys:all.flatMap(q=>passageKeys(q.ctx,q.opts.map(o=>o.t)))};
+ const beforeExhausted=JSON.stringify(exhausted),remedial={...original,type:'mc_usage',stage:'bridge',review:true,firstLearning:false,needsCard:false,sentenceCyclePolicy:'sentence-first-7-30-20261021'};
+ const bundled=bundlePractice({plans:[remedial],ready:[]},exhausted,AUTHORED_OWNER,[],all);
+ assert.ok(bundled.practicePool.some(q=>q.type.startsWith('mc_')),'exhausted histories retain approved MC');
+ assert.equal(JSON.stringify(exhausted),beforeExhausted);
+ const replacement=approvedRemediation(remedial,exhausted,AUTHORED_OWNER);assert.ok(replacement);
+ assert.equal(approvedRemediation({...remedial,w:{...word,d:'unapproved meaning'}},exhausted,AUTHORED_OWNER),null);
+ // Legacy resume: answered prefix intact, missing MC, sentence-only pool, concurrent pumps.
+ context.remedial=remedial;context.replacement=replacement;
+ vm.runInContext(`globalThis.repairCalls=0;sb.auth={};sb.auth.getSession=async()=>({data:{session:{access_token:'test'}}});
+  fetch=async()=>{repairCalls++;return {ok:true,json:async()=>({question:replacement})}};
+  globalThis.legacy=createPreparation({...packet,plans:[...packet.plans,remedial],practicePool:packet.practicePool.filter(q=>q.type==='subjective_use'),key:'legacy',adopted:true},packet.ready);
+  legacy.pump();legacy.pump();globalThis.wait=legacy.waitFor(packet.plans.length,true);`,context);
+ await context.wait;
+ assert.equal(vm.runInContext('repairCalls',context),1,'concurrent waits share one bank repair');
+ assert.equal(vm.runInContext('legacy.ready.get(packet.plans.length).type',context),'mc_usage');
+ assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify([...legacy.ready].slice(0,packet.ready.length))',context)),packet.ready);
+ vm.runInContext(`fetch=async()=>({ok:false});
+  globalThis.failedRepair=createPreparation({...packet,plans:[remedial],practicePool:[],key:'failed-repair',adopted:true},[]);
+  failedRepair.pump();globalThis.failedWait=failedRepair.waitFor(0,true);`,context);
+ await assert.rejects(context.failedWait,/검수된 복습/);
+ assert.equal(vm.runInContext('failedRepair.ready.size',context),0,'failed repair never fabricates completion');
+ vm.runInContext(`fetch=async()=>({ok:true,json:async()=>({question:replacement})});globalThis.retryWait=failedRepair.waitFor(0,true)`,context);
+ await context.retryWait;
+ assert.equal(vm.runInContext('failedRepair.ready.size',context),1,'failed recovery can retry');
  count++;
 }
 assert.ok(count>0);

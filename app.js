@@ -1150,7 +1150,26 @@ function createPreparation(meta,saved=[]){
        for(const index of job.indices){
          if(p.ready.has(index))continue;
          const plan=p.plans[index],q=localPracticeQuestion(plan,state.users[p.profile],p.practicePool||[],[...p.ready.values()],p.account);
-         if(!q){job.error=new Error('저장된 문제 구성을 확인하지 못했어요. 학습 기록은 유지됩니다.');continue}
+         if(!q){
+           if(p.adopted&&plan.sentenceCyclePolicy&&['mc_context','mc_usage'].includes(plan.type)&&plan.review&&!plan.firstLearning&&!plan.needsCard){
+             p.repairs??=new Map();
+             if(!p.repairs.has(index)){
+               job.error=null;
+               const repair=(async()=>{
+                 const {data}=await withDeadline(sb.auth.getSession(),10000,'로그인 상태 확인이 지연됐어요.');
+                 const token=data.session?.access_token;if(!token)throw new Error('로그인이 필요합니다.');
+                 const r=await fetch('/api/practice-repair',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000),body:JSON.stringify({plan,readerLevel:state.users[p.profile].difficulty})});
+                 if(!r.ok)throw new Error('검수된 복습 문제를 불러오지 못했어요. 다시 이어하기를 눌러 주세요.');
+                 const result=await r.json(),replacement=result.question;
+                 if(p.cancelled||authUser?.id!==p.account||state.selected!==p.profile)return;
+                 if(!validPreparedQuestion(replacement,plan))throw new Error('복습 문제 검증에 실패했어요.');
+                 p.practicePool=[...(p.practicePool||[]),replacement];p.ready.set(index,replacement);job.error=null;
+               })().catch(e=>{if(!p.cancelled)job.error=e}).finally(()=>{p.repairs.delete(index);p.notify()});
+               p.repairs.set(index,repair);
+             }
+           }else job.error=new Error('저장된 문제 구성을 확인하지 못했어요. 학습 기록은 유지됩니다.');
+           continue;
+         }
          if(q.type!==plan.type){
            if(plan.allowBankTypeFallback!==true||q.bankFallbackFrom!==plan.type||!validPreparedQuestion(q,{...plan,type:q.type})){
              job.error=new Error('저장된 문제 유형을 확인하지 못했어요.');continue;
