@@ -27,3 +27,9 @@ try{
  assert.deepEqual(fallback,['report_preparation_failure','fail_preparation']);
 }finally{globalThis.fetch=originalFetch}
 console.log('Failure diagnostics PASS: bounded storage code/stage/reason, no private DB details, exact lease RPC, backward-compatible failure transition.');
+
+const terminalSql=fs.readFileSync(new URL('../database/preparation-terminal-status.sql',import.meta.url),'utf8');
+assert.ok(terminalSql.includes('not coalesce(vocab_private.packet_complete(j.payload),false)'));
+assert.ok(terminalSql.includes('get_prepared_lesson(text,uuid)')&&terminalSql.includes('ensure_prepared_lesson(text,text,boolean)'));
+const diagnosticSql=fs.readFileSync(new URL('../database/preparation-failure-diagnostics.sql',import.meta.url),'utf8');
+assert.ok(diagnosticSql.includes('set last_failure=failure')&&!diagnosticSql.includes('set payload='),'failure-only metadata must not masquerade as an outdated lesson payload');

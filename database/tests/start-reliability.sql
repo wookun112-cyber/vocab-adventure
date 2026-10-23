@@ -1,6 +1,6 @@
 begin;
 do $test$
-declare x jsonb; l jsonb; d text:=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD'); j vocab_private.preparations; token uuid:=gen_random_uuid();
+declare x jsonb; l jsonb; d text:=to_char(now() at time zone 'Asia/Seoul','YYYY-MM-DD'); j vocab_private.preparations; token uuid:=gen_random_uuid(); remote jsonb;
 begin
  select jsonb_build_object('w',jsonb_build_object('w',word,'d',definition,'band',band),'coveragePolicy','lower-stage-usage-12.16.19','coverageOriginLevel',3.2) into x
  from public.curriculum_words where word='예외' and band=2 and quality_status<>'rejected';
@@ -28,7 +28,18 @@ begin
  if vocab_private.report_preparation_failure(j.id,j.capability,gen_random_uuid(),'{}') then raise exception 'Stale lease accepted';end if;
  if not vocab_private.report_preparation_failure(j.id,j.capability,token,'{"code":"P0001","reason":"review_window_invalid","stage":"save_preparation","private":"must not persist"}') then raise exception 'Owned failure report rejected';end if;
  select * into j from vocab_private.preparations where id=j.id;
- if j.status<>'pending' or j.attempts<>8 or j.payload->>'preserved'<>'accepted-peer' or j.payload#>>'{preparationFailure,reason}'<>'review_window_invalid' or j.payload->'preparationFailure' ? 'private' then raise exception 'Failure report lost peers or stored unbounded details';end if;
+ if j.status<>'pending' or j.attempts<>8 or j.payload->>'preserved'<>'accepted-peer' or j.payload ? 'preparationFailure' or j.last_failure->>'reason'<>'review_window_invalid' or j.last_failure ? 'private' then raise exception 'Failure report lost peers or stored unbounded details';end if;
+ -- A first-checkpoint failure must keep payload SQL NULL; otherwise the old
+ -- engine/snapshot guards can silently re-enqueue it on every status read.
+ token:=gen_random_uuid();
+ update vocab_private.preparations set status='working',lease=token,attempts=1,is_consumed=false,payload=null where id=j.id;
+ if not vocab_private.report_preparation_failure(j.id,j.capability,token,'{"code":"P0001","reason":"review_window_invalid","stage":"save_preparation"}') then raise exception 'Empty-payload diagnostic rejected';end if;
+ perform set_config('request.jwt.claim.sub','06c78577-b96e-4919-b979-58683ff5946e',true);
+ perform set_config('request.jwt.claims','{"sub":"06c78577-b96e-4919-b979-58683ff5946e","role":"authenticated"}',true);
+ remote:=public.get_prepared_lesson('guest',j.id);
+ if remote->>'status'<>'failed' or remote->>'id'<>j.id::text or remote->'payload'<>'null'::jsonb then raise exception 'Failure status read recreated obsolete payload';end if;
+ remote:=public.ensure_prepared_lesson('guest','synthetic-status-check',false);
+ if remote->>'status'<>'failed' or remote->>'id'<>j.id::text then raise exception 'Ensure RPC hid exhausted empty checkpoint';end if;
 end $test$;
 rollback;
 
