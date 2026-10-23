@@ -1,0 +1,9 @@
+# Release 12.16.54: continue studying while grading
+
+After the original answer is checkpointed, its existing save-confirmed grading request starts. The UI waits at most three seconds; if no result is available, Next appears while that same request continues. It is neither aborted nor resubmitted at the UI deadline. Pending evidence remains excluded from correctness and mastery.
+
+Previously the end-of-plan path could still lead to the grading waiting screen, even though individual submissions allowed Next. Both round and legacy lesson boundaries now try an available new-word top-up, then approved local multiple-choice practice while the original grade is outstanding. Practice rotates pending words and chooses the least-used available approved context. It is marked practice-only and ineligible for level evidence; it cannot replace the original sentence grade or complete sentence mastery. Deferred original results retain their existing feedback delivery and once-only application. The thirty-minute round ceiling remains enforced.
+
+The existing recovery screen remains a safety fallback for incomplete legacy packets without any valid approved practice. This change removes the normal bank-backed end-of-plan wait, not provider latency, offline conditions, or save failures. Existing receipt-based read-only polling and archive recovery remain unchanged.
+
+Validation: actual app VM regression tests cover the three-second cutoff, one in-flight request, answer persistence, continuing to the next task, delayed original feedback once, approved last-question practice without network/generation, persistence of the added practice, and the thirty-minute ceiling. Existing save ordering, cold restart, provider receipt, duplicate submission, timeout, database failure and clock tests remain release gates. No paid provider requests or children's answer data are used by tests.

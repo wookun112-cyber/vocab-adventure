@@ -61,6 +61,21 @@ for(const fixture of fixtures){
   vm.runInContext(`globalThis.plan=nextUsagePlan(original,results,p.plans.length,{supportLevel:0});p.append([plan]);p.pump();globalThis.q=p.ready.get(p.plans.length-1);results.push({word:word.w,type:q.type,credit:0,contextSuccess:false})`,context);
  }
  assert.equal(vm.runInContext('networkRequests',context),0);assert.equal(vm.runInContext('p.ready.size',context),packet.plans.length+48);
+ // Exhausting the lesson while the original AI request is running still
+ // yields approved local practice, with no new generation or semantic call.
+ vm.runInContext(`session={account:AUTHORED_OWNER,profile:packet.profile,baseWords:[word],queue:p.queue,preparation:p,results:[],elapsedMs:0,
+  gradingQueue:[{id:'slow-original',index:packet.plans.findIndex(x=>x.w.w===word.w),word:word.w,answer:'원본 답안',status:'sending'}]};
+  current=p.plans.length;globalThis.originalTopup=appendStudyTopup;appendStudyTopup=()=>false;
+  globalThis.beforeBridge=p.plans.length;globalThis.continued=continueWhileGrading(session);appendStudyTopup=originalTopup;`,context);
+ assert.equal(vm.runInContext('continued',context),true,'last pending answer never blocks approved practice');
+ assert.equal(vm.runInContext('p.plans.length',context),vm.runInContext('beforeBridge+1',context));
+ assert.equal(vm.runInContext('p.plans.at(-1).gradingBridge&&p.plans.at(-1).practiceOnly&&p.plans.at(-1).levelEligible===false',context),true);
+ assert.equal(vm.runInContext('p.ready.get(p.plans.length-1).type.startsWith("mc_")',context),true);
+ assert.equal(vm.runInContext('session.gradingQueue[0].status',context),'sending','practice preserves original in-flight request');
+ assert.equal(vm.runInContext('session.results.length',context),0,'practice awards no fabricated result');
+ assert.equal(vm.runInContext('networkRequests',context),0);
+ vm.runInContext(`current=p.plans.length;session.activeMs=studyHistory.ROUND_MAX_MS;globalThis.atLimit=continueWhileGrading(session);session.activeMs=0`,context);
+ assert.equal(vm.runInContext('atLimit',context),false,'background practice cannot extend the 30 minute round limit');
  const saved=JSON.parse(vm.runInContext('JSON.stringify({plans:p.plans,ready:[...p.ready],practicePool:p.practicePool,deliveryPolicy:p.deliveryPolicy})',context));
  context.saved=saved;
  vm.runInContext(`globalThis.restarted=createPreparation({...packet,...saved,key:'restart',adopted:true},saved.ready);restarted.append([nextUsagePlan(original,results,restarted.plans.length,{supportLevel:0})]);restarted.pump()`,context);

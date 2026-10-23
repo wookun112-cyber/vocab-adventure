@@ -281,7 +281,7 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
   return defaultFetch(url,options);
  };
  // Move the UI-only threshold forward without changing other test timers.
- responsive.ctx.setTimeout=(fn,ms,...args)=>realSetTimeout(fn,ms===1600?0:ms,...args);
+ responsive.ctx.setTimeout=(fn,ms,...args)=>realSetTimeout(fn,ms===3000?0:ms,...args);
  await responsive.run('gradeCurrent(false)');
  assert.equal(gradeCalls,1,'one semantic provider submission');
  assert.equal(responsive.run('session.gradingQueue[0].status'),'sending','the original request stays in flight');
@@ -304,7 +304,7 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
  assert.equal(responsive.run('session.results.at(-1).gradingJobId'),responsive.run('session.gradingQueue[0].id'));
  assert.equal(responsive.run('session.gradingQueue[0].status'),'applied');
  assert.equal(gradeCalls,1);
- console.log('Nonblocking sentence grade PASS: 1.6s UI cap, one paid request, next question, receipt-safe job, original independent credit and delayed feedback.');
+ console.log('Nonblocking sentence grade PASS: 3s UI cap, one paid request, next question, receipt-safe job, original independent credit and delayed feedback.');
 }
 
 // A provider receipt returned with 202 must be saved and forwarded on the

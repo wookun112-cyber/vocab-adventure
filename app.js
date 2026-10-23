@@ -1558,7 +1558,7 @@ function renderQuestion(savedHint=0){
  $('holdPendingGrades')?.classList.add('hidden');
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
-  const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,pendingGrade=!gradeDelivery&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
+  const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,pendingGrade=!gradeDelivery&&!session.preparation.plans[current]?.gradingBridge&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
   if(!pendingGrade&&(!studyHistory.isBreadthRound(session)||!wordOnCooldown(child(),pending.w.w)||gradeDelivery)&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&(!pinned||session.sentenceCyclePolicy)&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
   // Keep the original cursor and answered records. Excluded questions get a
   // checkpoint entry, never a wrong answer, word statistic or reward.
@@ -1792,13 +1792,13 @@ async function gradeCurrent(dontKnow){
  try{
   const inFlight=requestGrade(job,22000).then(graded=>({graded}),error=>({error}));
   let uiTimer;
-  const first=await Promise.race([inFlight,new Promise(resolve=>{uiTimer=setTimeout(()=>resolve(null),1600)})]);
+  const first=await Promise.race([inFlight,new Promise(resolve=>{uiTimer=setTimeout(()=>resolve(null),3000)})]);
   clearTimeout(uiTimer);
   if(session!==active||state.selected!==active.profile)return;
   if(first===null){
    job.status='sending';
    showPending('답안을 안전하게 저장했어요. 서버 저장과 AI 의미 채점을 확인 중이니 다음 문제를 먼저 풀어도 돼요. 결과가 오면 기존 답안에 반영됩니다.');
-   // Preserve one in-flight request instead of aborting/rebilling at 1.6 s.
+   // Preserve one in-flight request instead of aborting/rebilling at 3 s.
    void inFlight.then(outcome=>{
     if(session!==active||active.completed||authUser?.id!==active.account||state.selected!==active.profile)return;
     if(job.status!=='sending')return;
@@ -2363,6 +2363,29 @@ function appendRoundReinforcement(active){
  p.append([{...original,id:String(index),w,type,stage:type==='subjective_use'?'use':'bridge',roundReinforcement:true,review:true,practiceOnly:true,levelEligible:false,firstLearning:false,needsCard:false,remedial:true,allowBankTypeFallback:true}]);
  active.target=p.plans.length;p.pump();return true;
 }
+function continueWhileGrading(active){
+ if(!active||active.completed||activeTime(active)>=studyHistory.ROUND_MAX_MS)return false;
+ if(!(active.gradingQueue||[]).some(j=>['pending','sending'].includes(j.status)))return false;
+ // A ready result keeps its existing feedback delivery priority.
+ appendReadyGrades(active);
+ if(current<active.preparation.plans.length)return true;
+ if(appendStudyTopup(active))return true;
+ const p=active.preparation;
+ const waiting=(active.gradingQueue||[]).filter(j=>['pending','sending'].includes(j.status)).sort((a,b)=>
+  p.plans.findLastIndex(plan=>plan.gradingBridge&&plan.w.w===a.word)-p.plans.findLastIndex(plan=>plan.gradingBridge&&plan.w.w===b.word));
+ for(const job of waiting){
+  const source=(p.practicePool||[]).filter(q=>q.w?.w===job.word&&q.type?.startsWith('mc_')&&q.opts?.length===5)
+   .sort((a,b)=>[...p.ready.values()].filter(q=>q.signature===a.signature).length-[...p.ready.values()].filter(q=>q.signature===b.signature).length)[0];
+  if(!source)continue;
+  const original=p.plans[job.index];if(!original)continue;
+  const index=p.plans.length,plan={...original,id:String(index),type:source.type,stage:'bridge',taskDemand:source.taskDemand,
+   firstLearning:false,needsCard:false,review:true,practiceOnly:true,levelEligible:false,gradingBridge:true,roundReinforcement:true};
+  const q={...source,w:plan.w,label:'채점 중 쓰임 연습',stage:'bridge',review:true,practiceOnly:true,needsCard:false,learningCard:null};
+  if(!validPreparedQuestion(q,plan))continue;
+  p.append([plan]);p.ready.set(index,q);active.target=p.plans.length;p.notify();return true;
+ }
+ return false;
+}
 function finishStudyRoundBoundary(){
  const active=session;if(!active||active.completed)return;
  pauseLearningClock();
@@ -2375,6 +2398,7 @@ function finishStudyRoundBoundary(){
   ensureUsageContinuation(active);active.preparation.pump();
   if(current<active.target&&current<active.queue.length){show('learn');renderQuestion();return}
   if(status.pending){
+   if(continueWhileGrading(active)){show('learn');renderQuestion();return}
    // Reuse the existing recoverable pending-grade screen, without allowing a
    // partial round to be called complete or counting server wait as study time.
    active.waitingForGradeResults=true;pauseLearningClock();checkpointSession();localSave();cloudSave();show('learn');
@@ -2450,6 +2474,7 @@ function finishSession(){
  if((session.gradingQueue||[]).some(j=>['pending','ready','sending'].includes(j.status))){
   appendReadyGrades(session);
   if(current<session.target&&current<session.queue.length){renderQuestion();return}
+  if(continueWhileGrading(session)){renderQuestion();return}
   session.waitingForGradeResults=true;pauseLearningClock();checkpointSession();localSave();cloudSave();
   // A resumed final-cursor lesson must never display an old, already
   // answered card as if it were "1번째 문제". Show a dedicated waiting state.
