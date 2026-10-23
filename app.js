@@ -1831,14 +1831,15 @@ async function gradeCurrent(dontKnow){
  }
 }
 async function requestGrade(job,timeout=25000,pollOnly=false){
- const {data}=await withDeadline(sb.auth.getSession(),5000,'로그인 확인 지연');
+ const account=authUser?.id,active=session;
+ const needsSave=!pollOnly&&session?.gradingQueue?.some(pending=>pending.id===job.id);
+ const [{data},saved]=await Promise.all([
+  withDeadline(sb.auth.getSession(),5000,'로그인 확인 지연'),
+  needsSave?(typeof waitForGradeSave==='function'?waitForGradeSave(job):cloudSave()):Promise.resolve(true)
+ ]);
  const token=data.session?.access_token;if(!token)throw new Error('로그인이 필요합니다.');
- if(!pollOnly&&session?.gradingQueue?.some(pending=>pending.id===job.id)){
-  const account=authUser?.id,active=session;
-  const saved=await withDeadline(cloudSave(),12000,'답안 서버 저장을 확인하고 있어요.');
-  if(saved!==true)throw Object.assign(new Error('답안 서버 저장을 확인하고 있어요.'),{code:'grading_assignment_pending'});
-  if(authUser?.id!==account||session!==active)throw Object.assign(new Error('학습 프로필이 변경됐어요.'),{code:'grading_assignment_pending'});
- }
+ if(saved!==true)throw Object.assign(new Error('답안 서버 저장을 확인하고 있어요.'),{code:'grading_assignment_pending'});
+ if(needsSave&&(authUser?.id!==account||session!==active))throw Object.assign(new Error('학습 프로필이 변경됐어요.'),{code:'grading_assignment_pending'});
  const r=await fetch('/api/grade',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},signal:AbortSignal.timeout(timeout),body:JSON.stringify({...job.payload,requestId:job.id,pollOnly,...(job.providerReceipt?{providerReceipt:job.providerReceipt}:{}),...(job.gradeReceipt?{gradeReceipt:job.gradeReceipt}:{})})});
  const value=await r.json();
  if(typeof value?.providerReceipt==='string')job.providerReceipt=value.providerReceipt;
