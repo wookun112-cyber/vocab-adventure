@@ -67,6 +67,34 @@ window.exerciseCloud=async()=>{
 ''')
  checks.append({'test':'production_save_and_grade_recovery_functions','result':page.evaluate('exerciseCloud()')})
  page.screenshot(path=str(ROOT/'test-results/browser-storage.png'))
+ # The real deployed start function, clicked on a tall mobile page. A failed
+ # request must not invoke the home navigation that used to scroll to zero.
+ page.goto(f'http://127.0.0.1:{srv.server_port}/start')
+ page.set_content('''<!doctype html><meta charset="utf-8"><style>body{height:3500px}#home{margin-top:1300px}</style>
+ <span id="cloudPill">클라우드 연결</span><div id="home" class="active"><button id="startDaily">오늘의 학습</button>
+ <button id="startReview">복습</button><button id="levelTest">수준 확인</button><p id="learningStartStatus"></p></div>''')
+ page.evaluate('''
+ let preparingSession=false,cloudSavePending=false,preparationBlock=null;
+ const state={selected:'ayoung'},authUser={id:'synthetic-start'},QUESTION_WAIT_MS=200;
+ const $=id=>document.getElementById(id),savedLesson=()=>null;
+ const renderResumeButton=()=>{},renderSaveStatus=()=>{},alert=()=>{};
+ const withDeadline=async p=>p;
+ async function getPreparation(){throw Object.assign(Error('synthetic start failure'),window.startFixtureError==='pending'?{preparationPending:true}:{code:'preparation_failed'})}
+ function show(id){window.startShowCalls++;window.scrollTo({top:0,behavior:'instant'})}
+ window.startShowCalls=0;
+ '''+(ROOT/'test-results/browser-start.js').read_text()+'''
+ $('startDaily').onclick=()=>buildSession('daily');void 0;
+ ''')
+ for failure in ['failed','pending']:
+  page.evaluate('(failure)=>{window.startFixtureError=failure;window.scrollTo(0,1100)}',failure)
+  before=page.evaluate('window.scrollY')
+  page.get_by_role('button',name='오늘의 학습',exact=True).click()
+  page.wait_for_function('!document.getElementById("startDaily").disabled')
+  result=page.evaluate('''()=>({scrollY:window.scrollY,showCalls:window.startShowCalls,status:document.getElementById('learningStartStatus').textContent,pill:document.getElementById('cloudPill').textContent,unlocked:!document.getElementById('startDaily').disabled})''')
+  if result['scrollY']!=before or result['showCalls']!=0 or not result['status'] or not result['unlocked']:raise Exception('Start failure scrolled or locked '+str(result))
+  checks.append({'test':'production_start_scroll_'+failure,'result':result})
+ page.screenshot(path=str(ROOT/'test-results/browser-start.png'))
+
  context.close();browser.close()
 srv.shutdown()
 report={'browser':'Chromium','physicalUserTablet':False,'syntheticDataOnly':True,'paidProviderCalls':0,'checks':checks}

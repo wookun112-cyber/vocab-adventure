@@ -14,7 +14,13 @@ const KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const uuid=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 export async function rpc(name,args){
  const r=await fetch(URL+'/rest/v1/rpc/'+name,{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify(args),signal:AbortSignal.timeout(20000)});
- if(!r.ok)throw Error('Preparation storage '+r.status);
+ if(!r.ok){
+  const body=await r.json().catch(()=>({}));
+  const reasons={'Invalid review window':'review_window_invalid','Invalid practice pool':'practice_pool_invalid','Invalid saved bank or template question':'question_validation_failed','Preparation owner mismatch':'owner_mismatch','Preparation too large':'packet_too_large'};
+  const reason=reasons[body.message]||'storage_request_failed';
+  const code=/^[A-Z0-9_]{1,40}$/.test(body.code||'')?body.code:'HTTP_'+r.status;
+  throw Object.assign(Error('Preparation storage '+r.status+' ('+reason+')'),{preparationFailure:{code,reason,stage:name}});
+ }
  return r.json();
 }
 const generatePrepared=templateOnlyQuestions;
@@ -83,7 +89,7 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
  if(recovering)payload.snapshot=learnerSnapshot(job.learner);
  const failureFeedback=f=>[...f.issues,...(f.context?['이전 실패 지문: '+f.context]:[]),...(f.prompt?['이전 실패 질문: '+f.prompt]:[])];
  const feedback=Object.fromEntries((payload.preparationIssues||[]).map(f=>[f.id,failureFeedback(f)]));
- delete payload.preparationError;delete payload.preparationIssues;delete payload.preparationBlocked;
+ delete payload.preparationError;delete payload.preparationIssues;delete payload.preparationBlocked;delete payload.preparationFailure;
  let checkpoint=Promise.resolve(),obsolete=false;
  const save=failed=>{
   const copy=JSON.parse(JSON.stringify(payload));
@@ -161,8 +167,12 @@ export async function prepare(job,key,generate=generatePrepared,call=rpc){
 export async function runPreparation(job,key,call=rpc,work=prepare){
  try{return await work(job,key,undefined,call)}
  catch(error){
-  try{await call('fail_preparation',{p_id:job.id,p_key:key,p_lease:job.lease})}
-  catch{console.error(JSON.stringify({event:'preparation_failure_state_unavailable'}))}
+  const failure=error.preparationFailure||{code:'PREPARATION_FAILED',reason:'worker_failed',stage:'prepare'};
+  try{await call('report_preparation_failure',{p_id:job.id,p_key:key,p_lease:job.lease,p_failure:failure})}
+  catch{
+   try{await call('fail_preparation',{p_id:job.id,p_key:key,p_lease:job.lease})}
+   catch{console.error(JSON.stringify({event:'preparation_failure_state_unavailable'}))}
+  }
   throw error;
  }
 }

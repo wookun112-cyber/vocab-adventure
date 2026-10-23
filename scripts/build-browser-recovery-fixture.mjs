@@ -11,3 +11,7 @@ const p0=effective.indexOf('function renderParentRecovery(){'),p1=effective.inde
 if(p0<0||p1<0)throw Error('Production recovery display boundary changed');
 fs.mkdirSync(new URL('../test-results/',import.meta.url),{recursive:true});
 fs.writeFileSync(new URL('../test-results/browser-cloud.js',import.meta.url),effective.slice(p0,p1)+'\n'+effective.slice(a,b)+'\n'+local+'\n'+effective.slice(r0,r1));
+const start0=effective.indexOf("async function buildSession(mode='daily')"),start1=effective.indexOf('function renderQuestion(',start0);
+const status0=effective.indexOf('function setStudyStartStatus('),status1=effective.indexOf('function officialDailyCapReached(',status0);
+if(start0<0||start1<0||status0<0||status1<0)throw Error('Production start boundary changed');
+fs.writeFileSync(new URL('../test-results/browser-start.js',import.meta.url),effective.slice(status0,status1)+'\n'+effective.slice(start0,start1));
