@@ -71,7 +71,7 @@ function fixture(saved=null){
   localSave=()=>{};cloudSave=()=>Promise.resolve();warmDailyQuestions=()=>{};renderAll=()=>{};renderReport=()=>{};renderExploration=()=>{};
   const p=createPreparation({...packet,key:'coverage-fixture',adopted:true},packet.ready);
   session={lessonId:'coverage-client',profile:'ayoung',account:AUTHORED_OWNER,mode:'daily',model:LEARNING_MODEL,completionPolicy:DAILY_POLICY,reviewPolicy:REVIEW_POLICY,difficulty:4,
-   preparation:p,queue:p.queue,results:[],target:15,baseWords:packet.baseWords,newWords:packet.newWords,introWords:packet.newWords.slice(),introAt:4,introCursor:0,introDone:false,activeMs:25*60000,clockStarted:null,adaptivePool:highPool};
+   preparation:p,queue:p.queue,results:[],target:15,baseWords:packet.baseWords,newWords:packet.newWords,introWords:packet.newWords.slice(),introAt:4,introCursor:0,introDone:false,activeMs:20*60000,clockStarted:null,adaptivePool:highPool};
   current=0;initRealtimeLevel(child(),session);show('learn');renderQuestion();`);
  if(saved){context.saved=saved;run('pauseLearningClock();state=mergeState(saved);session=null')}
  return {run,node,alerts};
