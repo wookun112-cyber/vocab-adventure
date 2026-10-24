@@ -40,3 +40,15 @@ assert.equal(packet.plans.find(p=>p.w.w===low.w).type,'subjective_use');
 assert.equal(packet.ready.length,packet.plans.length,'exhausted recall stays unprompted without live generation');
 console.log('Long-term retention verified: overdue learned words survive promotion, share bounded slots with unfinished vocabulary, require recall then own sentences, accrue spaced evidence without grade inflation, and never revive retired words.');
 
+// Due retention is selected both before and after unfinished carryovers.
+// Both passes must share one slot, with coverage sharing the lower-word budget.
+const lower=words.filter(w=>w.band===2).slice(0,3),upper=words.filter(w=>w.band===7).slice(0,12);
+const mixed={difficulty:7.5,words:{},unfinishedUsage:{}};
+for(const w of lower)mixed.words[w.w]={seen:2,useSuccess:1,introducedAt:'2026-09-01',nextReviewAt:day,lastExposureAt:'2026-10-01'};
+for(const w of upper.slice(0,6)){
+ mixed.words[w.w]={seen:1};mixed.unfinishedUsage[w.w]={word:w,day:'2026-10-01',assignedAt:Date.parse('2026-10-01T12:00:00+09:00')};
+}
+const unchanged=JSON.stringify(mixed),chosen=selectDailyTargets(words,mixed,day,{newCount:5,reviewCount:10});
+assert.equal(chosen.reviewWords.filter(w=>w.retentionPolicy===RETENTION_POLICY).length,1,'one shared retention slot across both passes');
+assert.ok(chosen.reviewWords.length<=10);assert.equal(chosen.newWords.length,5);assert.equal(JSON.stringify(mixed),unchanged);
+console.log('Shared retention slot PASS: unfinished backlog + several due lower words + coverage never allocate two delayed reviews.');

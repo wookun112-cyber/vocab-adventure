@@ -62,7 +62,7 @@ export default async function handler(req,res){
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
  const authorization=req.headers?.authorization;
  if(!authorization?.startsWith('Bearer '))return res.status(401).json({error:'Login required'});
- if(!['ayoung','inseong','guest'].includes(req.body?.profile))return res.status(400).json({error:'Invalid profile'});
+ if(!['ayoung','inseong','guest','test'].includes(req.body?.profile))return res.status(400).json({error:'Invalid profile'});
  if(!Number.isFinite(Number(req.body?.level)))return res.status(400).json({error:'Invalid level'});
  try{
   const headers={apikey:SUPABASE_KEY,Authorization:authorization};
