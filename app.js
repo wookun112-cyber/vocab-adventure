@@ -1597,7 +1597,7 @@ function renderQuestion(savedHint=0){
  $('hint').classList.remove('hidden');$('dontKnow').classList.remove('hidden'); $('hint').disabled=false; $('hint').textContent='힌트';
  if(q.opts?.length)q.opts.forEach((o,i)=>{
    const b=document.createElement('button');b.className='option';b.textContent=o.t;
-   b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('.option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};
+   b.onclick=()=>{if($('next').classList.contains('hidden')){selectedOption=i;document.querySelectorAll('#options .option').forEach((x,j)=>x.classList.toggle('selected',j===i));gradeCurrent(false)}};
    $('options').appendChild(b);
  });
  if(hintLevel){
@@ -1744,7 +1744,7 @@ async function gradeCurrent(dontKnow){
  if(q.opts?.length){
    if(selectedOption==null)return;
    const selected=q.opts[selectedOption],correct=q.opts.find(o=>o.ok),ok=Boolean(selected?.ok);
-   document.querySelectorAll('.option').forEach((x,i)=>{
+   document.querySelectorAll('#options .option').forEach((x,i)=>{
      if(q.opts[i].ok)x.classList.add('correct');
      else if(i===selectedOption&&!ok)x.classList.add('wrong');
    });
@@ -2241,7 +2241,7 @@ function renderRoundSummary(){
  const c=child(),saved=savedLesson(),budget=studyBudget(c),rows=roundRowsFor(c);
  if($('dailyTitle'))$('dailyTitle').textContent=saved?saved.roundNumber+'회차 진행 중':'새 단어 5개 + 복습 최대 10개';
  if($('dailyDescription'))$('dailyDescription').textContent=saved&&!studyHistory.isStudyRound(saved)?'이전 방식으로 시작한 학습은 그대로 이어져요':'새 단어 5개 + 복습 최대 10개 · 역사·과학 독해 2문제 · 20분 기본, 필요한 경우 최대 5분 보완 · 하루 회차 제한 없음';
- if($('dailyBudget'))$('dailyBudget').textContent='오늘 총 '+studyHistory.formatStudyTime(studyHistory.dailyStudyTime(c,saved))+' · 복습 예정 '+budget.due+'개 · 정답 어휘는 7일 후부터 복습 · 입력·터치 없이 10초 이후와 채점·문제 준비 대기는 시간에서 제외';
+ if($('dailyBudget'))$('dailyBudget').textContent='오늘 총 '+studyHistory.formatStudyTime(studyHistory.dailyStudyTime(c,saved,Date.now()))+' · 복습 예정 '+budget.due+'개 · 정답 어휘는 7일 후부터 복습 · 입력·터치 없이 10초 이후와 채점·문제 준비 대기는 시간에서 제외';
  const summary=summarizeEvidence(c);
  if($('learningEvidenceHome'))$('learningEvidenceHome').textContent='장기 확인 '+summary.mastered+'개 · '+(summary.retention7.attempts?'7일 이상 회상 '+summary.retention7.percent+'%':'다른 날 다시 확인하며 기억을 점검해요.');
  renderRoundCompletion(c,'todayCompletion');renderRoundStart();
@@ -2736,7 +2736,7 @@ function renderReport(){
  <div class="card"><h3>학습 중 난이도 조정</h3><p>${escapeHtml(levelAdjustmentLabel(c)||'다음 학습을 마치면 이 회차의 등급 변화를 보여 드려요.')}</p><p class="muted">출제 난이도는 70%대부터 상위 문제 도전을 늘리고, 80% 이상은 적극적으로 조정해요. 장기 등급은 서로 다른 어휘 6개 이상의 첫 시도 평가와 상위 단계 3개 중 2개 성공 등을 확인한 뒤 일반적으로 하루 최대 +0.3, 뛰어난 근거가 있으면 최대 +0.4 올립니다. 서로 다른 어휘 3개를 평가할 때마다 다음 출제 난이도를 조정해요. 객관식만 맞히거나 해설을 보고 반복한 정답은 승급 근거로 충분하지 않아요. 서로 다른 어휘 3개에서 뜻 이해의 어려움이 확인되면 0.2~0.3씩 낮추고, 문장 구성의 어려움은 그 단어의 연습을 보강합니다. 현재 문제와 이미 공부한 목표 단어는 유지하고, 아직 배우지 않은 다음 어휘부터 새 수준을 적용해요. 순위 등급은 학습을 마칠 때 확정하며 실시간 변화를 두 번 더하지 않습니다. 이 등급은 게임용 학습 추정값이며 공인 어휘력 점수나 실제 학년 점수가 아닙니다.</p></div>`;
 }
 
-function show(id){if(!['learn','intro','reading'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home'){renderResumeButton();renderTodayCompletion()}if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong','test'].includes(reportProfile))reportProfile=['ayoung','inseong','test'].includes(state.selected)?state.selected:'ayoung';renderReport();if(!vocabularyIndex.loaded&&!vocabularyIndex.loading)void loadVocabularyIndex()}window.scrollTo({top:0,behavior:'smooth'})}
+function show(id){if(!['learn','intro','reading'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home'){renderResumeButton();renderTodayCompletion();renderStudySummary()}if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong','test'].includes(reportProfile))reportProfile=['ayoung','inseong','test'].includes(state.selected)?state.selected:'ayoung';renderReport();if(!vocabularyIndex.loaded&&!vocabularyIndex.loading)void loadVocabularyIndex()}window.scrollTo({top:0,behavior:'smooth'})}
 function authErrorMessage(error){
  const code=error?.code,status=Number(error?.status)||0;
  if(status>=500||status===408||code==='request_timeout')return '로그인 서버 연결이 지연됐어요. 잠시 뒤 다시 시도해 주세요.';
