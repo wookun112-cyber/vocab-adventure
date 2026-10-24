@@ -1558,12 +1558,12 @@ function renderQuestion(savedHint=0){
  $('holdPendingGrades')?.classList.add('hidden');
  let skipped=0;
  while(current<session.queue.length&&current<session.target){
-  const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,pendingGrade=!gradeDelivery&&!session.preparation.plans[current]?.gradingBridge&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
-  if(!pendingGrade&&(!studyHistory.isBreadthRound(session)||!wordOnCooldown(child(),pending.w.w)||gradeDelivery)&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&(!pinned||session.sentenceCyclePolicy)&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
+  const pending=session.queue[current],gradeDelivery=!!session.preparation.plans[current]?.deferredGradeId,staleGradeDelivery=gradeDelivery&&(session.gradingQueue||[]).some(j=>j.id===session.preparation.plans[current].deferredGradeId&&j.status==='applied'),pendingGrade=!gradeDelivery&&!(session.preparation.plans[current]?.gradingBridge&&pending.type?.startsWith('mc_'))&&(session.gradingQueue||[]).some(j=>j.word===pending.w.w&&['pending','ready','sending'].includes(j.status)),pinned=session.deferredReview?.preservedCurrent?.index===current&&session.deferredReview.preservedCurrent.word===pending.w.w&&session.results.length===current;
+  if(!staleGradeDelivery&&!pendingGrade&&(!studyHistory.isBreadthRound(session)||!wordOnCooldown(child(),pending.w.w)||gradeDelivery)&&isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)&&pending.validation?.checks?.vocabularyFocus!==false&&(gradeDelivery||session.mode==='level'||pending.review||session.preparation.plans[current]?.realtimeLevelPolicy===REALTIME_LEVEL_POLICY||isCoveragePlan(session.preparation.plans[current])||inTargetBand(pending.w,session.difficulty||child().difficulty))&&!(session.completionPolicy===DAILY_POLICY&&(studyHistory.isStudyRound(session)?!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w):usageCompleted(session.results).has(pending.w.w))&&(!pinned||session.sentenceCyclePolicy)&&!gradeDelivery&&(!session.preparation.plans[current]?.roundReinforcement||studyHistory.isBreadthRound(session))))break;
   // Keep the original cursor and answered records. Excluded questions get a
   // checkpoint entry, never a wrong answer, word statistic or reward.
   if(session.results.length!==current)throw Error('학습 순서를 확인하지 못했어요. 기존 답안은 보관되어 있어요.');
-  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:pendingGrade?'grading_pending':wordOnCooldown(child(),pending.w.w)?'correct_cooldown':studyHistory.isBreadthRound(session)&&!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w)?'round_confirmed':usageCompleted(session.results).has(pending.w.w)?'usage_confirmed':isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
+  session.results.push({word:pending.w.w,type:pending.type,result:'제외',credit:null,practiceOnly:true,excludedFromVocabulary:true,exclusionReason:staleGradeDelivery?'grading_already_applied':pendingGrade?'grading_pending':wordOnCooldown(child(),pending.w.w)?'correct_cooldown':studyHistory.isBreadthRound(session)&&!studyHistory.roundUnfinished(session).some(w=>w.w===pending.w.w)?'round_confirmed':usageCompleted(session.results).has(pending.w.w)?'usage_confirmed':isLearningTarget(pending.w.w,pending.w.cat,pending.w.band)?'out_of_target_band':'excluded_target',stars:0,xp:0});
   current++;skipped++;
  }
  if(skipped){checkpointSession();localSave();cloudSave()}
@@ -1582,7 +1582,7 @@ function renderQuestion(savedHint=0){
  $('qTag').textContent=q.label; $('difficulty').textContent='출제 난이도 '+child().difficulty.toFixed(1)+' · 어휘 '+vocabularyBand(q.w)+'단계';
  $('qWord').textContent=q.showTarget?q.w.w:'';
  $('qWord').classList.toggle('hidden',!q.showTarget);
- $('qText').textContent=q.q;
+ $('qText').textContent=(q.type==='subjective_use'&&q.w.w==='판'&&/지구/.test(q.w.d)&&/암석/.test(q.w.d)?'지구과학에서 쓰는 뜻으로 문장을 만들어 주세요.\n':'')+q.q;
  $('qContext').classList.toggle('hidden',!q.ctx); $('qContext').textContent=q.ctx||'';
  $('feedback').className='feedback hidden'; $('hintBox').className='feedback hidden'; $('hintBox').textContent='';
  renderSinoMeaning('wordRootHint',null);renderSinoMeaning('wordRootFeedback',null);
@@ -1672,7 +1672,8 @@ function applyResult(q,result,feedback,normalized='',meta={}){
   for(const plan of session.preparation.plans)if(child().words[plan.w.w]?.seen||child().words[plan.w.w]?.introducedAt||plan.realtimeProbe)plan.realtimeLevelPolicy=REALTIME_LEVEL_POLICY;
   $('difficulty').textContent='출제 난이도 '+child().difficulty.toFixed(1)+' · 어휘 '+vocabularyBand(q.w)+'단계';
  }
- if(session.completionPolicy===DAILY_POLICY&&(!studyHistory.isBreadthRound(session)||session.sentenceCyclePolicy)){
+ if(session.completionPolicy===DAILY_POLICY&&(!studyHistory.isBreadthRound(session)||session.sentenceCyclePolicy)&&
+  !session.preparation.plans[current]?.gradingBridge&&!(session.gradingQueue||[]).some(j=>j.word===q.w.w&&['pending','sending','ready'].includes(j.status))){
   const plan=session.baseWords.some(w=>w.w===q.w.w)?nextUsagePlan({...session.preparation.plans[current],...(session.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY}:{})},roundAttemptResults(session,q.w.w),session.preparation.plans.length,st):null;
   if(plan){session.preparation.append([plan]);session.target=session.preparation.plans.length;session.preparation.pump()}
  }

@@ -342,3 +342,28 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
  assert.ok(hiddenReading.every(n=>!n.classList.contains('correct')&&!n.classList.contains('wrong')));
  console.log('Reading → vocabulary choice PASS: ten DOM options, only current five graded, no hidden-reading crash or marking.');
 }
+
+// A feedback-delivery plan is not a reusable learning-task identity.
+{
+ const isolated=fixture();await isolated.run('buildSession()');await flush();
+ isolated.run("globalThis.cleanRetry=nextUsagePlan({...session.preparation.plans[0],deferredGradeId:'old-result',gradingBridge:true,roundReinforcement:true},[{word:session.queue[0].w.w,type:'subjective_use',credit:0,contextSuccess:false}],99)");
+ for(const key of ['deferredGradeId','gradingBridge','roundReinforcement'])assert.equal(isolated.run('Object.hasOwn(cleanRetry,'+JSON.stringify(key)+')'),false);
+ const before=isolated.run('session.preparation.plans.length');
+ isolated.run("session.preparation.plans[current].gradingBridge=true;session.queue[current]={...session.queue[current],type:'mc_usage',open:false,practiceOnly:true,opts:[{t:'뜻에 맞는 상황',ok:true},...['보기 하나','보기 둘','보기 셋','보기 넷'].map(t=>({t,ok:false}))]};session.gradingQueue=[{id:'original-in-flight',index:current,word:session.queue[current].w.w,status:'sending'}];selectedOption=0");
+ await isolated.run('gradeCurrent(false)');
+ assert.equal(isolated.run('session.preparation.plans.length'),before,'pending-grade practice cannot schedule another paid writing task');
+ assert.equal(isolated.run('session.gradingQueue[0].status'),'sending');
+ const duplicate=fixture();await duplicate.run('buildSession()');await flush();
+ duplicate.run("session.preparation.plans[0].deferredGradeId='already-counted';session.gradingQueue=[{id:'already-counted',status:'applied',word:session.queue[0].w.w,index:0}];renderQuestion()");
+ assert.ok(duplicate.run('current')>0,'stale feedback copies cannot ask for another answer');
+ assert.equal(duplicate.run('session.results[0].exclusionReason'),'grading_already_applied');
+ assert.equal(duplicate.run('session.results[0].credit'),null,'skipping a stale copy invents no grade');
+ console.log('Grade identity isolation PASS: feedback IDs never enter retries, pending practice never spawns paid writing, applied copies skip without fake credit.');
+}
+{
+ const sense=fixture();await sense.run('buildSession()');await flush();
+ sense.run("session.queue[0]={...session.queue[0],w:{w:'판',d:'지구 겉부분을 이루며 천천히 움직이는 큰 암석 덩어리입니다.',band:3,cat:'과학'},type:'subjective_use',open:true,showTarget:true,opts:[]};session.preparation.plans[0]={...session.preparation.plans[0],w:session.queue[0].w,type:'subjective_use'};renderQuestion()");
+ assert.ok(sense.node('qText').textContent.includes('지구과학'));
+ assert.ok(!sense.node('qText').textContent.includes('암석 덩어리'),'clarify the intended domain without supplying a model sentence or definition');
+ console.log('Ambiguous plate prompt PASS: visible earth-science context, unchanged canonical grade task and no example leak.');
+}
