@@ -12,7 +12,7 @@ export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC,recover=a
    if(!user?.id)return res.status(401).json({error:'Login required'});
    requireGradingAccount(user);
    let recovered=0,waiting=0,conflicts=0;const deadline=Date.now()+9000;
-   for(const profile of ['ayoung','inseong','guest']){
+   for(const profile of ['ayoung','inseong','guest','test']){
     const skip=[];
     // Bounded cache-only checks. No model, lease, or paid-grade start call.
     for(let i=0;i<3&&Date.now()<deadline;i++){

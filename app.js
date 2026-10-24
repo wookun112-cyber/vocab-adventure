@@ -93,7 +93,7 @@ const CHARACTERS=[
  ['chick','콩알 병아리','#f3d37c','chick'],['koala','나무 코알라','#b6c2cc','round'],
  ['unicorn','꿈빛 유니콘','#d7bce9','unicorn'],['dino','숲속 공룡','#a8cf8a','dino']
 ].map(([id,name,color,shape])=>({id,name,color,shape}));
-const DEFAULT_CHARACTERS={ayoung:'puppy',inseong:'dragon',guest:'robot'};
+const DEFAULT_CHARACTERS={ayoung:'puppy',inseong:'dragon',guest:'robot',test:'robot'};
 const EVOLUTION_FORMS=[
  ['씨앗','#a5b4ca','잠든 아기 · 큰 얼굴과 포근한 이불'],['새싹','#70bc9b','통통한 새싹 · 앉은 몸과 짧은 발'],['견습','#66a8d8','직립 견습 · 두 발로 선 탐험가'],
  ['모험가','#6f90de','달리는 모험가 · 펄럭이는 망토'],['수호자','#a187da','넓은 수호자 · 커다란 방패와 어깨'],['정예','#d580af','긴 체형의 정예 · 투구와 전신 갑옷'],
@@ -421,7 +421,7 @@ const dailyChangeLabel=change=>change>0?'▲ '+change.toFixed(1)+' 상승':chang
 let renderedLeagueDate='';
 const rankCaption=row=>(row.tied?'공동 ':'')+row.rank+'위';
 function explorationRanking(c=child(),profile=state.selected,day=leagueDay()){
- const familyIds=['ayoung','inseong',...(profile==='guest'?['guest']:[])];
+ const familyIds=profile==='test'?['test']:['ayoung','inseong',...(profile==='guest'?['guest']:[])];
  const family=familyIds.map(id=>{
   const learner=id===profile?c:state.users[id];exploration(learner,id);
   return {id,name:learner.name,characterId:learner.characterId,difficulty:rankingDifficulty(learner.leagueLevel??learner.difficulty),virtual:false,family:true,isMe:id===profile};
@@ -452,7 +452,7 @@ function equipEvolution(stage){
  c.characterEvolution={...owned,equippedStage:next};storeLearnerCheckpoint(state.selected);localSave();cloudSave().catch(()=>{});renderExploration();
  if($('characterStatus'))$('characterStatus').textContent='진화 '+next+'단계 '+EVOLUTION_FORMS[next-1].name+' 적용 완료';
 }
-function refreshDailyLeague(){if(renderedLeagueDate!==leagueDate()){renderExploration();renderTodayCompletion();if(['ayoung','inseong'].includes(reportProfile)&&$('report')?.classList.contains('active'))renderTodayCompletion(state.users[reportProfile],'reportTodayCompletion')}}
+function refreshDailyLeague(){if(renderedLeagueDate!==leagueDate()){renderExploration();renderTodayCompletion();if(['ayoung','inseong','test'].includes(reportProfile)&&$('report')?.classList.contains('active'))renderTodayCompletion(state.users[reportProfile],'reportTodayCompletion')}}
 const leagueRefreshDelay=(now=Date.now())=>Math.max(1000,(leagueDay(new Date(now))+1)*LEAGUE_DAY_MS-9*3600000-now+50);
 function scheduleDailyLeague(){setTimeout(()=>{refreshDailyLeague();scheduleDailyLeague()},leagueRefreshDelay())}
 function selectCharacter(id){
@@ -466,7 +466,7 @@ function renderExploration(){
  const c=child(),rows=explorationRanking(c,state.selected,leagueDay(date)),me=rows.find(x=>x.isMe),ahead=rows.filter(x=>x.difficulty>me.difficulty).pop();
  awardRankEvolutions(rows);const owned=evolutionState(c),awardedToday=owned.awardedAt&&leagueDate(new Date(owned.awardedAt))===renderedLeagueDate;
  const rowSvg=x=>characterSvg(x.characterId,x.virtual?evolutionForRank(x.rank):evolutionState(state.users[x.id]).equippedStage,x.virtual?{}:customization(state.users[x.id]).equipped);
- for(const id of ['ayoung','inseong','guest']){
+ for(const id of ['ayoung','inseong','guest','test']){
   const u=state.users[id];exploration(u,id);
   for(const prefix of ['profileAvatar-','reportAvatar-'])if($(prefix+id))$(prefix+id).innerHTML=characterSvg(u.characterId,evolutionState(u).equippedStage,customization(u).equipped);
  }
@@ -497,7 +497,7 @@ const freshChild=name=>({
  words:Object.fromEntries(SEED_WORDS.map(x=>[x.w,freshWord()])),
  lastDate:null,levelTestCompleted:false,recentProblems:[]
 });
-const initial=()=>({v:5,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성'),guest:freshChild('게스트')},updatedAt:Date.now()});
+const initial=()=>({v:5,curriculum:'elementary-to-high-3',selected:'ayoung',catalog:{},users:{ayoung:freshChild('아영'),inseong:freshChild('인성'),guest:freshChild('게스트'),test:freshChild('테스트')},updatedAt:Date.now()});
 let state=initial(),authUser=null,deferredPrompt=null,session=null,current=0,selectedOption=null,answerSource='typed',saving=false,reportProfile=null,hintLevel=0,introIndex=0;
 let wordbookView='levels',vocabularyFilter={band:0,query:'',status:'all',page:0};
 let vocabularyIndex={account:null,rows:[],loaded:false,loading:false,error:'',task:null};
@@ -577,9 +577,9 @@ function rebuildCatalog(){
 function mergeState(raw){
  const base=initial(); const src=raw&&typeof raw==='object'?raw:{};
  base.catalog=src.catalog&&typeof src.catalog==='object'?src.catalog:{};
- base.selected=['ayoung','inseong','guest'].includes(src.selected)?src.selected:'ayoung';
+ base.selected=['ayoung','inseong','guest','test'].includes(src.selected)?src.selected:'ayoung';
  base.updatedAt=src.updatedAt||Date.now();
- for(const id of ['ayoung','inseong','guest']){
+ for(const id of ['ayoung','inseong','guest','test']){
    const childSrc=src.users?.[id]||{},dst=base.users[id];
    Object.assign(dst,childSrc);
    dst.recentProblems=Array.isArray(childSrc.recentProblems)?childSrc.recentProblems.slice(-60):[];
@@ -720,7 +720,7 @@ function checkpointSession(){
 }
 function mergeLearnerCheckpoints(){
  let changed=false;
- for(const profile of ['ayoung','inseong','guest']){
+ for(const profile of ['ayoung','inseong','guest','test']){
   let saved;try{saved=JSON.parse(localStorage.getItem(learnerCheckpointKey(profile))||'null')}catch{continue}
   const c=state.users[profile];
   if(saved?.account!==authUser?.id||saved.profile!==profile||!saved.learner||!preservesLearning(c,saved.learner)||!(saved.savedAt>(c.lessonCheckpointAt||0)||hasMoreLearning(c,saved.learner)))continue;
@@ -1231,7 +1231,7 @@ function createPreparation(meta,saved=[]){
  return p;
 }
 async function serverLesson(profile,activeId=null,retry=false){
- if(!['ayoung','inseong','guest'].includes(profile))return null;
+ if(!['ayoung','inseong','guest','test'].includes(profile))return null;
  const name=activeId?'get_prepared_lesson':'ensure_prepared_lesson',args=activeId?{p_profile:profile,p_active_id:activeId}:{p_profile:profile,p_snapshot:preparationSnapshot(profile),p_retry:retry};
  const {data,error}=await withDeadline(sb.rpc(name,args),10000,'저장된 문제를 불러오는 응답이 늦어졌어요. 다시 눌러 주세요.');
  if(error)throw new Error('저장된 학습 문제를 확인하지 못했어요. 다시 눌러 주세요.');
@@ -1290,7 +1290,7 @@ async function getPreparation(mode='daily',retry=false){
  const loading=(async()=>{
    let saved=null;
    try{saved=JSON.parse(localStorage.getItem(key)||'null')}catch{}
-   if(mode==='daily'&&['ayoung','inseong','guest'].includes(profile)){
+   if(mode==='daily'&&['ayoung','inseong','guest','test'].includes(profile)){
      if(cloudSaveTask)await withDeadline(cloudSaveTask,10000,'학습 기록 저장이 늦어졌어요. 잠시 뒤 다시 눌러 주세요.');
      let remote=await serverLesson(profile,null,retry),tries=0;
      const blocked=serverPreparationError(remote);if(blocked)throw blocked;
@@ -1350,7 +1350,7 @@ function warmDailyQuestions(){
  getPreparation('daily').catch(error=>{
   if(account!==authUser?.id||profile!==state.selected)return;
   if(error.noReviewCandidates){$('cloudPill').textContent='현재 수준의 복습 후보가 아직 없어요';renderResumeButton();return}
-  if(error.code==='preparation_failed'){clearTimeout(preparationRetryTimer);preparationRetryTimer=null;$('cloudPill').textContent='문제 준비 오류 · 시작 버튼으로 재시도';renderResumeButton();return}
+  if(error.code==='preparation_failed'){clearTimeout(preparationRetryTimer);preparationRetryTimer=null;$('cloudPill').textContent='문제 준비 오류 · 시작 버튼으로 재시도';setStudyStartStatus('문제 묶음을 저장하지 못했어요. 기다려도 자동으로 시작되지 않습니다. 시작 버튼으로 다시 시도해 주세요. 기존 학습 기록은 보관되어 있어요.',true);renderResumeButton();return}
   if(error.code==='ai_credit_exhausted'){preparationBlock={account,profile};$('cloudPill').textContent='API 잔액 확인 필요';renderResumeButton();return}
   $('cloudPill').textContent=error.preparationPending?'학습 문제 미리 준비 중':'시작 버튼으로 문제 준비 재시도';
   if(error.preparationPending){clearTimeout(preparationRetryTimer);preparationRetryTimer=setTimeout(()=>{if(account===authUser?.id&&profile===state.selected)warmDailyQuestions()},10000)}
@@ -2534,6 +2534,7 @@ function renderAll(){
  $('ayoungLevel').textContent='현재 단계 '+bandLabel(state.users.ayoung.difficulty)+' · '+state.users.ayoung.difficulty.toFixed(1);
  $('inseongLevel').textContent='현재 단계 '+bandLabel(state.users.inseong.difficulty)+' · '+state.users.inseong.difficulty.toFixed(1);
  $('guestLevel').textContent='현재 단계 '+bandLabel(state.users.guest.difficulty)+' · '+state.users.guest.difficulty.toFixed(1);
+ if($('testLevel'))$('testLevel').textContent='테스트 전용 · '+state.users.test.difficulty.toFixed(1);
  $('hello').textContent=c.name+'의 오늘 탐험'; $('subtitle').textContent=c.name+' · 기준 난이도 '+stableBaselineLevel(c).toFixed(1)+' · 지금 문제 '+c.difficulty.toFixed(1);
  $('statScore').textContent=(c.sessions.filter(row=>row.lessonId===(c.sessions.find(row=>row.mode!=='review')||c.sessions[0])?.lessonId).sort((a,b)=>(b.total||0)-(a.total||0))[0]||c.sessions[0])?.score??'-'; $('statWords').textContent=Object.entries(c.words).filter(([w,x])=>isLearningTarget(w)&&x.seen>0).length; $('statMaster').textContent=summarizeEvidence(c).mastered; $('statDay').textContent=Math.max(1,c.learningDays);
  renderStudySummary();renderWordbook();renderReport();renderExploration();
@@ -2695,7 +2696,7 @@ function renderStudyHistory(profile){
  if($('studyHistoryNext'))$('studyHistoryNext').onclick=()=>{reportHistoryPage++;renderStudyHistory(profile)};
 }
 function renderReport(){
- const reportId=['ayoung','inseong'].includes(reportProfile)?reportProfile:(['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung');reportProfile=reportId;
+ const reportId=['ayoung','inseong','test'].includes(reportProfile)?reportProfile:(['ayoung','inseong','test'].includes(state.selected)?state.selected:'ayoung');reportProfile=reportId;
  const c=state.users[reportId],stats=summarizeEvidence(c),budget=studyBudget(c),studied=WORDS.filter(w=>isLearningTarget(w.w,w.cat,w.band)&&((c.words[w.w]?.seen||0)>0||c.words[w.w]?.introducedAt));
  const available=vocabularyIndex.account===authUser?.id&&vocabularyIndex.loaded;
  const mastery=available?curriculumMasterySummary(vocabularyIndex.rows,c):null,mt=mastery?.totals;
@@ -2735,7 +2736,7 @@ function renderReport(){
  <div class="card"><h3>학습 중 난이도 조정</h3><p>${escapeHtml(levelAdjustmentLabel(c)||'다음 학습을 마치면 이 회차의 등급 변화를 보여 드려요.')}</p><p class="muted">출제 난이도는 70%대부터 상위 문제 도전을 늘리고, 80% 이상은 적극적으로 조정해요. 장기 등급은 서로 다른 어휘 6개 이상의 첫 시도 평가와 상위 단계 3개 중 2개 성공 등을 확인한 뒤 일반적으로 하루 최대 +0.3, 뛰어난 근거가 있으면 최대 +0.4 올립니다. 서로 다른 어휘 3개를 평가할 때마다 다음 출제 난이도를 조정해요. 객관식만 맞히거나 해설을 보고 반복한 정답은 승급 근거로 충분하지 않아요. 서로 다른 어휘 3개에서 뜻 이해의 어려움이 확인되면 0.2~0.3씩 낮추고, 문장 구성의 어려움은 그 단어의 연습을 보강합니다. 현재 문제와 이미 공부한 목표 단어는 유지하고, 아직 배우지 않은 다음 어휘부터 새 수준을 적용해요. 순위 등급은 학습을 마칠 때 확정하며 실시간 변화를 두 번 더하지 않습니다. 이 등급은 게임용 학습 추정값이며 공인 어휘력 점수나 실제 학년 점수가 아닙니다.</p></div>`;
 }
 
-function show(id){if(!['learn','intro','reading'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home'){renderResumeButton();renderTodayCompletion()}if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong'].includes(reportProfile))reportProfile=['ayoung','inseong'].includes(state.selected)?state.selected:'ayoung';renderReport();if(!vocabularyIndex.loaded&&!vocabularyIndex.loading)void loadVocabularyIndex()}window.scrollTo({top:0,behavior:'smooth'})}
+function show(id){if(!['learn','intro','reading'].includes(id)){pauseLearningClock();if(checkpointSession()){localSave();cloudSave()}}else resumeLearningClock();if(['home','characters','ranking'].includes(id))renderExploration();if(id==='home'){renderResumeButton();renderTodayCompletion()}if(id==='home')setTimeout(warmDailyQuestions,0);document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.go===id));if(id==='wordbook'){renderWordbook();if(wordbookView==='levels')loadVocabularyIndex()}if(id==='report'){if(!['ayoung','inseong','test'].includes(reportProfile))reportProfile=['ayoung','inseong','test'].includes(state.selected)?state.selected:'ayoung';renderReport();if(!vocabularyIndex.loaded&&!vocabularyIndex.loading)void loadVocabularyIndex()}window.scrollTo({top:0,behavior:'smooth'})}
 function authErrorMessage(error){
  const code=error?.code,status=Number(error?.status)||0;
  if(status>=500||status===408||code==='request_timeout')return '로그인 서버 연결이 지연됐어요. 잠시 뒤 다시 시도해 주세요.';

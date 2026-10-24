@@ -13,7 +13,7 @@ const deviceStore=createCheckpointStore({idb:typeof indexedDB==='undefined'?null
  if(typeof renderSaveStatus==='function')renderSaveStatus();
 }});
 async function hydrateDeviceRecords(account){
- const keys=['vocab-account-'+account,...['ayoung','inseong','guest'].map(profile=>learnerCheckpointKey(profile,account))];
+ const keys=['vocab-account-'+account,...['ayoung','inseong','guest','test'].map(profile=>learnerCheckpointKey(profile,account))];
  await deviceStore.hydrate(keys);
 }
 function deviceLearnerCheckpoint(profile){
