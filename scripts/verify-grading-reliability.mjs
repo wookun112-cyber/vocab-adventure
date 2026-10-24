@@ -327,3 +327,18 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
  assert.equal(posted[1].providerReceipt,'signed-test-receipt');
  console.log('Pending provider receipt PASS: preserved in checkpoint and read-only result lookup.');
 }
+
+// Hidden reading choices remain in the DOM after the reading activity.
+// Vocabulary grading must only enumerate its own five options.
+{
+ const scoped=fixture();await scoped.run('buildSession()');await flush();
+ const choices=Array.from({length:5},(_,i)=>scoped.node('vocab-option-'+i));
+ const hiddenReading=Array.from({length:5},(_,i)=>scoped.node('reading-option-'+i));
+ scoped.ctx.document.querySelectorAll=selector=>selector==='#options .option'?choices:selector==='.option'?[...choices,...hiddenReading]:[];
+ scoped.run("session.queue[current]={...session.queue[current],type:'mc_usage',open:false,opts:[{t:'뜻에 맞는 상황',ok:true},...['다른 뜻 하나','다른 뜻 둘','다른 뜻 셋','다른 뜻 넷'].map(t=>({t,ok:false}))]};selectedOption=0");
+ await scoped.run('gradeCurrent(false)');
+ assert.equal(scoped.run('session.results[0].credit'),1);
+ assert.equal(choices[0].classList.contains('correct'),true);
+ assert.ok(hiddenReading.every(n=>!n.classList.contains('correct')&&!n.classList.contains('wrong')));
+ console.log('Reading → vocabulary choice PASS: ten DOM options, only current five graded, no hidden-reading crash or marking.');
+}

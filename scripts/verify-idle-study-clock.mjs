@@ -272,3 +272,7 @@ for(const score of [0,1]){
  assert.equal(newer.run('child().words.의견.lastFeedbackDate'),'2026-10-12');
 }
 console.log('Close/reopen/next-day cap recovery and delayed foreground grading dates verified; drafts and later progress preserved.');
+// Returning home must render the latest checkpoint, not the pre-lesson total.
+const homeClock=fixture({elapsed:120000});homeClock.advance(5000);homeClock.run("show('home')");
+assert.ok(homeClock.node('dailyBudget').textContent.includes('2분 5초'),'home total refreshes immediately after leaving a question');
+console.log('Home clock PASS: current checkpoint time immediately replaces the old home total.');
