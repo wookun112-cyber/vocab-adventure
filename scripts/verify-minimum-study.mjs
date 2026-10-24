@@ -78,28 +78,28 @@ assert.equal(f.run('current'),next);assert.equal(f.run('JSON.stringify(session.r
 assert.equal(f.node('answer').value,'새 단어를 넣어 쓰던 문장');assert.equal(f.run('activeTime()'),MINIMUM_STUDY_MS-1000);
 assert.equal(f.run('session.timeAddedWords.length'),1);assert.equal(f.run('session.studyTopups.targets.length'),4);
 
-// Reaching 25 minutes alone cannot bypass the added word's meaningful use.
+// Reaching 20 minutes alone cannot bypass the added word's meaningful use.
 f.advance(2000);f.run('finishSession()');assert.equal(f.run('child().sessions.length'),0);
 f.run("show('learn');renderQuestion();applyResult(session.queue[current],'○','뜻에 맞는 문장이에요.','',{credit:1,contextSuccess:true,hintUsed:false,revealed:false})");
 await f.run('nextQuestion()');
 assert.equal(f.run('session.completed'),true);assert.equal(f.run('child().sessions.length'),1);
-assert.ok(f.run('child().sessions[0].activeMinutes')>=25);f.run('finishSession()');assert.equal(f.run('child().sessions.length'),1);
+assert.ok(f.run('child().sessions[0].activeMinutes')>=20);f.run('finishSession()');assert.equal(f.run('child().sessions.length'),1);
 
 // Exact threshold and later completion use no surplus word.
 for(const elapsed of [MINIMUM_STUDY_MS,MINIMUM_STUDY_MS+60000]){
  const done=fixture(elapsed);done.run('finishSession()');assert.equal(done.run('session.completed'),true);assert.equal(done.run('session.timeAddedWords.length'),0);assert.equal(done.requests.length,0);
 }
 // Still too fast after one added target: introduce another, rather than padding time.
-const again=fixture(20*60000);again.run('finishSession();nextIntro()');
+const again=fixture(15*60000);again.run('finishSession();nextIntro()');
 again.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1,contextSuccess:true})");await again.run('nextQuestion()');
 again.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1,contextSuccess:true})");await again.run('nextQuestion()');
 assert.equal(again.run('session.timeAddedWords.length'),2);assert.equal(again.run('child().sessions.length'),0);assert.equal(again.requests.length,0);
 
-// AI grading wall time is excluded; its correct answer does not complete <25m.
-const grading=fixture(24*60000);grading.run('current=0;session.results=[];renderQuestion()');
+// AI grading wall time is excluded; its correct answer does not complete <20m.
+const grading=fixture(19*60000);grading.run('current=0;session.results=[];renderQuestion()');
 grading.node('answer').value='뜻이 드러나는 나의 문장';
 grading.setFetch(url=>{assert.equal(url,'/api/grade');grading.advance(180000);return {ok:true,json:async()=>({score:1,contextSuccess:true,feedback:'정확한 쓰임입니다.'})}});
-await grading.run('gradeCurrent(false)');assert.equal(grading.run('activeTime()'),24*60000);
+await grading.run('gradeCurrent(false)');assert.equal(grading.run('activeTime()'),19*60000);
 await grading.run('nextQuestion()');assert.equal(grading.run('session.timeAddedWords.length'),1);assert.equal(grading.run('child().sessions.length'),0);
 
 // Legacy packets prefetch without generation; a failed download is not completion.
@@ -126,4 +126,4 @@ try{
  calls=0;globalThis.fetch=async()=>{calls++;return {ok:true,json:async()=>({id:'other-owner'})}};
  res=response();await topupHandler({method:'POST',headers:{authorization:'Bearer fixture'},body:{profile:'ayoung',level}},res);assert.equal(res.code,403);assert.equal(calls,1);
 }finally{globalThis.fetch=originalFetch}
-console.log('Minimum study verified: 4 matched server packets; 24:59 adds one fresh word immediately, repeated additions until 25m, exact/later threshold stops, sentence use remains mandatory, draft/restart preserved, breaks/grading/download waits excluded, legacy retry and owner-only bank delivery.');
+console.log('Minimum study verified: 4 matched server packets; 19:59 adds one fresh word immediately, repeated additions until 20m, exact/later threshold stops, sentence use remains mandatory, draft/restart preserved, breaks/grading/download waits excluded, legacy retry and owner-only bank delivery.');

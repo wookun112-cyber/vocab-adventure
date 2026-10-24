@@ -67,15 +67,15 @@ const base=[w('근거'),w('주장')],a={roundPolicy:studyHistory.ROUND_POLICY,mo
  {word:'주장',credit:1,type:'subjective_recall',contextSuccess:true,hintUsed:false,revealed:false}]};
 assert.equal(studyHistory.roundUnfinished(a).length,0);
 assert.equal(usageCompleted(a.results).size,0,'meaning success allows round completion without claiming independent sentence usage');
-assert.equal(studyHistory.roundState(a,25*60*1000).shouldEnd,false,'the required reading must still be completed');
+assert.equal(studyHistory.roundState(a,20*60*1000).shouldEnd,false,'the required reading must still be completed');
 a.readingPractice.completed=true;
-assert.equal(studyHistory.roundState(a,25*60*1000).shouldEnd,true);
-assert.equal(studyHistory.roundState(a,25*60*1000).reason,'completed');
+assert.equal(studyHistory.roundState(a,20*60*1000).shouldEnd,true);
+assert.equal(studyHistory.roundState(a,20*60*1000).reason,'completed');
 const forgotten={...a,results:[a.results[0],{...a.results[1],credit:0,contextSuccess:false}]};
 assert.equal(studyHistory.roundUnfinished(forgotten).length,1);
-assert.equal(studyHistory.roundState(forgotten,25*60*1000).shouldEnd,false);
-assert.equal(studyHistory.roundState(forgotten,30*60*1000).shouldEnd,true);
-assert.equal(studyHistory.roundState(forgotten,30*60*1000).reason,'time_limit');
+assert.equal(studyHistory.roundState(forgotten,20*60*1000).shouldEnd,false);
+assert.equal(studyHistory.roundState(forgotten,25*60*1000).shouldEnd,true);
+assert.equal(studyHistory.roundState(forgotten,25*60*1000).reason,'time_limit');
 const c={difficulty:4,words:{},unfinishedUsage:{}};
 syncUnfinishedUsage(c,{...forgotten,lessonId:'breadth',studyStartedAt:Date.now(),studyFallbackDay:learningDay()});
 assert.ok(c.unfinishedUsage['주장'],'unresolved meaning carries to a later round');
@@ -122,7 +122,7 @@ context.lesson=structuredClone(lesson);
 run("authUser={id:'"+AUTHORED_OWNER+"'};loadedAccount=authUser.id;state.selected='guest';"+
  "renderAll=()=>{};renderReport=()=>{};renderExploration=()=>{};warmDailyQuestions=()=>{};localSave=()=>{};cloudSave=()=>Promise.resolve(true);"+
  "const prep=createPreparation({account:authUser.id,profile:'guest',plans:lesson.plans,baseCount:1,baseWords:[lesson.plans[0].w],newWords:[],deliveryPolicy:DELIVERY_POLICY,practicePool:[],key:'fixture',adopted:true},lesson.ready);"+
- "session={roundPolicy:studyHistory.ROUND_POLICY,readingPractice:prepareReadingExposure(['분석'],['관찰'],'fixture-3'),lessonId:'round-breadth',profile:'guest',account:authUser.id,mode:'daily',model:LEARNING_MODEL,difficulty:3,preparation:prep,queue:prep.queue,results:[{word:lesson.plans[0].w.w,type:'mc_usage',credit:1,contextSuccess:true,result:'○',band:3,studyDate:today(),answeredAt:Date.now()}],target:1,baseWords:[lesson.plans[0].w],newWords:[],completionPolicy:DAILY_POLICY,introWords:[],introDone:true,activeMs:24*60000,clockStarted:null,studyStartedAt:Date.now(),studyFallbackDay:today(),studyDays:{[today()]:{activeMs:24*60000,timeKnown:true}}};current=1;"+
+ "session={roundPolicy:studyHistory.ROUND_POLICY,readingPractice:prepareReadingExposure(['분석'],['관찰'],'fixture-3'),lessonId:'round-breadth',profile:'guest',account:authUser.id,mode:'daily',model:LEARNING_MODEL,difficulty:3,preparation:prep,queue:prep.queue,results:[{word:lesson.plans[0].w.w,type:'mc_usage',credit:1,contextSuccess:true,result:'○',band:3,studyDate:today(),answeredAt:Date.now()}],target:1,baseWords:[lesson.plans[0].w],newWords:[],completionPolicy:DAILY_POLICY,introWords:[],introDone:true,activeMs:19*60000,clockStarted:null,studyStartedAt:Date.now(),studyFallbackDay:today(),studyDays:{[today()]:{activeMs:19*60000,timeKnown:true}}};current=1;"+
  "studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);");
 run("const knownExtra=WORDS.find(w=>w.w!==lesson.plans[0].w.w&&isLearningTarget(w)&&inTargetBand(w,3));wordState(knownExtra.w).seen=2;");
 const oldAnswers=run('JSON.stringify(session.results)'),oldWords=run('JSON.stringify(child().words)'),oldEvidence=run('JSON.stringify(child().learningEvidence||[])');
@@ -144,7 +144,7 @@ assert.equal(run('child().activeLesson.readingPractice.step'),1,'second question
 assert.equal(run('child().activeLesson.readingPractice.answers.length'),1);
 const second=readingPassageById(run('session.readingPractice.id')).tasks[1];
 run('answerReadingPractice('+second.correct+')');
-run("session.activeMs=25*60000;session.studyDays={[today()]:{activeMs:25*60000,timeKnown:true}};session.clockStarted=null;");
+run("session.activeMs=20*60000;session.studyDays={[today()]:{activeMs:20*60000,timeKnown:true}};session.clockStarted=null;");
 run('nextReadingPractice()');
 assert.equal(run('session.readingPractice.completed'),true);
 assert.equal(run('session.completed'),true,'a fully understood round finishes after 25 minutes with no forced sentence');
@@ -156,11 +156,11 @@ assert.equal(run('JSON.stringify(child().words)'),oldWords,'the reading passage 
 assert.equal(run('JSON.stringify(child().learningEvidence||[])'),oldEvidence);
 assert.equal(Object.keys(run('child().readingExposure')).length,8);
 assert.deepEqual(requests,[],'reading always uses the offline approved content and creates no paid calls');
-console.log('Adaptive breadth PASS: 5/10 targets, no blanket own-sentence barrier, legacy preservation, 25–30 minute honest ending, 9 reviewed passages, two visible one-at-a-time questions, resume receipt, no false grading/mastery, eight exposure records, zero API requests.');
+console.log('Adaptive breadth PASS: 5/10 targets, no blanket own-sentence barrier, legacy preservation, 20–25 minute honest ending, 9 reviewed passages, two visible one-at-a-time questions, resume receipt, no false grading/mastery, eight exposure records, zero API requests.');
 
 context.originalCheckpoint=run('checkpointSession');
 // Regression: an old error followed by a full correct answer must not keep
-// drawing the same word to fill the 25-minute minimum, including after resume.
+// drawing the same word to fill the 20-minute minimum, including after resume.
 run(`
  globalThis.repeatWord=lesson.plans[0].w;
  globalThis.otherReview=WORDS.find(w=>w.w!==repeatWord.w&&isLearningTarget(w)&&inTargetBand(w,3));

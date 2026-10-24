@@ -27,12 +27,12 @@ f.run("globalThis.originalGetPreparation=getPreparation;getPreparation=async(...
 for(let n=1;n<=4;n++){
  await f.run("buildSession('daily')");
  assert.equal(f.run('session.mode'),'daily');assert.equal(f.run('session.roundNumber'),n);
- f.run("session.results=session.baseWords.map(w=>({word:w.w,type:'subjective_use',result:'○',credit:1,contextSuccess:true,hintUsed:false,revealed:false,answeredAt:Date.now(),studyDate:today()}));session.activeMs=25*60000;session.clockStarted=null;session.studyDays={[today()]:{activeMs:25*60000,timeKnown:true}};session.studyTimeInitialized=true;finishSession()");
+ f.run("session.results=session.baseWords.map(w=>({word:w.w,type:'subjective_use',result:'○',credit:1,contextSuccess:true,hintUsed:false,revealed:false,answeredAt:Date.now(),studyDate:today()}));session.activeMs=20*60000;session.clockStarted=null;session.studyDays={[today()]:{activeMs:20*60000,timeKnown:true}};session.studyTimeInitialized=true;finishSession()");
  await f.run('cloudSave()');
  assert.equal(f.run('session.completed'),true);assert.equal(f.run('child().sessions.length'),n);
  assert.match(f.node('startDaily').textContent,new RegExp((n+1)+'회차 시작하기'));
  assert.match(f.alerts.at(-1),new RegExp(n+'회차 완료'));
 }
 assert.equal(f.calls.consumes,4);assert.equal(f.calls.generation,0);
-assert.equal(f.run('studyHistory.dailyStudyTime(child())'),100*60000,'four actual rounds sum honestly beyond a daily 30-minute cap');
-console.log('Same-day rounds PASS: production main button starts/consumes four independent server packets, numbers advance, 25-minute completion each, exact daily total and no paid generation.');
+assert.equal(f.run('studyHistory.dailyStudyTime(child())'),80*60000,'four actual rounds sum honestly beyond a daily 30-minute cap');
+console.log('Same-day rounds PASS: production main button starts/consumes four independent server packets, numbers advance, 20-minute completion each, exact daily total and no paid generation.');

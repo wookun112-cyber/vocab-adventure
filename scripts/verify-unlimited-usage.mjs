@@ -41,8 +41,8 @@ function fixture(saved){
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 let f=fixture();await f.run('buildSession()');assert.ok(f.run('session'),f.alerts.join(' | '));f.run('session.roundPolicy=studyHistory.LEGACY_ROUND_POLICY');assert.equal(f.run('session.target'),15);assert.equal(f.run('session.max'),null);
 // This suite exercises unlimited correction. Duration boundaries have their
-// own real-client suite; model 25 minutes already spent studying here.
-f.run('session.activeMs=25*60000;session.studyDays={[today()]:{activeMs:session.activeMs,timeKnown:true}}');
+// own real-client suite; model 20 minutes already spent studying here.
+f.run('session.activeMs=20*60000;session.studyDays={[today()]:{activeMs:session.activeMs,timeKnown:true}}');
 let steps=0,resumed=false;
 while(!f.run('session.completed')){
  if(f.run('!session.introDone&&current>=session.introAt')){while(f.run('!session.introDone'))f.run('nextIntro()');}

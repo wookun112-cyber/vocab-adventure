@@ -48,7 +48,7 @@ function fixture(elapsed=MINIMUM_STUDY_MS-1000,saved=null){
 }
 
 
-function round(elapsed=24*60000){
+function round(elapsed=19*60000){
  const f=fixture(elapsed);f.run("pauseLearningClock();session.roundPolicy=studyHistory.LEGACY_ROUND_POLICY;studyHistory.organizeStudyRounds(child(),studyHistory.historyFor(child()),session);session.studyStartedAt=Date.now();session.studyFallbackDay=today();session.results[0]={...session.results[0],answeredAt:Date.now(),studyDate:today()};");return f;
 }
 const fast=round();fast.run('finishSession()');
@@ -56,23 +56,23 @@ assert.equal(fast.run('session.timeAddedWords.length'),1);assert.equal(fast.run(
 const resolved=round();resolved.run("session.results.unshift({...session.results[0],credit:0,contextSuccess:false,type:'mc_usage',result:'×'});finishSession()");
 assert.equal(resolved.run('session.timeAddedWords.length'),0,'one error stops additional new words');
 assert.equal(resolved.run('session.preparation.plans.at(-1).roundReinforcement'),true);
-assert.equal(resolved.run('session.completed'),undefined,'resolved early still practices until 25');
-for(const elapsed of [25*60000,28*60000]){
+assert.equal(resolved.run('session.completed'),undefined,'resolved early still practices until 20');
+for(const elapsed of [20*60000,23*60000]){
  const f=round(elapsed);f.run('finishSession()');assert.equal(f.run('session.completed'),true);assert.equal(f.run('child().sessions.length'),1);
  assert.equal(f.run('child().activeLesson'),null);assert.equal(f.run('session.roundEndReason'),'completed');
  f.run('session.completed=false;completeStudyRound()');assert.equal(f.run('child().sessions.length'),1,'stale completed cursor cannot reward or summarize twice');
 }
-const errors=round(25*60000);errors.run("session.results[0]={...session.results[0],credit:0,contextSuccess:false,result:'×'};finishSession()");
-assert.equal(errors.run('session.completed'),undefined,'same round remains active at 25 with unresolved words');
+const errors=round(20*60000);errors.run("session.results[0]={...session.results[0],credit:0,contextSuccess:false,result:'×'};finishSession()");
+assert.equal(errors.run('session.completed'),undefined,'same round remains active at 20 with unresolved words');
 assert.equal(errors.run('session.timeAddedWords.length'),0);
-errors.run("session.results.push({...session.results[0],credit:1,contextSuccess:true,result:'○',type:'subjective_use'});session.activeMs=28*60000;session.clockStarted=null;finishSession()");
+errors.run("session.results.push({...session.results[0],credit:1,contextSuccess:true,result:'○',type:'subjective_use'});session.activeMs=23*60000;session.clockStarted=null;finishSession()");
 assert.equal(errors.run('session.completed'),true);assert.equal(errors.run('session.roundNumber'),1);
-const cap=round(30*60000);cap.run("session.results[0]={...session.results[0],credit:0,contextSuccess:false,result:'×'};finishSession()");
+const cap=round(25*60000);cap.run("session.results[0]={...session.results[0],credit:0,contextSuccess:false,result:'×'};finishSession()");
 assert.equal(cap.run('session.completed'),true);assert.equal(cap.run('session.roundEndReason'),'time_limit');assert.equal(cap.run('session.unfinishedWords.length'),1);
 assert.equal(cap.run('unfinishedUsageWords(child(),today()).length'),1,'unresolved word carries to a later round on the same day');
 assert.equal(cap.run('child().studyHistory.entries[session.lessonId].status'),'completed');
 assert.equal(cap.run('child().words[session.baseWords[0].w].mastered'),false);
-const retry=round(24*60000);retry.run("session.results.unshift({...session.results[0],credit:0,contextSuccess:false,type:'mc_usage',result:'×'});finishSession();");
+const retry=round(19*60000);retry.run("session.results.unshift({...session.results[0],credit:0,contextSuccess:false,type:'mc_usage',result:'×'});finishSession();");
 const n=retry.run('current');retry.node('answer').value='입력하던 문장';retry.run('checkpointSession()');
 const saved=JSON.parse(retry.run('JSON.stringify(child().activeLesson)')),before=JSON.stringify(saved.results);
 retry.run('session.preparation.cancel();session=null');await retry.run('resumeLesson(child().activeLesson)');
@@ -96,17 +96,17 @@ for(let number=1;number<=4;number++){
  for(const word of packet.newWords)reader.words[word]={seen:1,introducedAt:learningDay(),nextReviewAt:learningDay()};
 }
 
-const late=round(25*60000-1000);late.run("studyHistory.beginStudyWindow(session,'test',Date.now(),true);session.clockStarted=Date.now();studyHistory.bindDailyStudyLimit(child(),session,Date.now())");
-late.advance(120000);late.run('stopAtDailyLimit()');assert.equal(late.run('activeTime()'),25*60000,'delayed timer cannot inflate the round past its 25-minute boundary');
+const late=round(20*60000-1000);late.run("studyHistory.beginStudyWindow(session,'test',Date.now(),true);session.clockStarted=Date.now();studyHistory.bindDailyStudyLimit(child(),session,Date.now())");
+late.advance(120000);late.run('stopAtDailyLimit()');assert.equal(late.run('activeTime()'),20*60000,'delayed timer cannot inflate the round past its 20-minute boundary');
 // A later reinforcement failure reopens the word, and the correction is visible.
 const reopened=round();reopened.run("session.results.push({...session.results[0],credit:0,contextSuccess:false,result:'×'});current=session.results.length;ensureUsageContinuation(session);session.preparation.pump();renderQuestion()");
 assert.equal(reopened.run('studyHistory.roundUnfinished(session).length'),1);
 assert.equal(reopened.run('session.completed'),undefined);
 assert.ok(reopened.node('qText').textContent.includes(reopened.run('session.baseWords[0].w')));
 
-const pending=round(25*60000);pending.run("child().sessions.push({lessonId:'prior-round',date:today(),mode:'daily',total:2,good:2,wrong:0,activeMinutes:25});session.results[0]={...session.results[0],gradingPending:true,gradingJobId:'waiting',credit:null,excludedFromVocabulary:true};session.gradingQueue=[{id:'waiting',word:session.baseWords[0].w,answer:'보관할 문장',status:'pending',submittedAt:Date.now(),nextRetryAt:Date.now()+60000,pollPolicy:'status-poll-12.16.35',payload:{answer:'보관할 문장'}}];finishSession()");
+const pending=round(20*60000);pending.run("child().sessions.push({lessonId:'prior-round',date:today(),mode:'daily',total:2,good:2,wrong:0,activeMinutes:25});session.results[0]={...session.results[0],gradingPending:true,gradingJobId:'waiting',credit:null,excludedFromVocabulary:true};session.gradingQueue=[{id:'waiting',word:session.baseWords[0].w,answer:'보관할 문장',status:'pending',submittedAt:Date.now(),nextRetryAt:Date.now()+60000,pollPolicy:'status-poll-12.16.35',payload:{answer:'보관할 문장'}}];finishSession()");
 assert.equal(pending.run('session.completed'),undefined);assert.equal(pending.run('session.waitingForGradeResults'),true,'a second round does not hit the old cumulative daily cap while waiting');
-pending.run('session.activeMs=30*60000;session.clockStarted=null;finishSession()');
+pending.run('session.activeMs=25*60000;session.clockStarted=null;finishSession()');
 assert.equal(pending.run('session.roundEndReason'),'time_limit');assert.equal(pending.run('child().ungradedSubmissions[0].payload.answer'),'보관할 문장');
 assert.equal(pending.run('session.results[0].credit'),null,'a timed-out grade is never invented as correct or wrong');
 console.log('Rounds PASS: new5 per round, 4 same-day rounds, no new additions after errors, early reinforcement, 25/28/30 endpoints, same-day unfinished carry, duplicate completion guard, resume draft/time/number, ten-second idle and excluded waits, historical duplicate and 44-minute split. No paid calls.');
