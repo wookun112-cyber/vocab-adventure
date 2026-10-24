@@ -661,6 +661,7 @@ function officialDailyCapReached(learner=child(),active=savedLesson()){
  return studyHistory.dailyStudyTime(learner,active,Date.now(),'daily')>=studyHistory.DAILY_STUDY_MAX_MS;
 }
 function cappedCurrentDailyLesson(saved=savedLesson()){
+ if(studyHistory.isStudyRound(saved))return false;
  const studyDay=saved&&(typeof lessonStudyDay==='function'?lessonStudyDay(saved):saved.studyFallbackDay);
  return !!saved&&saved.mode==='daily'&&studyDay===today()&&officialDailyCapReached(child(),saved);
 }
