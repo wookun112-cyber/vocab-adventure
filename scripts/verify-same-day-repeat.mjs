@@ -36,3 +36,15 @@ for(let n=1;n<=4;n++){
 assert.equal(f.calls.consumes,4);assert.equal(f.calls.generation,0);
 assert.equal(f.run('studyHistory.dailyStudyTime(child())'),80*60000,'four actual rounds sum honestly beyond a daily 30-minute cap');
 console.log('Same-day rounds PASS: production main button starts/consumes four independent server packets, numbers advance, 20-minute completion each, exact daily total and no paid generation.');
+// Earlier rounds must not turn a resumable current round into an archived
+// legacy daily-cap lesson just because the day's total exceeds 25 minutes.
+const resumed=fixture();await resumed.run('buildSession()');
+resumed.run("session.roundPolicy=studyHistory.LEGACY_ROUND_POLICY;session.roundNumber=2;session.activeMs=20*60000;session.clockStarted=null;session.studyDays={[today()]:{activeMs:session.activeMs,timeKnown:true}};child().sessions.push({lessonId:'earlier-round',date:today(),mode:'daily',activeMinutes:20,total:5,good:5,wrong:0});child().studyRounds.entries[session.lessonId].number=2;child().studyRounds.entries['earlier-round']={number:1,day:today()};checkpointSession();globalThis.resumedId=session.lessonId;session.preparation.cancel();session=null");
+const consumedBefore=resumed.calls.consumes;
+await resumed.run("buildSession('daily')");
+assert.ok(resumed.run('session'),'unfinished round resumes even after 40 cumulative minutes');
+assert.equal(resumed.run('session.lessonId'),resumed.run('resumedId'));
+assert.equal(resumed.run('session.roundNumber'),2);
+assert.equal(resumed.run('session.completed'),undefined);
+assert.equal(resumed.calls.consumes,consumedBefore,'resume consumes no replacement lesson');
+console.log('Same-day unfinished resume PASS: previous 20m plus current 20m stays in round two without archiving or consuming round three.');
