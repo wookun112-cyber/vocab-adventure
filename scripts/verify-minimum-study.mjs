@@ -96,10 +96,10 @@ again.run("applyResult(session.queue[current],'○','좋아요.','',{credit:1,co
 assert.equal(again.run('session.timeAddedWords.length'),2);assert.equal(again.run('child().sessions.length'),0);assert.equal(again.requests.length,0);
 
 // AI grading wall time is excluded; its correct answer does not complete <25m.
-const grading=fixture(24*60000);grading.run('current=0;session.results=[];renderQuestion()');
+const grading=fixture(19*60000);grading.run('current=0;session.results=[];renderQuestion()');
 grading.node('answer').value='뜻이 드러나는 나의 문장';
 grading.setFetch(url=>{assert.equal(url,'/api/grade');grading.advance(180000);return {ok:true,json:async()=>({score:1,contextSuccess:true,feedback:'정확한 쓰임입니다.'})}});
-await grading.run('gradeCurrent(false)');assert.equal(grading.run('activeTime()'),24*60000);
+await grading.run('gradeCurrent(false)');assert.equal(grading.run('activeTime()'),19*60000);
 await grading.run('nextQuestion()');assert.equal(grading.run('session.timeAddedWords.length'),1);assert.equal(grading.run('child().sessions.length'),0);
 
 // Legacy packets prefetch without generation; a failed download is not completion.
@@ -126,4 +126,4 @@ try{
  calls=0;globalThis.fetch=async()=>{calls++;return {ok:true,json:async()=>({id:'other-owner'})}};
  res=response();await topupHandler({method:'POST',headers:{authorization:'Bearer fixture'},body:{profile:'ayoung',level}},res);assert.equal(res.code,403);assert.equal(calls,1);
 }finally{globalThis.fetch=originalFetch}
-console.log('Minimum study verified: 4 matched server packets; 24:59 adds one fresh word immediately, repeated additions until 25m, exact/later threshold stops, sentence use remains mandatory, draft/restart preserved, breaks/grading/download waits excluded, legacy retry and owner-only bank delivery.');
+console.log('Minimum study verified: 4 matched server packets; 24:59 adds one fresh word immediately, repeated additions until 20m, exact/later threshold stops, sentence use remains mandatory, draft/restart preserved, breaks/grading/download waits excluded, legacy retry and owner-only bank delivery.');

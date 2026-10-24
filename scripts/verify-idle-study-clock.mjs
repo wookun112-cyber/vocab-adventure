@@ -160,31 +160,31 @@ const cp=JSON.parse(coherent.run('JSON.stringify(child().activeLesson)'));
 assert.equal(cp.activeMs,Object.values(cp.studyDays).reduce((n,d)=>n+d.activeMs,0));
 assert.equal(cp.activeMs,10000-cp.studyIdle.remainingMs);
 
-// Delayed timer delivery never inflates the minimum-25m completion test.
-const short=fixture({elapsed:23*60000});short.advance(100000,false);
-assert.equal(short.run('activeTime()'),23*60000+10000);assert.equal(short.run('minimumStudyReached(session,activeTime())'),false);
+// Delayed timer delivery never inflates the minimum-20m completion test.
+const short=fixture({elapsed:18*60000});short.advance(100000,false);
+assert.equal(short.run('activeTime()'),18*60000+10000);assert.equal(short.run('minimumStudyReached(session,activeTime())'),false);
 short.run("applyResult(session.queue[current],'○','정확한 문장입니다.','',{credit:1,contextSuccess:true,hintUsed:false,revealed:false})");await short.run('nextQuestion()');
 assert.equal(short.run('child().sessions.length'),0);assert.equal(short.run('session.timeAddedWords.length'),1);
-assert.equal(short.run('activeTime()'),23*60000+10000,'no idle padding is carried into the added word');
+assert.equal(short.run('activeTime()'),18*60000+10000,'no idle padding is carried into the added word');
 
 // Cross-profile callbacks and old completed history remain isolated.
 const other=fixture();other.run('session=null;state.selected="inseong"');other.advance(180000);assert.equal(other.run('child().sessions.length'),0);assert.equal(other.run('child().activeLesson'),undefined);
 const old={difficulty:2,sessions:[{date:'2026-10-11',activeMinutes:15,total:10,good:8,wrong:2}]};
 assert.equal(studyHistory.dailyStudyRows(old)[0].activeMs,15*60000);
-console.log('Idle study clock verified: 9s/10s boundary, legacy 60-second draft migration, delayed timer cap, automatic pause and draft save, real activity renews prospectively; hints/repaint/reopen do not pad time, restart retains allowance, valid typed/objective submissions resume, grading/background waits excluded, midnight split, minimum-25m continuation, profile/history isolation.');
+console.log('Idle study clock verified: 9s/10s boundary, legacy 60-second draft migration, delayed timer cap, automatic pause and draft save, real activity renews prospectively; hints/repaint/reopen do not pad time, restart retains allowance, valid typed/objective submissions resume, grading/background waits excluded, midnight split, minimum-20m continuation, profile/history isolation.');
 
 // Daily cap is enforced by the real UI timer, saves the current draft, and
 // neither scores an unanswered item nor declares mastery/completion.
-const capped=fixture({elapsed:29*60000+50000});
+const capped=fixture({elapsed:24*60000+50000});
 capped.node('answer').value='아직 쓰고 있는 문장';
-capped.advance(9000);assert.equal(capped.run('activeTime()'),30*60000-1000);
-capped.advance(1000);assert.equal(capped.run('activeTime()'),30*60000);
+capped.advance(9000);assert.equal(capped.run('activeTime()'),25*60000-1000);
+capped.advance(1000);assert.equal(capped.run('activeTime()'),25*60000);
 assert.equal(capped.run('session.timeLimitStopped'),true);
 assert.equal(capped.run('session.completed'),undefined);
 assert.equal(capped.run('session.results.length'),0);
 assert.equal(capped.run('child().activeLesson.pendingAnswer'),'아직 쓰고 있는 문장');
 assert.equal(capped.run('child().studyHistory.entries["idle-fixture"].status'),'in_progress');
-capped.advance(60000);assert.equal(capped.run('activeTime()'),30*60000);
+capped.advance(60000);assert.equal(capped.run('activeTime()'),25*60000);
 assert.equal(capped.run("dailyLimitBlocked('daily')"),true);
 assert.equal(capped.run("dailyLimitBlocked('level')"),false);
 const cappedSaved=JSON.parse(capped.run('JSON.stringify(state)'));
@@ -195,22 +195,22 @@ capped.advance(86200000);
 assert.equal(capped.run("dailyLimitBlocked('daily')"),false,'next learning day has a new allowance');
 capped.run('state.selected="inseong"');
 assert.equal(capped.run("dailyLimitBlocked('daily')"),false,'other profile keeps its own allowance');
-const lateCap=fixture({elapsed:29*60000+50000});lateCap.advance(100000,false);
-assert.equal(lateCap.run('activeTime()'),30*60000,'late browser timers cannot overshoot');
+const lateCap=fixture({elapsed:24*60000+50000});lateCap.advance(100000,false);
+assert.equal(lateCap.run('activeTime()'),25*60000,'late browser timers cannot overshoot');
 lateCap.run('markStudyActivity({isTrusted:true})');assert.equal(lateCap.run('session.timeLimitStopped'),true);
-console.log('Daily 25–30 minute cap verified: exact boundary, delayed timer, draft persistence, no false mastery, restart lock, next day and profile isolation.');
+console.log('Daily 20–25 minute cap verified: exact boundary, delayed timer, draft persistence, no false mastery, restart lock, next day and profile isolation.');
 
 const multiple=fixture({elapsed:4*60000+50000});
-multiple.run(`child().sessions.push({lessonId:'earlier-today',date:today(),mode:'daily',activeMinutes:25,total:10,good:8,wrong:2});stopAtDailyLimit();armStudyIdleTimer()`);
-assert.equal(multiple.run('dailyPracticeTime()'),29*60000+50000);
+multiple.run(`child().sessions.push({lessonId:'earlier-today',date:today(),mode:'daily',activeMinutes:20,total:10,good:8,wrong:2});stopAtDailyLimit();armStudyIdleTimer()`);
+assert.equal(multiple.run('dailyPracticeTime()'),24*60000+50000);
 assert.equal(multiple.run('minimumStudyReached(session,dailyPracticeTime())'),true);
 multiple.advance(10000);assert.equal(multiple.run('session.timeLimitStopped'),true);
-assert.equal(multiple.run('dailyPracticeTime()'),30*60000);
+assert.equal(multiple.run('dailyPracticeTime()'),25*60000);
 assert.equal(multiple.run('activeTime()'),5*60000,'separate sessions share one daily budget');
 console.log('Cumulative daily minimum/maximum verified across separate sessions.');
 
 // A time limit settles ability once without marking unfinished words mastered.
-const settled=fixture({elapsed:1799000});
+const settled=fixture({elapsed:1499000});
 settled.run('initRealtimeLevel(child(),session);child().leagueLevel=3;child().difficulty=3.5;');
 settled.advance(1000);
 assert.equal(settled.run('child().leagueLevel'),3,'time-limit settlement cannot transfer a one-day task swing into the stable baseline');
@@ -220,12 +220,12 @@ assert.equal(settled.run('child().sessions[0].status'),'time_limit');
 assert.equal(settled.run('child().lastDate'),null);
 settled.run('settleTimeLimitedSession();stopAtDailyLimit()');
 assert.equal(settled.run('child().sessions.length'),1);
-assert.equal(settled.run('studyHistory.dailyStudyTime(child(),session,Date.now())'),1800000);
+assert.equal(settled.run('studyHistory.dailyStudyTime(child(),session,Date.now())'),1500000);
 console.log('Time-limit settlement: ranking/day statistics, unfinished-word preservation, idempotence and no double time.');
 
 // Close at the boundary before the timer callback: the durable checkpoint itself
 // settles, without needing another interaction or resume.
-const closeAtCap=fixture({elapsed:1799000});
+const closeAtCap=fixture({elapsed:1499000});
 closeAtCap.run('initRealtimeLevel(child(),session);child().difficulty=3.5;child().leagueLevel=3');
 closeAtCap.node('answer').value='닫기 직전 작성 중';
 closeAtCap.advance(1000,false);
@@ -245,7 +245,7 @@ assert.equal(recoveredCap.run('child().learningDays'),1);
 assert.equal(recoveredCap.run('child().sessions.length'),1);
 recoveredCap.run('settleReachedStudyDays(child().activeLesson)');
 assert.equal(recoveredCap.run('child().sessions.length'),1);
-assert.equal(recoveredCap.run('studyHistory.dailyStudyTime(child(),child().activeLesson,Date.now())'),1800000);
+assert.equal(recoveredCap.run('studyHistory.dailyStudyTime(child(),child().activeLesson,Date.now())'),1500000);
 const nextDayCap=fixture({saved:structuredClone(missed)});nextDayCap.advance(86200000);
 assert.equal(nextDayCap.run('settleReachedStudyDays(child().activeLesson)'),true);
 assert.equal(nextDayCap.run('child().sessions[0].date'),'2026-10-12');
