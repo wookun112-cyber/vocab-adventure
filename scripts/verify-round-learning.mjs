@@ -116,3 +116,19 @@ assert.equal(breadthTopup.run('session.timeAddedWords.length'),1,'when no other 
 assert.equal(breadthTopup.run('session.completed'),undefined,'minimum active study time is preserved');
 assert.equal(breadthTopup.requests.length,0,'downloaded topup needs no provider call');
 console.log('Finite review supply PASS: no learned alternatives falls back to a validated downloaded topup after corrections.');
+
+// A resume can finish synchronously inside show('learn')->resumeLearningClock.
+// The outer screen transition must not overwrite completion with an empty card.
+for(const [minutes,correct] of [[20,true],[25,false]]){
+ const edge=round(minutes*60000);
+ if(!correct)edge.run('session.results=[];current=0');
+ edge.run('checkpointSession();globalThis.edgeSaved=child().activeLesson;session.preparation.cancel();session=null');
+ await edge.run('resumeLesson(edgeSaved)');
+ assert.equal(edge.run('session.completed'),true);
+ assert.equal(edge.node('home').classList.contains('active'),true,'completion screen survives the outer resume transition');
+ assert.equal(edge.node('learn').classList.contains('active'),false,'closed round cannot reopen a blank learning screen');
+ assert.equal(edge.run('child().sessions.length'),1,'resume settles the round once');
+ assert.equal(edge.run('child().activeLesson'),null);
+ edge.run('renderQuestion()');assert.equal(edge.node('home').classList.contains('active'),true);
+}
+console.log('Resume time-boundary PASS: 20m complete and 25m unfinished close once, retain home, never reopen a blank card.');
