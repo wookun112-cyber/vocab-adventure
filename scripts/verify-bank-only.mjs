@@ -11,8 +11,8 @@ import {calibratedWord,isLearningTarget} from '../lib/learning-model.js';
 import {makePreparedPlan,passageKeys} from '../lib/prepared-plan.js';
 import {bundlePractice} from '../api/practice-pool.js';
 
-assert.equal(OFFLINE_ROWS.length,3);
-assert.deepEqual(OFFLINE_ROWS.map(r=>r.word).sort(),['객관적','예측하다','추측'].sort());
+assert.equal(OFFLINE_ROWS.length,4);
+assert.deepEqual(OFFLINE_ROWS.map(r=>r.word).sort(),['객관적','예측하다','추측','증여'].sort());
 let checked=0;
 for(const row of OFFLINE_ROWS){
  assert.equal(row.questions.length,10);assert.equal(new Set(row.questions.map(q=>q.slot)).size,10);
@@ -34,7 +34,7 @@ for(const row of OFFLINE_ROWS){
   assert.equal(authoredEntry(p,learner,AUTHORED_OWNER,held),null);
   const first=offlineAuthoredEntry(p,learner,AUTHORED_OWNER,held);
   assert.ok(first,'offline variant after canonical exhaustion: '+w.w+'/'+type);
-  assert.equal(first.question.authored.revision,OFFLINE_BANK_REVISION);
+  assert.equal(first.question.authored.revision,row.revision||OFFLINE_BANK_REVISION);
   assert.ok(authoredQuestionValid(first.question,AUTHORED_OWNER));
   assert.equal(first.question.validation.aiVerified,false);
   assert.equal(offlineAuthoredEntry(p,learner,'unrelated-account',held),null);
@@ -50,7 +50,7 @@ for(const row of OFFLINE_ROWS){
   assert.ok(!passageKeys(second.question.ctx,second.question.opts.map(o=>o.t)).some(k=>previous.has(k)));
  }
 }
-assert.equal(checked,30);
+assert.equal(checked,40);
 const originalFetch=globalThis.fetch,originalKey=process.env.OPENAI_API_KEY;
 let networkCalls=0;
 try{
@@ -89,4 +89,4 @@ try{
 const worker=fs.readFileSync(new URL('../api/prepare-worker.js',import.meta.url),'utf8');
 assert.ok(!worker.includes('buildValidated'));assert.ok(!worker.includes('api.openai.com'));
 assert.ok(!fs.readFileSync(new URL('../api/vocab.js',import.meta.url),'utf8').includes('api.openai.com'));
-console.log('Bank-only PASS: 11 complete level preparations, zero paid/network calls, exact paused-task preservation, deduplicated supply queue, 30 editorial slots and validated fresh alternatives, current grading unchanged.');
+console.log('Bank-only PASS: 11 complete level preparations, zero paid/network calls, exact paused-task preservation, deduplicated supply queue, 40 editorial slots and validated fresh alternatives, current grading unchanged.');
