@@ -40,6 +40,10 @@ const {default:handler}=await import('../api/practice-repair.js');
 const row=rows.find(r=>r.word==='성향')||rows[0];
 const plan={w:{w:row.word,d:row.definition,band:row.band},type:'mc_usage',stage:'bridge',taskDemand:'standard',review:true,needsCard:false,firstLearning:false,sentenceCyclePolicy:'sentence-first-7-30-20261021'};
 const originalFetch=globalThis.fetch;
+// Production regression: an already assigned seed target was absent from the
+// current curriculum, so both the bundled MC and /practice-repair were empty.
+// Keep this literal historical meaning/band independent of curriculum output.
+const historical={...plan,w:{w:'증여',d:'살아 있는 사람이 재산을 대가 없이 주는 것',band:4,cat:'사회'},realtimeLevelPolicy:'realtime-level-12.16.18',supportLevel:3};
 async function request(headers={},candidate=plan){
  let status,body;
  await handler({method:'POST',headers,body:{plan:candidate,readerLevel:row.band}},{status(n){status=n;return this},json(v){body=v;return this},setHeader(){}});
@@ -49,6 +53,15 @@ try{
  assert.equal((await request()).status,401);
  globalThis.fetch=async()=>({ok:true,json:async()=>({id:AUTHORED_OWNER})});
  assert.equal((await request({authorization:'Bearer test'})).status,200);
+ for(const type of ['mc_context','mc_usage']){
+  const previous=JSON.stringify(historical),candidate={...historical,type};
+  const result=await request({authorization:'Bearer test'},candidate);
+  assert.equal(result.status,200,'historical seed must recover without changing meaning');
+  assert.ok(deliveryQuestionValid(result.body.question,candidate,row.band,AUTHORED_OWNER));
+  assert.equal(JSON.stringify(historical),previous);
+  const restored=localPracticeQuestion(candidate,{difficulty:3.7,words:{}},[result.body.question],[],AUTHORED_OWNER);
+  assert.ok(restored,'recovered MC must remain available after reload');
+ }
  assert.equal((await request({authorization:'Bearer test'},{...plan,w:{...plan.w,d:'altered definition'}})).status,409);
  assert.equal((await request({authorization:'Bearer test'},{...plan,firstLearning:true})).status,409);
  globalThis.fetch=async()=>({ok:true,json:async()=>({id:'another-account'})});
