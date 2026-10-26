@@ -5,7 +5,7 @@ import * as studyHistory from './lib/study-history.js';
 import {READING_EXPOSURE_POLICY,readingPassageById,prepareReadingExposure,recordedExposure} from './lib/reading-exposure.js';
 import {DAILY_POLICY,MINIMUM_STUDY_POLICY,MINIMUM_STUDY_MS,minimumStudyReached,buildDailyPlan,usageCompleted,usageLessonComplete,nextUsagePlan,applyPendingReviewPolicy} from './lib/daily-practice.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
-import {copiedUsageExample,SENTENCE_CYCLE_POLICY,CORRECT_COOLDOWN_POLICY,wordOnCooldown,applyCorrectCooldown,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
+import {copiedUsageExample,SENTENCE_CYCLE_POLICY,CORRECT_COOLDOWN_POLICY,wordOnCooldown,applyCorrectCooldown,LEARNING_MODEL,QUESTION_POLICY,LEARNING_TYPES,LEARNING_LABELS,STAGE_LABELS,learningDay,dateAfter,daysBetween,studyBudget,buildLearningPlan,masteryConfirmed,recordLearningEvidence,researchSchedule,updateLearningLevels,SESSION_LEVEL_POLICY,REALTIME_LEVEL_POLICY,initRealtimeLevel,observeRealtimeLevel,realtimeTargetBand,reconcileLevelBackfill,presentWrittenQuestion,sentenceSenseCue,summarizeEvidence,isLearningTarget,selectLevelReviews,selectDailyTargets,COVERAGE_POLICY,RETENTION_POLICY,isCoveragePlan,lowerVocabularyBacklog,vocabularyUsageConfirmed,syncUnfinishedUsage,SELECTION_POLICY,inTargetBand,calibratedWord,vocabularyBand,REVIEW_POLICY,MIN_VOCABULARY_BAND,VOCABULARY_POLICY,isRetiredVocabulary,isRecordedVocabulary,ESSENTIAL_VOCABULARY,sinoKoreanMeaning,sinoKoreanConnection,STABLE_BASELINE_POLICY,stableBaselineLevel,vocabularyMasteryStatus,curriculumMasterySummary} from './lib/learning-model.js';
 const SUPABASE_URL='https://qhqumfgbbsurgmlpyira.supabase.co';
 const SUPABASE_KEY='sb_publishable_c7R0cHF0-lY7D7MA9xJoog_x6BLpUMN';
 const AUTH_LOGIN_TIMEOUT_MS=12000;
@@ -1576,14 +1576,14 @@ function renderQuestion(savedHint=0){
  $('learnType').textContent=STAGE_LABELS[q.stage]||(session.mode==='level'?'시작 수준 확인':session.mode==='review'?'집중 복습':'오늘의 학습');
  if($('learningPath'))$('learningPath').textContent=studyHistory.isBreadthRound(session)&&!session.sentenceCyclePolicy
  ?'핵심 어휘 의미 확인 '+sessionUsageCount(session)+'/'+session.baseWords.length+'개 · 어휘 확장 독해 2문제 · 미숙달 어휘는 자동 복습'
- :session.completionPolicy===DAILY_POLICY?'문장 사용 확인 '+sessionUsageCount(session)+'/'+session.baseWords.length+'개 · 모두 확인할 때까지 연습':'';
+ :session.completionPolicy===DAILY_POLICY?'문장 사용 확인 '+sessionUsageCount(session)+'/'+session.baseWords.length+'개 · 모두 확인할 때까지 연습'+submissionProgress(session):'';
  renderStudyClock();
  if($('finishEarly'))$('finishEarly').classList.toggle('hidden',session.results.length<1);
- $('counter').textContent=(session.roundNumber?session.roundNumber+'회차 · ':'')+(session.results.filter(isVocabularyResult).length+1)+'번째 문제'; $('progressBar').style.width=Math.round((session.completionPolicy===DAILY_POLICY?sessionUsageCount(session)/Math.max(1,session.baseWords.length):current/session.target)*100)+'%';
+ $('counter').textContent=(session.roundNumber?session.roundNumber+'회차 · ':'')+(deliveredJob?'채점 결과 확인':(submittedQuestionCount(session.results)+1)+'번째 문제'); $('progressBar').style.width=Math.round((session.completionPolicy===DAILY_POLICY?sessionUsageCount(session)/Math.max(1,session.baseWords.length):current/session.target)*100)+'%';
  $('qTag').textContent=q.label; $('difficulty').textContent='출제 난이도 '+child().difficulty.toFixed(1)+' · 어휘 '+vocabularyBand(q.w)+'단계';
  $('qWord').textContent=q.showTarget?q.w.w:'';
  $('qWord').classList.toggle('hidden',!q.showTarget);
- $('qText').textContent=(q.type==='subjective_use'&&q.w.w==='판'&&/지구/.test(q.w.d)&&/암석/.test(q.w.d)?'지구과학에서 쓰는 뜻으로 문장을 만들어 주세요.\n':'')+q.q;
+ $('qText').textContent=[q.type==='subjective_use'?sentenceSenseCue(q.w):'',q.q].filter(Boolean).join('\n');
  $('qContext').classList.toggle('hidden',!q.ctx); $('qContext').textContent=q.ctx||'';
  $('feedback').className='feedback hidden'; $('hintBox').className='feedback hidden'; $('hintBox').textContent='';
  renderSinoMeaning('wordRootHint',null);renderSinoMeaning('wordRootFeedback',null);
@@ -1611,6 +1611,19 @@ function renderQuestion(savedHint=0){
  processGradingQueue(session);
 }
 function resultCredit(result){return result==='◎'||result==='○'?1:result==='△'?.5:result==='?'?.25:0}
+// A pending placeholder and its later graded delivery represent ONE submission.
+function submittedQuestionCount(results){
+ const submitted=new Set();
+ for(const [index,r] of (results||[]).entries()){
+  if(!r.gradingPending&&!r.gradingReviewRequired&&!isVocabularyResult(r))continue;
+  submitted.add(r.gradingJobId||'answer:'+index);
+ }
+ return submitted.size;
+}
+function submissionProgress(active){
+ const waiting=(active.gradingQueue||[]).filter(j=>['pending','sending','ready'].includes(j.status)).length;
+ return ' · 답안 제출 '+submittedQuestionCount(active.results)+'개'+(waiting?' · 결과 확인 전 '+waiting+'개':'');
+}
 function isVocabularyResult(r){return !r.excludedFromVocabulary&&(!r.word||isRecordedVocabulary(r.word))}
 function applyResult(q,result,feedback,normalized='',meta={}){
  if(session.model===LEARNING_MODEL&&session.preparation)initRealtimeLevel(child(),session);

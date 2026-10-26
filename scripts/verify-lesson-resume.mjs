@@ -313,3 +313,22 @@ await draftSkip.run('nextQuestion()');
 assert.equal(draftSkip.run('current'),2);assert.equal(draftSkip.node('qWord').textContent,'기준');assert.equal(draftSkip.node('answer').value,'');assert.equal(draftSkip.run('savedLesson().pendingAnswer'),'');
 console.log('Draft isolation verified: answering opinion, skipping an excluded phrase, and opening criterion never carries the prior sentence to the next question or checkpoint.');
 
+
+// Reproduce the live ambiguous "가정" submission without calling the grader.
+const sense=fixture();await sense.run('buildSession()');
+sense.run(`session.mode='level';session.introDone=true;current=0;session.results=[];
+ session.queue[0]={...session.queue[0],w:{w:'가정',d:'어떤 일이 그렇다고 미리 정하고 생각하는 것이다.',band:3,cat:'사고'},type:'subjective_use',showTarget:true};
+ globalThis.beforeSense=JSON.stringify(session.queue[0]);renderQuestion();`);
+assert.match(sense.node('qText').textContent,/이번에는 다음 뜻으로 써 주세요: 어떤 일이 그렇다고 미리 정하고 생각하는 것이다/);
+assert.doesNotMatch(sense.node('qText').textContent,/예를 들어|예문|우리 가정/);
+assert.equal(sense.run('JSON.stringify(session.queue[0])'),sense.run('beforeSense'),'display cue cannot rewrite a saved question or grading identity');
+sense.run(`session.completionPolicy=DAILY_POLICY;session.sentenceCyclePolicy=SENTENCE_CYCLE_POLICY;session.results=[{word:'가정',type:'subjective_use',result:'채점 대기',credit:null,gradingPending:true,excludedFromVocabulary:true,gradingJobId:'qa-1'}];current=1;renderQuestion();`);
+assert.match(sense.node('counter').textContent,/2번째 문제$/,'pending submitted answer advances the next question number');
+assert.match(sense.node('learningPath').textContent,/답안 제출 1개/);
+assert.equal(sense.run(`submittedQuestionCount([...session.results,{word:'가정',result:'○',credit:1,gradingJobId:'qa-1'}])`),1,'later delivery cannot double-count the same answer');
+assert.equal(sense.run(`submittedQuestionCount([...session.results,{word:'가정',result:'제외',excludedFromVocabulary:true},{word:'가사',result:'○',credit:1,gradingJobId:'qa-2'}])`),2,'skipped questions never count as submissions');
+assert.match(sense.run(`sentenceSenseCue({w:'가정',d:'가족이 함께 생활하는 집이다.'})`),/가족이 함께/,'the other sense uses its own saved definition');
+assert.equal(sense.run(`sentenceSenseCue({w:'가전제품',d:'집에서 쓰는 전기 기기'})`),'','unambiguous tasks get no extra teaching prompt');
+console.log('Live issue regression PASS: 가정 sense cue without examples, saved prompt preserved, pending answer advances numbering, deferred result counted once, skipped plans excluded.');
+
+assert.equal(sense.run(`submittedQuestionCount([{word:'가정',result:'확인 필요',credit:null,gradingReviewRequired:true,excludedFromVocabulary:true,gradingJobId:'held'}])`),1,'held ungraded original is still a submitted answer');
