@@ -19,7 +19,7 @@ export function createArchivedRecovery({verify=verifyUser,rpc=gradeRPC,recover=a
      const snapshot=await rpc(auth,'read_paused_grade_recovery',{p_profile:profile,p_skip:skip},3500);
      if(!snapshot)break;
      skip.push(snapshot.job.id);
-     const hash=gradeHash(snapshot.job.payload);
+     const hash=/^[a-f0-9]{64}$/.test(snapshot.job.recoveryHash||'')?snapshot.job.recoveryHash:gradeHash(snapshot.job.payload);
      const grade=await rpc(auth,'read_saved_vocab_grade',{p_hash:hash})||readReceipt(snapshot.job.gradeReceipt,user.id,hash)||await recover(auth,snapshot.job.payload,snapshot.job.providerReceipt);
      if(!grade){waiting++;continue}
      const result=reconcileArchivedGrade(snapshot,grade);

@@ -17,6 +17,10 @@ assert.equal(r.learner.difficulty,4);assert.equal(r.learner.leagueLevel,4);
 assert.equal(r.learner.studyHistory.entries.old.days['2026-10-14'].activeMs,30000);
 assert.equal(r.learner.studyHistory.entries.old.days['2026-10-14'].good,1);
 assert.equal(snapshot.lesson.results[0].gradingPending,true,'pure reconciliation never mutates its input');
+const held=structuredClone(snapshot);Object.assign(held.lesson.results[0],{gradingPending:false,gradingReviewRequired:true,excludedFromVocabulary:true,credit:null});held.job.status='needs_review';
+assert.equal(reconcileArchivedGrade(held,grade,stamp+86400000).record.credit,1,'a real cached result can resolve an explicitly ungraded held answer');
+const alreadyGraded=structuredClone(held);alreadyGraded.lesson.results[0].credit=0;
+assert.equal(reconcileArchivedGrade(alreadyGraded,grade),null,'a recorded wrong answer cannot be replaced through held-answer recovery');
 const newer=structuredClone(snapshot);Object.assign(newer.learner.words.의견,{lastExposureAt:'2026-10-15',lastFeedbackDate:'2026-10-15',usageConfirmedAt:'2026-10-15',usageConfirmedStamp:stamp+86400000,nextReviewAt:'2026-11-15',recallStage:5,streak:5});
 const lateWrong=reconcileArchivedGrade(newer,{score:0,contextSuccess:false},stamp+86400000);
 assert.equal(lateWrong.learner.words.의견.nextReviewAt,'2026-11-15');assert.equal(lateWrong.learner.words.의견.streak,5);
@@ -27,10 +31,10 @@ assert.equal(reconcileArchivedGrade(sameDay,{score:0,contextSuccess:false}).lear
 const pendingToday=structuredClone(snapshot);pendingToday.learner.unfinishedUsage.의견.assignedAt=stamp+86400000;
 assert.ok(reconcileArchivedGrade(pendingToday,grade).learner.unfinishedUsage.의견,'old grade cannot complete a later assignment');
 assert.equal(reconcileArchivedGrade({...snapshot,job:{...job,status:'applied'}},grade),null);
-let cached=grade,commits=0,conflict=false,other=false;
+let cached=grade,commits=0,conflict=false,other=false,expectedHash=null;
 const handler=createArchivedRecovery({verify:async()=>({id:other?'other-family':AUTHORED_OWNER}),rpc:async(auth,name,args)=>{
  if(name==='read_paused_grade_recovery')return args.p_profile==='ayoung'&&!args.p_skip.includes(job.id)?snapshot:null;
- if(name==='read_saved_vocab_grade')return cached;
+ if(name==='read_saved_vocab_grade'){if(expectedHash)assert.equal(args.p_hash,expectedHash,'historical cache identity must survive model/policy changes');return cached}
  if(name==='commit_paused_grade_recovery'){commits++;return !conflict}
  throw Error('Unapproved RPC '+name);
 }});
@@ -38,6 +42,9 @@ const call=async()=>{let code,value;await handler({method:'POST',headers:{author
 assert.equal((await call()).value.recovered,1);assert.equal(commits,1);
 cached=null;assert.equal((await call()).value.waiting,1);assert.equal(commits,1,'missing cached grade never causes generation or mutation');
 cached=grade;conflict=true;assert.equal((await call()).value.conflicts,1);
+conflict=false;expectedHash='a'.repeat(64);snapshot.job.recoveryHash=expectedHash;
+assert.equal((await call()).value.recovered,1,'a late real result can still reconcile a settled legacy job');
+delete snapshot.job.recoveryHash;expectedHash=null;
 other=true;assert.equal((await call()).code,403);
 console.log('Archived recovery: cached-only delivery, original date/time, current draft and later progress preserved, idempotent applied job, owner isolation, CAS conflict and no paid calls.');
 
