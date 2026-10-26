@@ -14,7 +14,7 @@ An explicit alias maps the original noun 예측 (its original definition, domain
 
 ## Archived results
 
-All fourteen audited old jobs had no stored result, provider ID or receipt; thirteen recorded a provider start and one never started. They cannot safely be assigned invented grades or automatically charged again. Their original answers, payloads and result placeholders are preserved. Metadata records `legacy_unavailable` and the original cache hash. Active pending counts exclude these terminal unavailable requests, while a separate original-ungraded count remains visible. A later real cache result makes the job eligible again. Recovery uses its original hash, independent of later model/policy changes.
+All fourteen audited old jobs had no stored result, provider ID or receipt; thirteen recorded a provider start and one never started. They cannot safely be assigned invented grades or automatically charged again. Their original answers and payloads are preserved. Pending-only unknown placeholders are relabeled explicitly ungraded, with the original placeholder retained in `legacyOriginalResult`; no score is assigned. Metadata records `legacy_unavailable` and the original cache hash. Active pending counts exclude these terminal unavailable requests, while a separate original-ungraded count remains visible. A later real cache result makes the job eligible again. Recovery uses its original hash, independent of later model/policy changes.
 
 The settlement maintenance script checks owner, age, cache absence, response absence and raw-answer invariants under locks. It does not call AI, change scores/mastery or delete submissions. Production index counts are zero pending, one original-ungraded for 아영 and thirteen for 인성.
 
