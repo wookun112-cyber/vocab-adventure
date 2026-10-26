@@ -57,8 +57,8 @@ try{
  const before=JSON.stringify(fixture),[fixed]=enrichStoredBankEntries([{question:fixture,readerLevel:3}]);
  assert.equal(fixed.question.opts.filter(o=>!o.ok&&o.reason).length,4);assert.equal(JSON.stringify(fixture),before);assert.deepEqual(fixed.question.opts.map(o=>o.ok),fixture.opts.map(o=>o.ok));
 }finally{globalThis.fetch=originalFetch}
-assert.equal(currentQuestions,13596);assert.equal(currentReasons,54384);
-const report={revision:BANK_WIDE_FEEDBACK_REVISION,allRegisteredQuestions:16974,allRegisteredReasons:67896,currentQuestions,currentReasons,historicalQuestions:3378,maxReasonLength:maxLength,independentHumanReview:false,paidProviderCalls:0,samples};
+assert.equal(currentQuestions,13602);assert.equal(currentReasons,54408);
+const report={revision:BANK_WIDE_FEEDBACK_REVISION,allRegisteredQuestions:16980,allRegisteredReasons:67920,currentQuestions,currentReasons,historicalQuestions:3378,maxReasonLength:maxLength,independentHumanReview:false,paidProviderCalls:0,samples};
 fs.mkdirSync(new URL('../test-results/',import.meta.url),{recursive:true});fs.writeFileSync(new URL('../test-results/bank-wide-feedback.json',import.meta.url),JSON.stringify(report,null,2));
 console.log(JSON.stringify({...report,samples:undefined}));
 console.log('Whole-bank feedback PASS: every registered MC slot, four distinct option explanations, question/answer invariants, exact saved-source recovery, shuffled options, zero provider requests.');

@@ -53,8 +53,8 @@ try{
  assert.equal((await request()).status,401);
  globalThis.fetch=async()=>({ok:true,json:async()=>({id:AUTHORED_OWNER})});
  assert.equal((await request({authorization:'Bearer test'})).status,200);
- for(const type of ['mc_context','mc_usage']){
-  const previous=JSON.stringify(historical),candidate={...historical,type};
+ for(const legacy of [historical,{...historical,w:{w:'예측',d:'근거나 정보를 바탕으로 앞으로를 미리 판단함',band:3,cat:'사고'}}])for(const type of ['mc_context','mc_usage']){
+  const previous=JSON.stringify(historical),candidate={...legacy,type};
   const result=await request({authorization:'Bearer test'},candidate);
   assert.equal(result.status,200,'historical seed must recover without changing meaning');
   assert.ok(deliveryQuestionValid(result.body.question,candidate,row.band,AUTHORED_OWNER));

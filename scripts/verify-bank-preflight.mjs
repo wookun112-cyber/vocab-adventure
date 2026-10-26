@@ -40,6 +40,6 @@ try{
  const out=path.join(dir,'bank.json');
  const check=spawnSync(process.execPath,[new URL('./export-offline-bank.mjs',import.meta.url).pathname,out],{encoding:'utf8',env:{...process.env,OPENAI_API_KEY:''}});
  assert.equal(check.status,0,check.stderr);
- const saved=JSON.parse(fs.readFileSync(out,'utf8'));assert.equal(saved.questionCount,40);assert.equal(saved.paidGenerationCalls,0);assert.equal(saved.independentHumanReview,false);
+ const saved=JSON.parse(fs.readFileSync(out,'utf8'));assert.equal(saved.questionCount,50);assert.equal(saved.paidGenerationCalls,0);assert.equal(saved.independentHumanReview,false);
 }finally{fs.rmSync(dir,{recursive:true,force:true})}
-console.log('Preflight PASS: same-band/same-task/card replacement, protected due/paused/ready work, explicit non-credit shortage state and 40-slot offline export.');
+console.log('Preflight PASS: same-band/same-task/card replacement, protected due/paused/ready work, explicit non-credit shortage state and 50-slot offline export.');
