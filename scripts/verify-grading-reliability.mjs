@@ -282,19 +282,23 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
  };
  // Move the UI-only threshold forward without changing other test timers.
  responsive.ctx.setTimeout=(fn,ms,...args)=>realSetTimeout(fn,ms===3000?0:ms,...args);
+ responsive.run("$('learn').classList.add('active')");
  await responsive.run('gradeCurrent(false)');
  assert.equal(gradeCalls,1,'one semantic provider submission');
  assert.equal(responsive.run('session.gradingQueue[0].status'),'sending','the original request stays in flight');
  assert.equal(responsive.run('session.results[0].gradingPending'),true);
- assert.equal(responsive.node('next').classList.contains('hidden'),false,'next task is immediately available');
+ assert.equal(responsive.run('current'),1,'next task opens automatically');
  assert.equal(responsive.run('wordState(session.queue[0].w.w).correct'),0,'pending grade does not invent success');
  const savedAnswer=responsive.run('child().activeLesson.gradingQueue[0].answer');
- assert.equal(savedAnswer,responsive.node('answer').value);
- await responsive.run('nextQuestion()');
- assert.equal(responsive.run('current'),1,'the next question is available while AI is in flight');
+ assert.equal(savedAnswer,firstBody.answer);
+ assert.equal(responsive.node('answer').value,'','next task must not inherit the submitted answer');
+ assert.equal(responsive.run('current'),1,'automatically advance without a next-button click while AI is in flight');
+ responsive.node('answer').value='다음 문제를 작성 중';
  release({ok:true,status:200,json:async()=>({score:1,result:'○',contextSuccess:true,targetRecall:false,feedback:'어휘를 문맥에 맞게 사용했어요.',normalizedAnswer:savedAnswer,exampleAnswer:savedAnswer})});
  await flush();await flush();
  assert.equal(gradeCalls,1,'a slow response is not resubmitted after the UI advances');
+ assert.equal(responsive.run('current'),1,'late result cannot advance the current task');
+ assert.equal(responsive.node('answer').value,'다음 문제를 작성 중','late result cannot overwrite a new draft');
  assert.equal(responsive.run('session.gradingQueue[0].status'),'ready');
  const delivered=responsive.run('session.preparation.plans.findIndex(p=>p.deferredGradeId===session.gradingQueue[0].id)');
  assert.ok(delivered>0,'original score is queued as feedback without replacing the current question');

@@ -1794,6 +1794,7 @@ async function gradeCurrent(dontKnow){
  // AI meaning assessment must remain the original single paid request. Its
  // server fetch continues after the short UI wait; never abort it just to
  // advance the next question. The same job ID and answer are retained.
+ let autoAdvance=false;
  const showPending=(message)=>{
   // Submitted-answer feedback is an active learning screen, not AI wait time.
   // Renew the bounded clock only when the student can read/continue again.
@@ -1811,7 +1812,7 @@ async function gradeCurrent(dontKnow){
   clearTimeout(uiTimer);
   if(session!==active||state.selected!==active.profile)return;
   if(first===null){
-   job.status='sending';
+   job.status='sending';autoAdvance=true;
    showPending('답안을 안전하게 저장했어요. 서버 저장과 AI 의미 채점을 확인 중이니 다음 문제를 먼저 풀어도 돼요. 결과가 오면 기존 답안에 반영됩니다.');
    // Preserve one in-flight request instead of aborting/rebilling at 3 s.
    void inFlight.then(outcome=>{
@@ -1843,6 +1844,12 @@ async function gradeCurrent(dontKnow){
  }finally{
   active.waitingForGrading=false;
   if(session===active){if(!document.hidden)resumeLearningClock();$('submit').disabled=false;$('submit').textContent='채점하기'}
+  // Move only the still-displayed submitted task. Late results never move a
+  // newer question, another profile, or a hidden/closed learning screen.
+  if(autoAdvance&&session===active&&!active.completed&&state.selected===active.profile&&authUser?.id===active.account&&!document.hidden&&current===job.index&&$('learn').classList.contains('active')){
+   await nextQuestion();
+   if(session===active&&active.waitingForGradeResults)void continuePendingLearning();
+  }
  }
 }
 async function requestGrade(job,timeout=25000,pollOnly=false){
