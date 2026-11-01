@@ -2389,7 +2389,11 @@ function continueWhileGrading(active){
  const waiting=(active.gradingQueue||[]).filter(j=>['pending','sending'].includes(j.status)).sort((a,b)=>
   p.plans.findLastIndex(plan=>plan.gradingBridge&&plan.w.w===a.word)-p.plans.findLastIndex(plan=>plan.gradingBridge&&plan.w.w===b.word));
  for(const job of waiting){
-  const source=(p.practicePool||[]).filter(q=>q.w?.w===job.word&&q.type?.startsWith('mc_')&&q.opts?.length===5)
+  // Waiting for one paid grade must never turn into hundreds of bank repeats.
+  const bridges=p.plans.filter(plan=>plan.gradingBridge&&plan.w.w===job.word);
+  if(bridges.length>=2)continue;
+  const usedSignatures=new Set([...p.ready.values()].filter(q=>q.w?.w===job.word).map(q=>q.signature).filter(Boolean));
+  const source=(p.practicePool||[]).filter(q=>q.w?.w===job.word&&q.type?.startsWith('mc_')&&q.opts?.length===5&&!usedSignatures.has(q.signature))
    .sort((a,b)=>[...p.ready.values()].filter(q=>q.signature===a.signature).length-[...p.ready.values()].filter(q=>q.signature===b.signature).length)[0];
   if(!source)continue;
   const original=p.plans[job.index];if(!original)continue;
