@@ -146,8 +146,8 @@ await poll.run('processGradingQueue(session,true)');
 assert.equal(requests.filter(r=>!r.pollOnly).length,paidBefore);
 assert.equal(poll.run('session.gradingQueue[0].status'),'pending');
 poll.run("session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session)");
-assert.match(poll.node('feedback').textContent,/남은 채점 1개/);
-assert.match(poll.node('feedback').textContent,/복구/);
+assert.match(poll.node('feedback').textContent,/채점 확인 중 1개/);
+assert.match(poll.node('feedback').textContent,/바로 풀/);
 console.log('Fast queue PASS: pending checks every 2s without failure escalation, only server retryable allows submission, recovery preserves answer and accurate pending count.');
 
 // If a provider-started submission has no recoverable cache result, the
@@ -161,7 +161,7 @@ stale.run(`session.preparation.baseCount=1;session.baseWords=[session.queue[0].w
  session.results=Array.from({length:session.target},(_,i)=>i===session.target-1?{word,type:'subjective_use',result:'채점 대기',credit:null,excludedFromVocabulary:true,gradingPending:true,gradingJobId:'lost-grade-1',answeredAt:submittedAt}:{word:session.queue[i].w.w,type:session.queue[i].type,result:'제외',credit:null,excludedFromVocabulary:true});
  current=session.target;session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session);`);
 assert.equal(stale.node('holdPendingGrades').classList.contains('hidden'),false);
-assert.match(stale.node('holdPendingGrades').textContent,/1개/);
+assert.match(stale.node('holdPendingGrades').textContent,/다른 새 단어/);
 const gradeRequests=[];
 stale.ctx.fetch=async(url,opts)=>{if(url==='/api/grade')gradeRequests.push(opts);throw Error('Mock offline: no provider request allowed');};
 await stale.run('holdStaleGradingQueue()');
@@ -190,12 +190,12 @@ console.log('Stale grading hold PASS: 90s wait exposed, original answer retained
  const waiting=fixture();await waiting.run('buildSession()');await flush();
  waiting.run("session.gradingQueue=[{id:'waiting-countdown',word:session.queue[0].w.w,index:0,status:'pending',submittedAt:Date.now()-20000,errorCode:'grading_pending',nextRetryAt:Date.now()+600000}];session.results=[{word:session.queue[0].w.w,gradingPending:true,gradingJobId:'waiting-countdown',credit:null,excludedFromVocabulary:true}];session.waitingForGradeResults=true;$('learn').classList.add('active');renderGradingProgress(session)");
  assert.equal(waiting.node('holdPendingGrades').classList.contains('hidden'),false,'recovery option must be visibly discoverable before 90 seconds');
- assert.equal(waiting.node('holdPendingGrades').disabled,true,'fresh pending work cannot be archived prematurely');
- assert.match(waiting.node('holdPendingGrades').textContent,/초 뒤/);
+ assert.equal(waiting.node('holdPendingGrades').disabled,false,'continue action is available immediately without archiving');
+ assert.match(waiting.node('holdPendingGrades').textContent,/다른 새 단어/);
  waiting.run("session.gradingQueue[0].submittedAt=Date.now()-91000;renderGradingProgress(session)");
  assert.equal(waiting.node('holdPendingGrades').disabled,false,'even a perpetually pending status unlocks archive after 90 seconds');
  assert.equal(waiting.node('holdPendingGrades').classList.contains('hidden'),false);
- assert.match(waiting.node('holdPendingGrades').textContent,/보관하고 학습 계속/);
+ assert.match(waiting.node('holdPendingGrades').textContent,/다른 새 단어/);
  const currentSource=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(currentSource,/if\(session\?\.waitingForGradeResults\)renderGradingProgress\(session\)/,'the timer must repaint the CTA even when polling is busy/offline');
 }
@@ -241,7 +241,7 @@ console.log('Stale grading hold PASS: 90s wait exposed, original answer retained
  assert.match(resumeGate.node('qWord').textContent,/채점 결과/);
  assert.equal(resumeGate.node('dontKnow').classList.contains('hidden'),true,'unknown-answer control must be hidden while waiting');
  assert.equal(resumeGate.node('holdPendingGrades').classList.contains('hidden'),false,'stalled-grade hold action must appear');
- assert.match(resumeGate.node('holdPendingGrades').textContent,/1개/);
+ assert.match(resumeGate.node('holdPendingGrades').textContent,/다른 새 단어/);
  assert.equal(resumeGate.run('JSON.stringify(child().activeLesson.results)'),savedBefore,'pending answer remains untouched when entering wait screen');
  assert.equal(resumeGate.run('session.gradingQueue[0].status'),'pending');
  console.log('Final-cursor resume PASS: home button opens visible grade-recovery screen without altering original answers or recharging.');
@@ -380,4 +380,18 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
  assert.equal(blocked.run('new Set([...session.preparation.ready.values()].filter(q=>q.signature?.startsWith("bridge-test-")).map(q=>q.signature)).size'),2,'bridge signatures are distinct');
  assert.equal(blocked.run('session.gradingQueue[0].status'),'sending','never invent a completed grade');
  console.log('Pending-grade repetition PASS: 400 continuation attempts yield at most two distinct bridge tasks, original paid job retained.');
+}
+
+// Fresh (<90s) pending work continues without holding or rebilling it.
+{
+ const immediate=fixture();await immediate.run('buildSession()');await flush();
+ immediate.run(`session.waitingForGradeResults=true;session.gradingQueue=[{id:'fresh',status:'sending',submittedAt:Date.now(),answer:'원본'}];
+ current=session.target;globalThis.oldPending=JSON.stringify(session.gradingQueue);
+ appendReadyGrades=()=>{};appendStudyTopup=(a,whileGrading)=>{if(!whileGrading)throw Error('pending bypass required');a.target=current+1;return true};
+ renderQuestion=()=>{globalThis.continued=true};`);
+ await immediate.run('continuePendingLearning()');
+ assert.equal(immediate.run('continued'),true);
+ assert.equal(immediate.run('JSON.stringify(session.gradingQueue)'),immediate.run('oldPending'));
+ assert.equal(immediate.run('session.waitingForGradeResults'),false);
+ console.log('Immediate pending continuation PASS: no 90s age gate, no hold, no paid resubmission, original pending answer retained.');
 }
