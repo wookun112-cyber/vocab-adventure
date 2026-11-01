@@ -1807,7 +1807,7 @@ async function gradeCurrent(dontKnow){
  try{
   const inFlight=requestGrade(job,22000).then(graded=>({graded}),error=>({error}));
   let uiTimer;
-  const first=await Promise.race([inFlight,new Promise(resolve=>{uiTimer=setTimeout(()=>resolve(null),3000)})]);
+  const first=await Promise.race([inFlight,new Promise(resolve=>{uiTimer=setTimeout(()=>resolve(null),0)})]);
   clearTimeout(uiTimer);
   if(session!==active||state.selected!==active.profile)return;
   if(first===null){
@@ -1895,27 +1895,12 @@ function renderGradingProgress(active=session){
  if(!active||session!==active||!active.waitingForGradeResults||!$('learn').classList.contains('active'))return;
  const jobs=(active.gradingQueue||[]).filter(j=>['pending','ready','sending'].includes(j.status)),pending=jobs.filter(j=>j.status==='pending');
  const blocked=pending.some(j=>['ai_credit_exhausted','grading_daily_limit','grading_account_not_allowed','grading_result_recovery_required'].includes(j.errorCode));
- const now=Date.now(),stale=pending.filter(j=>now-Number(j.submittedAt||0)>=90000&&active.results.some(r=>r.gradingPending&&r.gradingJobId===j.id));
  const hold=$('holdPendingGrades');
- if(hold){
-  // The recovery option must not vanish for 90 seconds and then fail to
-  // appear because polling is busy, paused, offline, or on a delayed lease.
-  hold.classList.toggle('hidden',pending.length===0);
-  const oldest=pending.length?Math.max(...pending.map(j=>Math.max(0,now-Number(j.submittedAt||now)))):0;
-  const seconds=Math.max(0,Math.ceil((90000-oldest)/1000));
-  hold.disabled=!!active.gradeHoldInProgress||stale.length===0;
-  hold.textContent=active.gradeHoldInProgress?'저장된 채점 결과 마지막 확인 중…':
-   stale.length?'채점 지연 '+stale.length+'개 · 원본 답안 보관하고 학습 계속':
-   '채점 기다리는 중 · '+seconds+'초 뒤 보관하고 계속하기 가능';
- }
+ if(hold){hold.classList.toggle('hidden',jobs.length===0);hold.disabled=!!active.pendingContinueBusy;
+  hold.textContent=active.pendingContinueBusy?'다음 새 단어 준비 중…':'채점은 계속하고 다른 새 단어 풀기';}
  $('feedback').className='feedback';
- $('feedback').textContent='남은 채점 '+jobs.length+'개 · '+(stale.length?
-  '90초 넘게 결과가 오지 않았어요. 아래 버튼을 누르면 저장된 결과를 한 번 더 확인하고, 없으면 원본 답안을 미평가로 보관해요.':
-  blocked?'일부 답안은 채점 연결 또는 결과 복구 확인이 필요해요. 답안은 저장되어 있어요.':
-  pending.some(j=>['temporary','grading_temporarily_unavailable'].includes(j.errorCode))?
-   '연결을 다시 확인하고 있어요. 답안은 저장되어 있어요.':
-   '채점 결과를 확인 중이에요. 90초 이상 지연되면 아래에서 보관하고 계속할 수 있어요.')+
-  ' 정답 확인 전에는 완료로 처리하지 않으며, 기다리는 시간은 학습시간에 넣지 않아요.';
+ $('feedback').textContent='채점 확인 중 '+jobs.length+'개 · 답안은 저장되어 있어요. 아래 버튼으로 다른 새 단어를 바로 풀 수 있어요. 결과는 나중에 반영하며, 준비·채점 대기는 학습시간에 넣지 않아요.';
+
 }
 // An already-started provider request with no saved result cannot safely be
 // billed again. Explicitly set aside only overdue submissions, preserving their
@@ -2089,8 +2074,8 @@ function availableStudyTopups(active){
    t.plan.firstLearning===true&&t.plan.needsCard===true&&validPreparedQuestion(t.question,t.plan);
  });
 }
-function prefetchStudyTopups(active,force=false){
- if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode!=='daily'||active.completionPolicy!==DAILY_POLICY||active.completed||studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active))||minimumStudyReached(active,dailyPracticeTime(active)))return Promise.resolve(null);
+function prefetchStudyTopups(active,force=false,whileGrading=false){
+ if(session!==active||authUser?.id!==active.account||state.selected!==active.profile||active.mode!=='daily'||active.completionPolicy!==DAILY_POLICY||active.completed||!whileGrading&&(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active))||minimumStudyReached(active,dailyPracticeTime(active))))return Promise.resolve(null);
  if(active.topupRequest)return active.topupRequest;
  if(!force&&active.topupErrorLevel===child().difficulty&&active.topupRetryAt>Date.now())return Promise.resolve(null);
  const held=availableStudyTopups(active);
@@ -2126,9 +2111,10 @@ function prefetchStudyTopups(active,force=false){
  })().catch(error=>{active.topupError=error;active.topupErrorLevel=child().difficulty;active.topupRetryAt=Date.now()+5000;return null}).finally(()=>{active.topupRequest=null});
  return active.topupRequest;
 }
-function appendStudyTopup(active){
- if(studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
- if(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active))return false;
+function appendStudyTopup(active,whileGrading=false){
+ if(activeTime(active)>=studyHistory.ROUND_MAX_MS)return false;
+ if(!whileGrading&&studyHistory.isStudyRound(active)&&(studyHistory.isBreadthRound(active)?!sessionUsageComplete(active):studyHistory.roundHasErrors(active)))return false;
+ if(!whileGrading&&(minimumStudyReached(active,dailyPracticeTime(active))||!sessionUsageComplete(active)))return false;
  const held=availableStudyTopups(active),target=held.find(t=>isCoveragePlan(t.plan))||takeAdaptiveTarget(active)||held[0];if(!target)return false;
  const p=active.preparation,index=p.plans.length,plan={...target.plan,id:String(index),...(active.sentenceCyclePolicy?{sentenceCyclePolicy:SENTENCE_CYCLE_POLICY,type:'subjective_use',stage:'use',needsCard:false,taskDemand:(target.practicePool||[]).find(q=>q.type.startsWith('mc_'))?.taskDemand||'standard'}:{})},w=plan.w;
  if(active.studyTopups)active.studyTopups.targets=active.studyTopups.targets.filter(t=>t.plan.w.w!==w.w);
@@ -2139,6 +2125,22 @@ function appendStudyTopup(active){
  p.append([plan]);p.ready.set(index,active.sentenceCyclePolicy?localPracticeQuestion(plan,child()):structuredClone(target.question));p.notify();p.pump();
  if(checkpointSession()){localSave();cloudSave()}
  return true;
+}
+async function continuePendingLearning(){
+ const active=session;
+ if(!active||active.completed||!active.waitingForGradeResults||active.pendingContinueBusy)return;
+ if(activeTime(active)>=studyHistory.ROUND_MAX_MS){completeStudyRound('time_limit');return}
+ active.pendingContinueBusy=true;renderGradingProgress(active);
+ try{
+  appendReadyGrades(active);
+  if(current>=active.target&&!appendStudyTopup(active,true)){
+   await prefetchStudyTopups(active,true,true);
+   if(session!==active||authUser?.id!==active.account||state.selected!==active.profile)return;
+   if(!appendStudyTopup(active,true))throw Error('현재 수준의 새 단어를 더 준비하지 못했어요. 원본 답안은 저장되어 있어요.');
+  }
+  active.waitingForGradeResults=false;show('learn');renderQuestion();
+ }catch(error){if(session===active)$('qText').textContent=error.message}
+ finally{active.pendingContinueBusy=false;if(session===active)renderGradingProgress(active)}
 }
 function waitForStudyTopup(active){
  if(active.topupBoundary)return active.topupBoundary;
@@ -2876,7 +2878,7 @@ $('answer').addEventListener('input',e=>{markStudyActivity(e);clearTimeout(answe
 document.addEventListener('pointerdown',markStudyActivity,{passive:true});
 document.addEventListener('wheel',markStudyActivity,{passive:true});
 document.addEventListener('touchmove',markStudyActivity,{passive:true});
-$('holdPendingGrades').onclick=()=>{void holdStaleGradingQueue()};
+$('holdPendingGrades').onclick=()=>{void continuePendingLearning()};
  $('readingNext').onclick=nextReadingPractice;
  $('submit').onclick=()=>gradeCurrent(false);$('hint').onclick=showHint;$('dontKnow').onclick=()=>gradeCurrent(true);$('next').onclick=nextQuestion;$('introNext').onclick=nextIntro;
 if($('finishEarly')){$('finishEarly').textContent='잠시 쉬기';$('finishEarly').onclick=()=>{if(!session)return;if(session.mode==='level'){finishSession();return}pauseLearningClock();checkpointSession();localSave();cloudSave();show('home');renderResumeButton()}};$('mic').onclick=startVoice;
