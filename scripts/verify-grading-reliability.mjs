@@ -367,3 +367,17 @@ console.log('Legacy wait migration, quota backoff preservation and exact validat
  assert.ok(!sense.node('qText').textContent.includes('암석 덩어리'),'clarify the intended domain without supplying a model sentence or definition');
  console.log('Ambiguous plate prompt PASS: visible earth-science context, unchanged canonical grade task and no example leak.');
 }
+
+// Reproduce a permanently pending provider: bounded bridge practice, never 400 repeats.
+{
+ const blocked=fixture();await blocked.run('buildSession()');await flush();
+ blocked.run(`globalThis.bridgeWord=session.queue[0].w;session.gradingQueue=[{id:'slow',word:bridgeWord.w,index:0,status:'sending'}];
+ session.studyTopups={targets:[],exhausted:true};appendStudyTopup=()=>false;appendReadyGrades=()=>{};
+ session.preparation.practicePool=Array.from({length:5},(_,i)=>({w:bridgeWord,type:'mc_context',signature:'bridge-test-'+i,opts:[{ok:true},{},{},{},{}]}));
+ validPreparedQuestion=()=>true;
+ for(let i=0;i<400;i++){current=session.preparation.plans.length;continueWhileGrading(session)};`);
+ assert.equal(blocked.run('session.preparation.plans.filter(p=>p.gradingBridge).length'),2,'one pending word receives at most two bridge exercises');
+ assert.equal(blocked.run('new Set([...session.preparation.ready.values()].filter(q=>q.signature?.startsWith("bridge-test-")).map(q=>q.signature)).size'),2,'bridge signatures are distinct');
+ assert.equal(blocked.run('session.gradingQueue[0].status'),'sending','never invent a completed grade');
+ console.log('Pending-grade repetition PASS: 400 continuation attempts yield at most two distinct bridge tasks, original paid job retained.');
+}
